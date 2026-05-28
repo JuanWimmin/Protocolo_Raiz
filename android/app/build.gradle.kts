@@ -94,6 +94,8 @@ dependencies {
     // Conscrypt — provider TLS de Google. Se instala en RaizApplication.onCreate
     // para que Ktor/JSSE use el trust store de Android al conectar a testnet.
     implementation(libs.conscrypt.android)
+    // Ktor core — necesario para referenciar HttpClient en HorizonStream.
+    implementation(libs.ktor.client.core)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)

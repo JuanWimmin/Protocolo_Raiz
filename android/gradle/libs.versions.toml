@@ -14,6 +14,7 @@ coroutines = "1.9.0"
 serialization = "1.7.3"
 bignum = "0.3.10"
 conscrypt = "2.5.2"
+ktor = "3.3.2"
 
 [libraries]
 # Core / Compose
@@ -60,6 +61,11 @@ ionspin-bignum = { module = "com.ionspin.kotlin:bignum", version.ref = "bignum" 
 # "Trust anchor for certification path not found" en HTTPS hacia testnet.
 # Se instala como provider preferido en RaizApplication.onCreate().
 conscrypt-android = { module = "org.conscrypt:conscrypt-android", version.ref = "conscrypt" }
+
+# Ktor HttpClient — el SDK lo trae como implementation; lo declaramos
+# explícito para poder referenciar el tipo HttpClient en HorizonStream
+# (constructor de HorizonServer lo requiere).
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -80,11 +80,16 @@ class WalletManager @Inject constructor(
         )
     }
 
-    /** Solo para tests/UI: devuelve un WalletState mock para validar cableado. */
+    /**
+     * Solo para tests/UI: devuelve un WalletState mock que apunta a la cuenta
+     * `raiz-tourist` del seed (ver `scripts/seed_testnet.sh`). Esa cuenta sí
+     * tiene saldo USDC real on-chain, así que con HorizonStream conectado se
+     * ve el balance real en vivo.
+     */
     fun mockWallet(): WalletState = WalletState(
-        publicKey = "GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P",
-        usdcBalanceStroops = 50_000_000L,        // 5 USDC
-        xlmBalanceStroops = 100_000_000_000L,    // 10000 XLM (testnet friendbot)
+        publicKey = "GDLGYDO4XY6YC6TNSPZELYEP73QOL4SUOVPUMJPHYC7WTTRQNORQIZM7",
+        usdcBalanceStroops = 0L,                 // se actualiza vía HorizonStream
+        xlmBalanceStroops = 100_000_000_000L,    // friendbot inicial
         points = 320,
         authMethod = WalletAuthMethod.SEED_PHRASE,
     )

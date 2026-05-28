@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-      Configuración explícita de TLS: confiamos en los CAs del sistema.
-      Necesario porque el Stellar SDK arrastra BouncyCastle, que en algunos
-      casos no resuelve la cadena de certificados del sistema Android por
-      default. Sin esto, las conexiones a soroban-testnet.stellar.org fallan
-      con "Trust anchor for certification path not found".
-
-      `cleartextTrafficPermitted="false"` es el default seguro: solo HTTPS.
-      Si alguna vez necesitas HTTP local (mock RPC en localhost), agrega un
-      domain-config específico, no aflojes el default global.
+      Base: system + user CAs, solo HTTPS. El cert custom de Sectigo
+      (necesario para soroban-testnet.stellar.org en algunos OEMs) se
+      añade vía SSLContext en RaizApplication.installSecurity(), porque
+      Ktor con engine CIO no usa el método hostname-aware del
+      TrustManager y eso choca con &lt;domain-config&gt;.
     -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
