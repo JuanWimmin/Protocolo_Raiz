@@ -46,4 +46,18 @@ internal object ScvalParse {
     fun asSymbol(scval: SCValXdr): String = Scv.fromSymbol(scval)
     fun asBoolean(scval: SCValXdr): Boolean = Scv.fromBoolean(scval)
     fun asInt32(scval: SCValXdr): Int = Scv.fromInt32(scval)
+
+    /**
+     * Extrae el discriminante (Symbol) de un enum unit-only de Soroban.
+     *
+     * Los `#[contracttype] enum Foo { A, B }` (sin variantes con datos) se
+     * serializan como `SCV_VEC` cuyo primer elemento es un `SCV_SYMBOL` con
+     * el nombre del variante: por ejemplo `[SCV_SYMBOL("Active")]`.
+     *
+     * Si el valor llega como Symbol directo (versiones antiguas del host)
+     * también lo manejamos como fallback.
+     */
+    fun asEnumSymbol(scval: SCValXdr): String =
+        runCatching { Scv.fromSymbol(Scv.fromVec(scval).first()) }
+            .getOrElse { Scv.fromSymbol(scval) }
 }

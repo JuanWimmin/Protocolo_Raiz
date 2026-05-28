@@ -235,28 +235,24 @@ private fun BalanceTile(label: String, value: String, accent: Color, modifier: M
 
 @Composable
 private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
+    // Usamos el TabRow default — el indicator custom de Material 3 requiere
+    // pasar la lista de TabPositions con tabIndicatorOffset; pisamos los
+    // textos si lo hacemos mal. Mejor el default y solo coloreamos el text.
     TabRow(
         selectedTabIndex = selected.ordinal,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = RaizBlack,
-        indicator = { _ ->
-            TabRowDefaults.SecondaryIndicator(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .height(3.dp),
-                color = RaizYellow,
-            )
-        },
     ) {
         ProfileTab.entries.forEach { t ->
             Tab(
                 selected = t == selected,
                 onClick = { onSelect(t) },
+                selectedContentColor = RaizBlack,
+                unselectedContentColor = RaizBlack.copy(alpha = 0.5f),
                 text = {
                     Text(
                         t.label,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (t == selected) RaizBlack else RaizBlack.copy(alpha = 0.5f),
                     )
                 },
             )

@@ -329,7 +329,7 @@ class SorobanClient @Inject constructor(
                             createdAt = ScvalParse.asULongAsLong(f.req("created_at")),
                             closesAt = ScvalParse.asULongAsLong(f.req("closes_at")),
                             status = ProposalStatus.fromSymbol(
-                                ScvalParse.asSymbol(f.req("status")),
+                                ScvalParse.asEnumSymbol(f.req("status")),
                             ),
                         )
                     }

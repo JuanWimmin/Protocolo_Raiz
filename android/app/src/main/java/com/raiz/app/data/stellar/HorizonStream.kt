@@ -7,13 +7,22 @@ import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.soneso.stellar.sdk.horizon.HorizonServer
-import com.soneso.stellar.sdk.horizon.requests.RequestBuilder
-import com.soneso.stellar.sdk.horizon.responses.operations.PaymentOperationResponse
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.coroutines.coroutineContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -77,34 +86,46 @@ class HorizonStream @Inject constructor(
     }
 
     /**
-     * Historial de pagos de una cuenta. Lista los últimos `limit` pagos
-     * (tipo `payment` clásico de Stellar). Soroban host fns como
-     * `pay_merchant` ejecutan `usdc.transfer` internamente, lo cual genera
-     * operaciones tipo `payment` que aparecen aquí.
+     * Historial de pagos de una cuenta. Implementado con HTTP directo a
+     * Horizon en lugar del SDK Soneso porque el deserializador del SDK
+     * crashea con operaciones `invoke_host_function` que reportan
+     * `AssetContractBalanceChange` sin el campo `to`. Esos sub-objetos no
+     * son pagos clásicos sino emisiones del contrato — los filtramos.
      *
-     * Filtra solo `PaymentOperationResponse` — ignora path_payments, manage_data,
-     * etc. para mantener la lista limpia.
+     * Devuelve solo operaciones tipo `payment` (transfers clásicos).
+     * Los pagos hechos vía contrato Soroban (pay_merchant → usdc.transfer)
+     * SÍ aparecen aquí porque cada transfer genera una operación payment.
      */
     suspend fun paymentHistory(
         accountId: String,
         limit: Int = 20,
-    ): RaizResult<List<PaymentRecord>> {
-        return runCatching {
-            val page = horizonServer.payments()
-                .forAccount(accountId)
-                .order(RequestBuilder.Order.DESC)
-                .limit(limit)
-                .execute()
-            page.records.filterIsInstance<PaymentOperationResponse>().map { op ->
-                PaymentRecord(
-                    txHash = op.transactionHash,
-                    from = op.from,
-                    to = op.to,
-                    amountStroops = op.amount.toUsdcStroops(),
-                    assetCode = if (op.assetType == "native") "XLM" else (op.assetCode ?: "?"),
-                    createdAt = op.createdAt,
-                    isOutgoing = op.from == accountId,
-                )
+    ): RaizResult<List<PaymentRecord>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val baseUrl = when (deployments.network) {
+                "testnet" -> RaizConstants.TESTNET_HORIZON_URL
+                else -> RaizConstants.TESTNET_HORIZON_URL
+            }
+            val urlStr = "$baseUrl/accounts/$accountId/payments?order=desc&limit=$limit"
+            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 10_000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+
+            val json = jsonCodec.parseToJsonElement(body).jsonObject
+            val records = json["_embedded"]?.jsonObject
+                ?.get("records")?.jsonArray
+                ?: JsonArray(emptyList())
+
+            // Cada operation puede expandir a 0..N PaymentRecord:
+            //   - `payment` clásico → 1 record.
+            //   - `invoke_host_function` → 1 record por cada transfer
+            //     dentro de `asset_balance_changes` (ignora burn/mint).
+            records.flatMap { el ->
+                runCatching { recordsFromOp(el.jsonObject, accountId) }.getOrElse { emptyList() }
             }
         }.fold(
             onSuccess = { RaizResult.Success(it) },
@@ -113,6 +134,66 @@ class HorizonStream @Inject constructor(
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
             },
         )
+    }
+
+    private val jsonCodec = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Convierte una operation JSON de Horizon en 0..N PaymentRecord según su tipo.
+     */
+    private fun recordsFromOp(record: JsonObject, observerAccount: String): List<PaymentRecord> {
+        val type = record["type"]?.jsonPrimitive?.contentOrNull
+        val txHash = record["transaction_hash"]?.jsonPrimitive?.contentOrNull ?: ""
+        val createdAt = record["created_at"]?.jsonPrimitive?.contentOrNull ?: ""
+
+        return when (type) {
+            "payment" -> {
+                val from = record["from"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
+                val to = record["to"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
+                val amount = record["amount"]?.jsonPrimitive?.contentOrNull ?: "0"
+                val assetType = record["asset_type"]?.jsonPrimitive?.contentOrNull
+                val assetCode = record["asset_code"]?.jsonPrimitive?.contentOrNull
+                listOf(
+                    PaymentRecord(
+                        txHash = txHash,
+                        from = from,
+                        to = to,
+                        amountStroops = amount.toUsdcStroops(),
+                        assetCode = if (assetType == "native") "XLM" else (assetCode ?: "?"),
+                        createdAt = createdAt,
+                        isOutgoing = from == observerAccount,
+                    ),
+                )
+            }
+
+            "invoke_host_function" -> {
+                // Pagos hechos vía contrato Soroban (pay_merchant, etc.) reportan
+                // los movimientos USDC dentro de `asset_balance_changes`. Solo
+                // listamos los de tipo `transfer` — ignoramos burns (fees del
+                // protocolo) y mints (issuer ↔ classic).
+                val changes = record["asset_balance_changes"]?.jsonArray ?: return emptyList()
+                changes.mapNotNull { c ->
+                    val ch = c.jsonObject
+                    if (ch["type"]?.jsonPrimitive?.contentOrNull != "transfer") return@mapNotNull null
+                    val from = ch["from"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val to = ch["to"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val amount = ch["amount"]?.jsonPrimitive?.contentOrNull ?: "0"
+                    val assetCode = ch["asset_code"]?.jsonPrimitive?.contentOrNull
+                    val assetType = ch["asset_type"]?.jsonPrimitive?.contentOrNull
+                    PaymentRecord(
+                        txHash = txHash,
+                        from = from,
+                        to = to,
+                        amountStroops = amount.toUsdcStroops(),
+                        assetCode = if (assetType == "native") "XLM" else (assetCode ?: "?"),
+                        createdAt = createdAt,
+                        isOutgoing = from == observerAccount,
+                    )
+                }
+            }
+
+            else -> emptyList()
+        }
     }
 
     /**

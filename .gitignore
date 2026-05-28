@@ -38,6 +38,8 @@ scripts/.env.local
 # Pero los logs/output locales no:
 deployments.local.json
 *.log
+# Screenshots adb temporales
+raiz_screen*.png
 
 # ─── Claude Code ────────────────────────────────────────────────────
 .claude/settings.local.json
