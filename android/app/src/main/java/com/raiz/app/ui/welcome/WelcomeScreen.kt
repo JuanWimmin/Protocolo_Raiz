@@ -57,6 +57,7 @@ fun WelcomeScreen(
     onCreateWallet: () -> Unit,
     onImportWallet: () -> Unit,
     onUseDemo: () -> Unit,
+    onSeeDashboard: () -> Unit = {},
 ) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
@@ -94,6 +95,16 @@ fun WelcomeScreen(
             }
 
             Spacer(modifier = Modifier.weight(1f))
+
+            // Link a la transparencia pública del barrio.
+            Text(
+                text = "Ver transparencia del barrio →",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizGreen,
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onTap = { onSeeDashboard() })
+                },
+            )
 
             Text(
                 text = "Tu seed phrase nunca sale del dispositivo.\nEstá cifrada con el Android Keystore.",

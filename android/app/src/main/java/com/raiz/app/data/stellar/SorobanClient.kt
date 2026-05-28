@@ -2,6 +2,7 @@ package com.raiz.app.data.stellar
 
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
+import com.raiz.app.data.model.Execution
 import com.raiz.app.data.model.Merchant
 import com.raiz.app.data.model.MerchantCategory
 import com.raiz.app.data.model.Proposal
@@ -75,9 +76,17 @@ class SorobanClient @Inject constructor(
             network = network,
         ).also { cachedRewardsClient = it }
 
+    private suspend fun treasuryClient(): ContractClient =
+        cachedTreasuryClient ?: ContractClient.forContract(
+            contractId = deployments.treasury,
+            rpcUrl = rpcUrl,
+            network = network,
+        ).also { cachedTreasuryClient = it }
+
     private var cachedPoolClient: ContractClient? = null
     private var cachedGovClient: ContractClient? = null
     private var cachedRewardsClient: ContractClient? = null
+    private var cachedTreasuryClient: ContractClient? = null
 
     // ── Pool: get_pool_balance ────────────────────────────────────────────
 
@@ -482,6 +491,112 @@ class SorobanClient @Inject constructor(
                     else -> RaizErrorCode.NETWORK_ERROR
                 }
                 RaizResult.Error(code, "redeem: ${e.message}")
+            },
+        )
+    }
+
+    // ── Treasury: execute_proposal (ESCRITURA trustless) ─────────────────
+
+    /**
+     * Ejecuta una propuesta aprobada. Trustless: cualquiera puede llamar,
+     * lo que importa es que el contrato verifique vía tally que el estado
+     * sea Passed. Si pasa, Treasury orquesta el resto:
+     *   - pool.withdraw_to(treasury, barrio, recipient, amount)
+     *   - registra Execution
+     *   - governance.mark_executed
+     *
+     * El firmante paga el gas pero no necesita rol especial. Aquí usamos
+     * el demoKeyPair del turista como cualquier "auditor" del barrio.
+     */
+    suspend fun executeProposal(
+        signer: KeyPair,
+        proposalId: Long,
+    ): RaizResult<Unit> {
+        return runCatching {
+            treasuryClient().invoke<Unit>(
+                functionName = "execute_proposal",
+                arguments = mapOf("proposal_id" to proposalId.toULong()),
+                source = signer.getAccountId(),
+                signer = signer,
+                parseResultXdrFn = { /* void */ },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                val code = when {
+                    "ProposalNotPassed" in msg ||
+                        "Error(Contract, #3)" in msg -> RaizErrorCode.QUORUM_NOT_REACHED
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, "executeProposal: ${e.message}")
+            },
+        )
+    }
+
+    // ── Governance: tally (cierra la votación si pasó closes_at) ─────────
+
+    /**
+     * Llama tally on-chain. Si la propuesta ya cerró por timestamp pero su
+     * status sigue Active, el contrato calcula quórum/mayoría y actualiza el
+     * status a Passed/Rejected. Si aún no cerró, devuelve Active sin tocar
+     * el storage.
+     *
+     * Cualquiera puede llamar; aquí firma con el demoKeyPair (el turista
+     * paga unos stroops de gas).
+     */
+    suspend fun tally(
+        signer: KeyPair,
+        proposalId: Long,
+    ): RaizResult<ProposalStatus> {
+        return runCatching {
+            governanceClient().invoke<ProposalStatus>(
+                functionName = "tally",
+                arguments = mapOf("proposal_id" to proposalId.toULong()),
+                source = signer.getAccountId(),
+                signer = signer,
+                parseResultXdrFn = { scval ->
+                    ProposalStatus.fromSymbol(ScvalParse.asEnumSymbol(scval))
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "tally: ${e.message}")
+            },
+        )
+    }
+
+    // ── Treasury: get_execution_log ──────────────────────────────────────
+
+    /** Devuelve todas las ejecuciones de propuestas pasadas de un barrio. */
+    suspend fun getExecutionLog(barrioId: String): RaizResult<List<Execution>> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            treasuryClient().invoke<List<Execution>>(
+                functionName = "get_execution_log",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    ScvalParse.asVec(scval).map { item ->
+                        val f = ScvalParse.asStruct(item)
+                        Execution(
+                            proposalId = ScvalParse.asULongAsLong(f.req("proposal_id")),
+                            barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                            amountStroops = ScvalParse.asLong(f.req("amount")),
+                            recipient = ScvalParse.asAddressString(f.req("recipient")),
+                            executedAt = ScvalParse.asULongAsLong(f.req("executed_at")),
+                            txHash = ScvalParse.asHex(f.req("tx_hash")),
+                        )
+                    }
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getExecutionLog: ${e.message}")
             },
         )
     }

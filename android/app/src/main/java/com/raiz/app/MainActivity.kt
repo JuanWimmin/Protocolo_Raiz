@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.raiz.app.data.stellar.WalletManager
+import com.raiz.app.ui.dashboard.DashboardScreen
 import com.raiz.app.ui.map.BarrioMapScreen
 import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
@@ -83,13 +84,12 @@ private fun RaizApp(
                 onCreateWallet = { nav.navigate(Routes.CREATE_WALLET) },
                 onImportWallet = { nav.navigate(Routes.IMPORT_WALLET) },
                 onUseDemo = {
-                    // No persiste nada — solo entra a wallet con la cuenta
-                    // demo activa (raiz-tourist).
                     hasWallet = true
                     nav.navigate(Routes.WALLET) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
                 },
+                onSeeDashboard = { nav.navigate(Routes.DASHBOARD) },
             )
         }
         composable(Routes.CREATE_WALLET) {
@@ -124,6 +124,7 @@ private fun RaizApp(
                 onNavigateProfile = { goTo(Routes.PROFILE) },
                 onNavigateRewards = { goTo(Routes.REWARDS) },
                 onNavigateMap = { goTo(Routes.MAP) },
+                onNavigateDashboard = { nav.navigate(Routes.DASHBOARD) },
             )
         }
         composable(
@@ -163,6 +164,9 @@ private fun RaizApp(
                 onNavigateRewards = { goTo(Routes.REWARDS) },
             )
         }
+        composable(Routes.DASHBOARD) {
+            DashboardScreen(onBack = { nav.popBackStack() })
+        }
     }
 }
 
@@ -176,4 +180,5 @@ private object Routes {
     const val PROFILE = "profile"
     const val REWARDS = "rewards"
     const val MAP = "map"
+    const val DASHBOARD = "dashboard"
 }

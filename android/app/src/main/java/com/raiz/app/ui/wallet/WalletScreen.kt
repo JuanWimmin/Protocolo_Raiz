@@ -2,6 +2,7 @@ package com.raiz.app.ui.wallet
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +72,7 @@ fun WalletScreen(
     onNavigateProfile: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
+    onNavigateDashboard: () -> Unit = {},
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -126,6 +129,7 @@ fun WalletScreen(
                         .setPrompt("Apunta al QR del comercio")
                     scanLauncher.launch(opts)
                 },
+                onTransparencyTap = onNavigateDashboard,
                 contentPadding = padding,
             )
         }
@@ -142,6 +146,7 @@ private fun WalletReady(
     poolBalanceLabel: String,
     passport: PassportData?,
     onScanAndPay: () -> Unit,
+    onTransparencyTap: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     // Aporte al barrio: dato real del passport (suma de tips al pool del
@@ -168,12 +173,14 @@ private fun WalletReady(
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 color = RaizBlack,
             )
-            // Smoke test del cableado Soroban: muestra el balance del pool del
-            // Centro Histórico leído del contrato Pool en testnet.
+            // Pool del barrio activo + link a la transparencia pública.
             Text(
-                text = "Pool del barrio · $poolBalanceLabel",
+                text = "Pool del barrio · $poolBalanceLabel  ·  Ver transparencia →",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizGreen,
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onTap = { onTransparencyTap() })
+                },
             )
 
             BalanceCard(
