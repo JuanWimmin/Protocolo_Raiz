@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.raiz.app.data.stellar.WalletManager
+import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
 import com.raiz.app.ui.map.BarrioMapScreen
 import com.raiz.app.ui.pay.PayScreen
@@ -138,12 +139,22 @@ private fun RaizApp(
                 onNavigateHome = { goTo(Routes.WALLET) },
                 onNavigateRewards = { goTo(Routes.REWARDS) },
                 onNavigateMap = { goTo(Routes.MAP) },
+                onBecomeMerchant = { nav.navigate(Routes.BECOME_MERCHANT) },
                 onLogout = {
                     onLogout()
                     hasWallet = false
                     nav.navigate(Routes.WELCOME) {
                         popUpTo(Routes.WALLET) { inclusive = true }
                     }
+                },
+            )
+        }
+        composable(Routes.BECOME_MERCHANT) {
+            BecomeMerchantScreen(
+                onBack = { nav.popBackStack() },
+                onSuccess = {
+                    // Tras registrarse, vuelve a Profile para ver el nuevo rol.
+                    nav.popBackStack(Routes.PROFILE, inclusive = false)
                 },
             )
         }
@@ -181,4 +192,5 @@ private object Routes {
     const val REWARDS = "rewards"
     const val MAP = "map"
     const val DASHBOARD = "dashboard"
+    const val BECOME_MERCHANT = "become_merchant"
 }

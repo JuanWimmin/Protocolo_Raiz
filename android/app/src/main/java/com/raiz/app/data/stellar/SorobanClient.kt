@@ -190,6 +190,65 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Pool: register_merchant (admin only) ─────────────────────────────
+
+    /**
+     * Registra un comercio en el contrato Pool. Solo el admin del protocolo
+     * puede llamar esto on-chain. La app lo expone con el demoAdminKeyPair
+     * en modo demo para que cualquier usuario pueda volverse comerciante
+     * sin coordinar offline.
+     *
+     * El struct MerchantData se construye desde los campos planos y se pasa
+     * como un Map al SDK, que lo serializa automáticamente.
+     */
+    suspend fun registerMerchant(
+        admin: KeyPair,
+        merchantAddress: String,
+        name: String,
+        barrioId: String,
+        latE6: Int,
+        lngE6: Int,
+        categorySymbol: String,
+    ): RaizResult<Unit> {
+        val barrioBytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+
+        // Para structs en el SDK Soneso, se pasa un Map<String, Any> donde
+        // cada key es el nombre del campo y el valor su contenido.
+        val merchantData = linkedMapOf<String, Any>(
+            "address" to merchantAddress,
+            "name" to name,
+            "barrio_id" to barrioBytes,
+            "verified" to true,
+            "lat_e6" to latE6,
+            "lng_e6" to lngE6,
+            "category" to com.soneso.stellar.sdk.scval.Scv.toSymbol(categorySymbol),
+        )
+
+        return runCatching {
+            poolClient().invoke<Unit>(
+                functionName = "register_merchant",
+                arguments = mapOf("data" to merchantData),
+                source = admin.getAccountId(),
+                signer = admin,
+                parseResultXdrFn = { /* void */ },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                val code = when {
+                    "BarrioNotFound" in msg ||
+                        "Error(Contract, #6)" in msg -> RaizErrorCode.NOT_FOUND
+                    "Unauthorized" in msg ||
+                        "Error(Contract, #3)" in msg -> RaizErrorCode.UNAUTHORIZED
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, "registerMerchant: ${e.message}")
+            },
+        )
+    }
+
     // ── Pool: get_merchant ────────────────────────────────────────────────
 
     /** Devuelve los datos del merchant dado su address G...  */

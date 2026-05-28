@@ -82,6 +82,7 @@ fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
+    onBecomeMerchant: () -> Unit = {},
     onLogout: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -124,6 +125,7 @@ fun ProfileScreen(
                     state = state,
                     onOverride = viewModel::setRoleOverride,
                     onVote = viewModel::vote,
+                    onBecomeMerchant = onBecomeMerchant,
                 )
                 ProfileTab.QR -> QrTab(
                     publicKey = state.wallet.publicKey,
@@ -389,6 +391,7 @@ private fun RoleTab(
     state: ProfileUiState,
     onOverride: (UserRole?) -> Unit,
     onVote: (Long, Boolean) -> Unit,
+    onBecomeMerchant: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -403,7 +406,7 @@ private fun RoleTab(
         }
 
         when (state.effectiveRole) {
-            UserRole.TOURIST -> TouristSection()
+            UserRole.TOURIST -> TouristSection(onBecomeMerchant = onBecomeMerchant)
             UserRole.RESIDENT -> ResidentSection(state = state, onVote = onVote)
             UserRole.MERCHANT -> MerchantSection(state = state)
         }
@@ -456,31 +459,75 @@ private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun TouristSection() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(RaizWhite)
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = "Estás pagando como turista",
-            style = MaterialTheme.typography.labelLarge,
-            color = RaizBlack,
-        )
-        Text(
-            text = "Cada pago con Tip Barrio aporta al fondo del comercio que visitas y te da puntos para canjear por artesanías del lugar.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizBlack.copy(alpha = 0.7f),
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "¿Vives en un barrio RAÍZ? Pide a tu admin local que te mintea el token de residencia — desde ahí podrás proponer y votar en qué se invierte el fondo.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizBlack.copy(alpha = 0.6f),
-        )
+private fun TouristSection(onBecomeMerchant: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(RaizWhite)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Estás pagando como turista",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
+            Text(
+                text = "Cada pago con Tip Barrio aporta al fondo del comercio que visitas y te da puntos para canjear por artesanías del lugar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.7f),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "¿Vives en un barrio RAÍZ? Pide a tu admin local que te mintea el token de residencia — desde ahí podrás proponer y votar en qué se invierte el fondo.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+        }
+
+        // Atajo a registrarse como comerciante. Visible siempre que el rol
+        // efectivo sea turista — es la única forma user-facing de probar el
+        // flow E2E en 2 teléfonos (uno paga, el otro recibe).
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(RaizWhite)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Storefront,
+                    contentDescription = null,
+                    tint = RaizGreen,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "¿Tienes un negocio?",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                )
+            }
+            Text(
+                text = "Regístralo en RAÍZ. Aparecerá en el mapa de tu barrio y podrás recibir pagos en USDC con QR.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.7f),
+            )
+            Button(
+                onClick = onBecomeMerchant,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RaizGreen,
+                    contentColor = RaizWhite,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Registrarme como comerciante", style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 
