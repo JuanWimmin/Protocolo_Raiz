@@ -155,8 +155,24 @@ class WalletManager @Inject constructor(
             .getOrNull()
     }
 
+    /**
+     * KeyPair del admin del protocolo. Usado SOLO en modo demo para que la
+     * app pueda firmar register_merchant cuando un usuario solicita ser
+     * comerciante. En producción esto no existiría — el registro pasaría
+     * por una pantalla del admin del barrio o KYC SEP-12.
+     */
+    suspend fun demoAdminKeyPair(): KeyPair? {
+        cachedAdminKp?.let { return it }
+        val secret = BuildConfig.DEMO_ADMIN_SECRET
+        if (secret.isBlank()) return null
+        return runCatching { KeyPair.fromSecretSeed(secret) }
+            .onSuccess { cachedAdminKp = it }
+            .getOrNull()
+    }
+
     private var cachedDemoKp: KeyPair? = null
     private var cachedResidentKp: KeyPair? = null
+    private var cachedAdminKp: KeyPair? = null
 
     private companion object {
         /** G... de raiz-tourist del seed; coincide con DEMO_TOURIST_SECRET. */

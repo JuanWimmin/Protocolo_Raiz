@@ -130,7 +130,9 @@ fun WalletScreen(
                     scanLauncher.launch(opts)
                 },
                 onTransparencyTap = onNavigateDashboard,
+                onFundXlm = viewModel::fundWithFriendbot,
                 onActivateUsdc = viewModel::activateUsdcTrustline,
+                onRequestUsdc = viewModel::requestUsdcFaucet,
                 contentPadding = padding,
             )
         }
@@ -146,7 +148,9 @@ private fun WalletReady(
     state: WalletUiState.Ready,
     onScanAndPay: () -> Unit,
     onTransparencyTap: () -> Unit,
+    onFundXlm: () -> Unit,
     onActivateUsdc: () -> Unit,
+    onRequestUsdc: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     val wallet = state.wallet
@@ -186,12 +190,16 @@ private fun WalletReady(
                 },
             )
 
-            // Banner activación USDC — solo si la cuenta no tiene trustline.
-            if (state.needsUsdcTrustline) {
-                ActivateUsdcBanner(
-                    activating = state.activatingTrustline,
-                    error = state.trustlineError,
-                    onActivate = onActivateUsdc,
+            // Banner de onboarding on-chain. Muestra el paso pendiente
+            // (XLM → trustline → USDC) y se oculta cuando el wallet está listo.
+            if (state.setupStep != AccountSetupStep.DONE) {
+                AccountSetupBanner(
+                    step = state.setupStep,
+                    inProgress = state.setupInProgress,
+                    error = state.setupError,
+                    onFundXlm = onFundXlm,
+                    onActivateTrustline = onActivateUsdc,
+                    onRequestUsdc = onRequestUsdc,
                 )
             }
 
@@ -258,17 +266,50 @@ private fun WalletReady(
 }
 
 /**
- * Banner amarillo que aparece cuando la wallet activa NO tiene trustline
- * USDC. Sin trustline, la cuenta no puede recibir USDC y los pagos a su
- * address fallan con error #13 "trustline entry is missing". Un solo tap
- * dispara la operación ChangeTrust firmada con la wallet del usuario.
+ * Banner de onboarding on-chain. Una wallet recién creada necesita 3 cosas
+ * antes de poder usar RAÍZ:
+ *   1. XLM para existir y pagar fees (friendbot, testnet).
+ *   2. Trustline USDC para poder recibir el token.
+ *   3. USDC en saldo para pagar (admin actúa de faucet en demo).
+ *
+ * El banner muestra solo el paso actual; tras completarlo, se actualiza al
+ * siguiente. Cuando todos están listos, desaparece.
  */
 @Composable
-private fun ActivateUsdcBanner(
-    activating: Boolean,
+private fun AccountSetupBanner(
+    step: AccountSetupStep,
+    inProgress: Boolean,
     error: String?,
-    onActivate: () -> Unit,
+    onFundXlm: () -> Unit,
+    onActivateTrustline: () -> Unit,
+    onRequestUsdc: () -> Unit,
 ) {
+    val title: String
+    val body: String
+    val cta: String
+    val action: () -> Unit
+    when (step) {
+        AccountSetupStep.FUND_XLM -> {
+            title = "Paso 1 · Activa tu cuenta"
+            body = "Tu wallet aún no existe en Stellar. Friendbot la fondeará con XLM de testnet (gratis, solo demo)."
+            cta = "Fondear con friendbot"
+            action = onFundXlm
+        }
+        AccountSetupStep.ACTIVATE_TRUSTLINE -> {
+            title = "Paso 2 · Habilita USDC"
+            body = "Stellar pide un trustline al USDC antes de poder recibirlo. Tarda ~5 segundos."
+            cta = "Activar trustline"
+            action = onActivateTrustline
+        }
+        AccountSetupStep.REQUEST_USDC -> {
+            title = "Paso 3 · Pide USDC de prueba"
+            body = "El admin te enviará 20 USDC de testnet para que puedas hacer pagos. Solo modo demo."
+            cta = "Pedir USDC de prueba"
+            action = onRequestUsdc
+        }
+        AccountSetupStep.DONE -> return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -278,12 +319,12 @@ private fun ActivateUsdcBanner(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Activa tu cuenta para recibir USDC",
+            text = title,
             style = MaterialTheme.typography.labelLarge,
             color = RaizBlack,
         )
         Text(
-            text = "Stellar requiere un trustline al USDC antes de poder recibirlo. Tarda ~5 segundos.",
+            text = body,
             style = MaterialTheme.typography.bodyMedium,
             color = RaizBlack.copy(alpha = 0.7f),
         )
@@ -295,8 +336,8 @@ private fun ActivateUsdcBanner(
             )
         }
         Button(
-            onClick = onActivate,
-            enabled = !activating,
+            onClick = action,
+            enabled = !inProgress,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = RaizGreen,
@@ -306,10 +347,10 @@ private fun ActivateUsdcBanner(
             ),
             shape = RoundedCornerShape(12.dp),
         ) {
-            if (activating) {
+            if (inProgress) {
                 CircularProgressIndicator(color = RaizWhite, strokeWidth = 2.dp)
             } else {
-                Text("Activar trustline", style = MaterialTheme.typography.labelLarge)
+                Text(cta, style = MaterialTheme.typography.labelLarge)
             }
         }
     }

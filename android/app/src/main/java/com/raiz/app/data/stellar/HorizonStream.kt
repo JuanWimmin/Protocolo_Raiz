@@ -10,6 +10,7 @@ import com.soneso.stellar.sdk.AssetTypeCreditAlphaNum4
 import com.soneso.stellar.sdk.ChangeTrustOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.PaymentOperation
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,11 @@ class HorizonStream @Inject constructor(
             delay(intervalMs)
         }
     }.distinctUntilChanged()
+
+    /** One-shot balance USDC (sin polling). Útil para verificaciones puntuales. */
+    suspend fun getUsdcBalance(accountId: String): Long = withContext(Dispatchers.IO) {
+        fetchUsdcBalance(accountId)
+    }
 
     private suspend fun fetchUsdcBalance(accountId: String): Long {
         return runCatching {
@@ -246,6 +252,94 @@ class HorizonStream @Inject constructor(
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
             },
         )
+    }
+
+    /**
+     * ¿Existe la cuenta on-chain? Una wallet recién creada (sin XLM) NO existe
+     * en Stellar hasta que reciba el mínimo de XLM. 404 = no existe; cualquier
+     * otro error de red lo tratamos también como "no existe" para activar el
+     * banner de friendbot (preferimos un falso positivo a bloquear al usuario).
+     */
+    suspend fun accountExists(accountId: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            horizonServer.accounts().account(accountId)
+            true
+        }.getOrElse { e ->
+            Log.i(TAG, "accountExists($accountId) → false (${e.message})")
+            false
+        }
+    }
+
+    /**
+     * Fondea una cuenta nueva con friendbot (10000 XLM testnet). Idempotente
+     * solo en el sentido de que si la cuenta ya existe, friendbot responde 400
+     * y devolvemos error — pero no rompe nada.
+     */
+    suspend fun fundWithFriendbot(accountId: String): RaizResult<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = "https://friendbot.stellar.org/?addr=$accountId"
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                requestMethod = "GET"
+            }
+            val code = conn.responseCode
+            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() } ?: ""
+            conn.disconnect()
+            if (code !in 200..299) {
+                throw RuntimeException("friendbot HTTP $code: ${body.take(200)}")
+            }
+            Log.i(TAG, "Friendbot fondeó $accountId")
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                Log.e(TAG, "fundWithFriendbot falló: ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "friendbot error")
+            },
+        )
+    }
+
+    /**
+     * Envía USDC del admin del protocolo a `destination` como Payment classic.
+     * Usado SOLO como faucet demo: cuando un usuario nuevo necesita USDC para
+     * probar el flow de pago. En producción no existe — los anchors (SEP-24)
+     * harían el on-ramp desde fiat.
+     */
+    suspend fun sendUsdcFromAdmin(
+        adminSigner: KeyPair,
+        destination: String,
+        amountStroops: Long,
+    ): RaizResult<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val source = horizonServer.loadAccount(adminSigner.getAccountId())
+            val asset = AssetTypeCreditAlphaNum4("USDC", deployments.admin)
+            val amount = amountStroops.toUsdcDecimal()
+            val op = PaymentOperation(destination, asset, amount)
+            val tx = TransactionBuilder(source, Network.TESTNET)
+                .setBaseFee(100L)
+                .addOperation(op)
+                .setTimeout(60L)
+                .build()
+            tx.sign(adminSigner)
+            horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
+            Log.i(TAG, "Admin envió $amount USDC a $destination")
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                Log.e(TAG, "sendUsdcFromAdmin falló: ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+            },
+        )
+    }
+
+    /** Long stroops → "10.0000000" (7 decimales fijos) que Stellar exige. */
+    private fun Long.toUsdcDecimal(): String {
+        val unit = this / RaizConstants.USDC_STROOPS_PER_UNIT
+        val frac = (this % RaizConstants.USDC_STROOPS_PER_UNIT)
+            .toString()
+            .padStart(RaizConstants.USDC_DECIMALS, '0')
+        return "$unit.$frac"
     }
 
     /**

@@ -12,6 +12,7 @@ import com.raiz.app.data.stellar.DeploymentsLoader
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
+import com.soneso.stellar.sdk.KeyPair
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,16 +21,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Estado del onboarding on-chain del wallet activo. Una wallet recién creada
+ * tiene que pasar por estos 3 pasos antes de poder operar como turista o
+ * comerciante. El banner de WalletScreen muestra uno solo a la vez según el
+ * step actual; al completarse todos se oculta.
+ */
+enum class AccountSetupStep {
+    FUND_XLM,           // La cuenta no existe en Stellar todavía (falta XLM).
+    ACTIVATE_TRUSTLINE, // Cuenta existe pero no tiene trustline USDC.
+    REQUEST_USDC,       // Trustline OK pero balance USDC = 0 (demo faucet).
+    DONE,               // Lista para usar.
+}
+
 sealed interface WalletUiState {
     data object Loading : WalletUiState
     data class Ready(
         val wallet: WalletState,
         val poolBalanceLabel: String,
         val passport: PassportData? = null,
-        /** true = cuenta SIN trustline USDC. Mostrar banner "Activar para recibir USDC". */
-        val needsUsdcTrustline: Boolean = false,
-        val activatingTrustline: Boolean = false,
-        val trustlineError: String? = null,
+        val setupStep: AccountSetupStep = AccountSetupStep.DONE,
+        val setupInProgress: Boolean = false,
+        val setupError: String? = null,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -58,57 +71,116 @@ class WalletViewModel @Inject constructor(
         observeUsdcBalance()
         loadCentroPoolBalance()
         loadPassport()
-        checkTrustline()
+        refreshSetupStep()
     }
 
-    /** Verifica si el wallet activo tiene trustline USDC. */
-    private fun checkTrustline() {
+    /**
+     * Detecta el siguiente paso de onboarding del wallet activo:
+     *   FUND_XLM → ACTIVATE_TRUSTLINE → REQUEST_USDC → DONE
+     * Re-llamar tras cada acción (fondear/activar/pedir) para avanzar el banner.
+     */
+    private fun refreshSetupStep() {
         viewModelScope.launch {
             val accountId = walletManager.currentAccountId() ?: return@launch
-            val has = horizonStream.hasUsdcTrustline(accountId)
-            Log.i(TAG, "Trustline USDC para $accountId: $has")
+            val step = when {
+                !horizonStream.accountExists(accountId) -> AccountSetupStep.FUND_XLM
+                !horizonStream.hasUsdcTrustline(accountId) -> AccountSetupStep.ACTIVATE_TRUSTLINE
+                horizonStream.getUsdcBalance(accountId) == 0L -> AccountSetupStep.REQUEST_USDC
+                else -> AccountSetupStep.DONE
+            }
+            Log.i(TAG, "Setup step para $accountId: $step")
             _state.update { current ->
-                if (current is WalletUiState.Ready) current.copy(needsUsdcTrustline = !has)
+                if (current is WalletUiState.Ready) current.copy(setupStep = step, setupError = null)
                 else current
             }
         }
     }
 
-    /** Activa el trustline USDC en la cuenta del usuario (firma + submit). */
+    /** Step 1: friendbot. */
+    fun fundWithFriendbot() {
+        runSetupAction { signer, accountId ->
+            // friendbot no requiere firma; el signer lo ignoramos aquí.
+            horizonStream.fundWithFriendbot(accountId)
+        }
+    }
+
+    /** Step 2: activar trustline USDC. */
     fun activateUsdcTrustline() {
+        runSetupAction { signer, _ ->
+            if (signer == null) return@runSetupAction RaizResult.Error(
+                com.raiz.app.data.model.RaizErrorCode.UNKNOWN,
+                "No hay wallet activa para firmar.",
+            )
+            horizonStream.enableUsdcTrustline(signer)
+        }
+    }
+
+    /** Step 3: pedir USDC al admin (faucet demo). */
+    fun requestUsdcFaucet() {
         viewModelScope.launch {
-            _state.update { current ->
-                if (current is WalletUiState.Ready)
-                    current.copy(activatingTrustline = true, trustlineError = null)
-                else current
-            }
-            val signer = walletManager.currentKeyPair()
-            if (signer == null) {
+            val accountId = walletManager.currentAccountId() ?: return@launch
+            val admin = walletManager.demoAdminKeyPair()
+            if (admin == null) {
                 _state.update { current ->
                     if (current is WalletUiState.Ready) current.copy(
-                        activatingTrustline = false,
-                        trustlineError = "No hay wallet activa para firmar.",
+                        setupInProgress = false,
+                        setupError = "Admin no configurado en local.properties. No se puede usar como faucet.",
                     ) else current
                 }
                 return@launch
             }
-            when (val r = horizonStream.enableUsdcTrustline(signer)) {
-                is RaizResult.Success -> {
-                    Log.i(TAG, "Trustline activado")
-                    _state.update { current ->
-                        if (current is WalletUiState.Ready) current.copy(
-                            activatingTrustline = false,
-                            needsUsdcTrustline = false,
-                            trustlineError = null,
-                        ) else current
-                    }
+            beginSetupAction()
+            val result = horizonStream.sendUsdcFromAdmin(
+                adminSigner = admin,
+                destination = accountId,
+                amountStroops = FAUCET_USDC_STROOPS,
+            )
+            finishSetupAction(result)
+        }
+    }
+
+    /**
+     * Plantilla para las acciones de onboarding que necesitan signer + accountId
+     * y comparten el mismo ciclo de estado (in_progress → ok/err → re-check step).
+     */
+    private fun runSetupAction(
+        action: suspend (signer: KeyPair?, accountId: String) -> RaizResult<Unit>,
+    ) {
+        viewModelScope.launch {
+            val accountId = walletManager.currentAccountId() ?: return@launch
+            val signer = walletManager.currentKeyPair()
+            beginSetupAction()
+            val result = action(signer, accountId)
+            finishSetupAction(result)
+        }
+    }
+
+    private fun beginSetupAction() {
+        _state.update { current ->
+            if (current is WalletUiState.Ready)
+                current.copy(setupInProgress = true, setupError = null)
+            else current
+        }
+    }
+
+    private fun finishSetupAction(result: RaizResult<Unit>) {
+        when (result) {
+            is RaizResult.Success -> {
+                _state.update { current ->
+                    if (current is WalletUiState.Ready)
+                        current.copy(setupInProgress = false, setupError = null)
+                    else current
                 }
-                is RaizResult.Error -> _state.update { current ->
-                    if (current is WalletUiState.Ready) current.copy(
-                        activatingTrustline = false,
-                        trustlineError = "No se pudo activar: ${r.message}",
-                    ) else current
+                // Pequeña espera para que Horizon procese antes del re-check.
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(1500L)
+                    refreshSetupStep()
                 }
+            }
+            is RaizResult.Error -> _state.update { current ->
+                if (current is WalletUiState.Ready)
+                    current.copy(setupInProgress = false, setupError = result.message)
+                else current
             }
         }
     }
@@ -245,6 +317,8 @@ class WalletViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
+        /** 20 USDC = 20 * 10_000_000 stroops. Suficiente para varios pagos demo. */
+        const val FAUCET_USDC_STROOPS = 200_000_000L
         const val BARRIO_CENTRO_ID = "ce47120000000000000000000000000000000000000000000000000000000001"
         val BARRIOS: LinkedHashMap<String, String> = linkedMapOf(
             BARRIO_CENTRO_ID to "Centro Histórico",

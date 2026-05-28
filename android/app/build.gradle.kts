@@ -37,6 +37,7 @@ android {
         // En release real estarían vacíos y la app pediría seed phrase / passkey.
         buildConfigField("String", "DEMO_TOURIST_SECRET", "\"${localProp("raiz.tourist.secret")}\"")
         buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"${localProp("raiz.resident.secret")}\"")
+        buildConfigField("String", "DEMO_ADMIN_SECRET", "\"${localProp("raiz.admin.secret")}\"")
         // Mapbox public token (pk.*) — runtime de la app para descargar tiles.
         buildConfigField("String", "MAPBOX_TOKEN", "\"${localProp("mapbox.access.token")}\"")
     }
