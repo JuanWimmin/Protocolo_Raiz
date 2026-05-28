@@ -171,6 +171,35 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 - ❌ Implementar `transfer()` en Governance (es soulbound — viola la tesis).
 - ❌ Hardcodear `pk.*` o `sk.*` de Mapbox en el repo (van en `~/.gradle/gradle.properties`).
 
+## Gotchas conocidos del proyecto
+
+- **TLS en Android contra Stellar testnet**: `HttpsURLConnection` nativo de
+  Android falla contra `soroban-testnet.stellar.org` con "Trust anchor for
+  certification path not found" en algunos dispositivos (probado en Vivo
+  V2110 / Android 13). Solución: instalar Conscrypt como provider TLS #1 en
+  `RaizApplication.onCreate()`. Con eso el SDK Soneso (Ktor + CIO) sí valida
+  la cadena correctamente. NO quitar la inicialización de Conscrypt.
+
+- **Versiones Kotlin / KSP / Hilt acopladas**: Stellar SDK 1.6.0 trae
+  kotlinx-serialization con metadata Kotlin 2.2 (no leíble por K2.0). Si
+  subes Kotlin, KSP debe ir al pin equivalente (`kotlin-X.Y.Z` ↔
+  `ksp-X.Y.Z-X.X.X`) y Hilt ≥ 2.56 para que su procesador KSP no falle con
+  "Expected @AndroidEntryPoint to have a value".
+
+- **wasm32-unknown-unknown vs wasm32v1-none**: para deploy a Soroban hay que
+  usar `stellar contract build` (target `wasm32v1-none`) y NO `cargo build
+  --target wasm32-unknown-unknown`. El segundo emite instrucciones
+  `reference-types` que el host de Soroban rechaza.
+
+- **`contractimport!` resuelve rutas relativas al Cargo.toml del crate**
+  (CARGO_MANIFEST_DIR), no al archivo. Desde `contracts/pool/Cargo.toml` a
+  `target/` del workspace son DOS niveles arriba en la jerarquía de archivos
+  pero UN solo `../` en la ruta del macro.
+
+- **Logs Android Info/Debug filtrados**: en algunos dispositivos
+  (especialmente Vivo) los logs `Log.i` se filtran por defecto. Forzar
+  visibilidad con: `adb shell setprop log.tag.RAIZ VERBOSE` antes de ejecutar.
+
 ---
 
 ## Estado actual (al iniciar el proyecto)

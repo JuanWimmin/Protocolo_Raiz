@@ -75,6 +75,7 @@ fun WalletScreen(
             is WalletUiState.Error -> WalletError(s.message, padding)
             is WalletUiState.Ready -> WalletReady(
                 wallet = s.wallet,
+                poolBalanceLabel = s.poolBalanceLabel,
                 onScanAndPay = onScanAndPay,
                 contentPadding = padding,
             )
@@ -85,6 +86,7 @@ fun WalletScreen(
 @Composable
 private fun WalletReady(
     wallet: WalletState,
+    poolBalanceLabel: String,
     onScanAndPay: () -> Unit,
     contentPadding: PaddingValues,
 ) {
@@ -106,6 +108,13 @@ private fun WalletReady(
             text = "RAÍZ",
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
             color = RaizBlack,
+        )
+        // Smoke test del cableado Soroban: muestra el balance del pool del
+        // Centro Histórico leído del contrato Pool en testnet.
+        Text(
+            text = "Pool del barrio · $poolBalanceLabel",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizGreen,
         )
 
         BalanceCard(

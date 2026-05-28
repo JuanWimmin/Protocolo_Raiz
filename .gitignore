@@ -41,3 +41,6 @@ deployments.local.json
 
 # ─── Claude Code ────────────────────────────────────────────────────
 .claude/settings.local.json
+
+# ─── Documentos(toda la carpeta) ────────────────────────────────────────────────────
+ .docs/ 

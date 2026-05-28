@@ -13,6 +13,7 @@ stellarSdk = "1.6.0"
 coroutines = "1.9.0"
 serialization = "1.7.3"
 bignum = "0.3.10"
+conscrypt = "2.5.2"
 
 [libraries]
 # Core / Compose
@@ -52,6 +53,13 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 # BigInteger usado por Scv.fromInt128 (Stellar SDK lo trae como implementation,
 # tenemos que declararlo explícito para poder importarlo en nuestro código).
 ionspin-bignum = { module = "com.ionspin.kotlin:bignum", version.ref = "bignum" }
+
+# Conscrypt — provider TLS de Google que usa el trust store nativo de Android.
+# Necesario porque el Stellar SDK usa Ktor con engine CIO + BouncyCastle, que
+# no resuelve la cadena de certs del sistema y dispara
+# "Trust anchor for certification path not found" en HTTPS hacia testnet.
+# Se instala como provider preferido en RaizApplication.onCreate().
+conscrypt-android = { module = "org.conscrypt:conscrypt-android", version.ref = "conscrypt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
