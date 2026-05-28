@@ -42,7 +42,9 @@ class WalletViewModel @Inject constructor(
 
     private val _state = MutableStateFlow<WalletUiState>(
         WalletUiState.Ready(
-            wallet = walletManager.mockWallet(),
+            // Arranca con `points = 0` hasta que getPoints responda; las
+            // demás propiedades del wallet vienen del mock por ahora.
+            wallet = walletManager.mockWallet().copy(points = 0L),
             poolBalanceLabel = "Conectando…",
         ),
     )
@@ -63,18 +65,8 @@ class WalletViewModel @Inject constructor(
                 Log.i(TAG, "Balance USDC actualizado: $stroops stroops (${stroops.formatUsdc()})")
                 _state.update { current ->
                     if (current is WalletUiState.Ready) {
-                        val updatedWallet = current.wallet.copy(usdcBalanceStroops = stroops)
-                        // El passport refleja el saldo en su header — lo
-                        // actualizamos también si ya estaba cargado.
-                        val updatedPassport = current.passport?.copy(
-                            saldoStroops = stroops,
-                            nivel = PassportLevel.fromStroops(stroops),
-                            ptsParaSiguienteNivel = PassportLevel.fromStroops(stroops).ptsToNext(stroops),
-                        )
-                        current.copy(wallet = updatedWallet, passport = updatedPassport)
-                    } else {
-                        current
-                    }
+                        current.copy(wallet = current.wallet.copy(usdcBalanceStroops = stroops))
+                    } else current
                 }
             }
         }
@@ -108,15 +100,35 @@ class WalletViewModel @Inject constructor(
 
     /**
      * Carga datos del RAÍZ Passport:
-     * 1. Trae los merchants de los 3 barrios → mapa addr→barrio.
-     * 2. Trae el historial de pagos del turista.
-     * 3. Calcula aporte al pool, transacciones locales, barrios visitados.
+     * 1. Trae los puntos del turista vía Rewards.get_points (REAL).
+     * 2. Trae los merchants de los 3 barrios → mapa addr→barrio.
+     * 3. Trae el historial de pagos del turista.
+     * 4. Calcula aporte al pool, transacciones locales, barrios visitados.
+     *
+     * Actualiza tanto `wallet.points` como `passport` con la misma fuente.
      */
     private fun loadPassport() {
         viewModelScope.launch {
             val accountId = walletManager.mockWallet().publicKey
 
-            // 1. Construir mapa merchant → barrio (los 3 barrios del seed).
+            // 1. Puntos reales del contrato Rewards. Esta es la ÚNICA fuente
+            //    de "puntos" en toda la app — la UI lee siempre desde aquí.
+            val points = when (val r = sorobanClient.getPoints(accountId)) {
+                is RaizResult.Success -> r.data
+                is RaizResult.Error -> {
+                    Log.w(TAG, "getPoints en passport: ${r.message}")
+                    0L
+                }
+            }
+            // Propaga al WalletState inmediatamente para que el StatBox
+            // "Puntos" se actualice incluso si las otras lecturas se demoran.
+            _state.update { current ->
+                if (current is WalletUiState.Ready) {
+                    current.copy(wallet = current.wallet.copy(points = points))
+                } else current
+            }
+
+            // 2. Mapa merchant → barrio.
             val merchantToBarrio: Map<String, String> = buildMap {
                 BARRIOS.forEach { (id, _) ->
                     when (val r = sorobanClient.listMerchants(id)) {
@@ -126,7 +138,7 @@ class WalletViewModel @Inject constructor(
                 }
             }
 
-            // 2. History del turista.
+            // 3. History del turista.
             val history = when (val r = horizonStream.paymentHistory(accountId, limit = 50)) {
                 is RaizResult.Success -> r.data
                 is RaizResult.Error -> {
@@ -135,10 +147,7 @@ class WalletViewModel @Inject constructor(
                 }
             }
 
-            // 3. Stats. `to == deployments.pool` ⇒ tip al pool del barrio.
-            //    Para "transacciones locales" agrupamos por txHash y contamos
-            //    las txs únicas en las que el turista pagó a algún merchant
-            //    conocido.
+            // 4. Stats agregadas.
             val poolAddr = deployments.pool
             val aportadoStroops = history
                 .filter { it.isOutgoing && it.to == poolAddr }
@@ -154,32 +163,32 @@ class WalletViewModel @Inject constructor(
                 .mapNotNull { merchantToBarrio[it.to] }
                 .toSet()
 
-            val saldoStroops = (state.value as? WalletUiState.Ready)?.wallet?.usdcBalanceStroops ?: 0L
-            val nivel = PassportLevel.fromStroops(saldoStroops)
-
+            val nivel = PassportLevel.fromPoints(points)
             val passport = PassportData(
-                // Mientras no haya display name configurable, usamos las
-                // últimas 4 letras del public key como "alias" — corto y único.
                 nombre = "Viajer@ ${accountId.takeLast(4)}",
                 ubicacion = "Colombia 2026",
                 nivel = nivel,
-                saldoStroops = saldoStroops,
-                ptsParaSiguienteNivel = nivel.ptsToNext(saldoStroops),
+                points = points,
+                ptsParaSiguienteNivel = nivel.ptsToNext(points),
                 aportadoAlBarrioStroops = aportadoStroops,
                 transaccionesLocales = txsLocales.size,
                 barriosVisitados = barriosVisitados,
             )
-            Log.i(TAG, "Passport: aportado=${aportadoStroops.formatUsdc()} tx=${txsLocales.size} barrios=${barriosVisitados.size}")
+            Log.i(TAG, "Passport: pts=$points · aportado=${aportadoStroops.formatUsdc()} tx=${txsLocales.size} barrios=${barriosVisitados.size}")
             _state.update { current ->
                 if (current is WalletUiState.Ready) current.copy(passport = passport) else current
             }
         }
     }
 
+    /** Refresca todos los datos derivados del passport (puntos + stats). */
+    fun refresh() {
+        loadPassport()
+    }
+
     private companion object {
         const val TAG = "RAIZ"
         const val BARRIO_CENTRO_ID = "ce47120000000000000000000000000000000000000000000000000000000001"
-        // (id → label) usado al cargar merchants para el passport.
         val BARRIOS: LinkedHashMap<String, String> = linkedMapOf(
             BARRIO_CENTRO_ID to "Centro Histórico",
             "bba17e0000000000000000000000000000000000000000000000000000000002" to "Barrio Norte",

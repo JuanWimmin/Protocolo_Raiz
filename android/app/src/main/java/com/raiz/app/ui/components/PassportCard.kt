@@ -111,8 +111,11 @@ private fun PassportHeader(data: PassportData) {
         Column(horizontalAlignment = Alignment.End) {
             NivelChip(level = data.nivel)
             Spacer(modifier = Modifier.height(6.dp))
+            // Puntos del contrato Rewards — única fuente de "puntos" en la app.
+            // El saldo USDC se ve en el BalanceCard negro arriba; aquí no se
+            // repite para no confundir.
             Text(
-                text = "%,d pts".format(data.saldoStroops / 10_000_000L),
+                text = "%,d pts".format(data.points),
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 24.sp,
@@ -122,7 +125,7 @@ private fun PassportHeader(data: PassportData) {
             if (data.nivel.next() != null) {
                 Text(
                     text = "%,d pts para %s".format(
-                        data.ptsParaSiguienteNivel / 10_000_000L,
+                        data.ptsParaSiguienteNivel,
                         data.nivel.next()?.label.orEmpty(),
                     ),
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
@@ -307,12 +310,12 @@ private fun PassportPreview() {
     RaizTheme {
         PassportCard(
             data = PassportData(
-                nombre = "Viajer@ responsable",
+                nombre = "Viajer@ XYZ4",
                 ubicacion = "Colombia 2026",
                 nivel = PassportLevel.SEMILLA,
-                saldoStroops = 12_400_000_000L,        // 1240 USDC
-                ptsParaSiguienteNivel = 37_600_000_000L,
-                aportadoAlBarrioStroops = 4_800_000L,
+                points = 240L,                          // Semilla (≥100)
+                ptsParaSiguienteNivel = 260L,           // 500 - 240 = 260 para Raíz
+                aportadoAlBarrioStroops = 4_800_000L,   // $0.48
                 transaccionesLocales = 12,
                 barriosVisitados = setOf(
                     "ce47120000000000000000000000000000000000000000000000000000000001",

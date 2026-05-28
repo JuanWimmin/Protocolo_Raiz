@@ -142,10 +142,9 @@ private fun WalletReady(
     onScanAndPay: () -> Unit,
     contentPadding: PaddingValues,
 ) {
-    // Aporte al barrio: prefiere el dato real del passport si ya cargó;
-    // si no, fallback derivado de los puntos del wallet (placeholder).
-    val contributionStroops = passport?.aportadoAlBarrioStroops
-        ?: (wallet.points * 100_000L)
+    // Aporte al barrio: dato real del passport (suma de tips al pool del
+    // barrio). Si aún no cargó, mostramos 0 — sin valores fantasma.
+    val contributionStroops = passport?.aportadoAlBarrioStroops ?: 0L
 
     Column(
         modifier = Modifier
