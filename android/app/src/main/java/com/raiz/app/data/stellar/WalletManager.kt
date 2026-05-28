@@ -118,7 +118,23 @@ class WalletManager @Inject constructor(
             .getOrNull()
     }
 
+    /**
+     * KeyPair de un residente del Centro Histórico, también desde
+     * local.properties. Solo se usa cuando el modo demo override es
+     * "ver como residente" y el usuario quiere disparar un voto real.
+     * Vuelve null si el secret está vacío.
+     */
+    suspend fun demoResidentKeyPair(): KeyPair? {
+        cachedResidentKp?.let { return it }
+        val secret = BuildConfig.DEMO_RESIDENT_SECRET
+        if (secret.isBlank()) return null
+        return runCatching { KeyPair.fromSecretSeed(secret) }
+            .onSuccess { cachedResidentKp = it }
+            .getOrNull()
+    }
+
     private var cachedDemoKp: KeyPair? = null
+    private var cachedResidentKp: KeyPair? = null
 
     private companion object {
         // G... de `stellar keys address raiz-tourist`. Si rotamos el secret

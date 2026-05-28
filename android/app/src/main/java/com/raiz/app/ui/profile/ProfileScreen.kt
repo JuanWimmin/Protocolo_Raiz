@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,12 +22,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -54,30 +59,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.PaymentRecord
+import com.raiz.app.data.model.Proposal
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.QrCard
 import com.raiz.app.ui.components.RaizBottomNav
 import com.raiz.app.ui.components.RaizDestination
 import com.raiz.app.ui.theme.RaizBlack
-import com.raiz.app.ui.theme.RaizGrayLight
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
 
-private enum class ProfileTab(val label: String) { HISTORIAL("Historial"), QR("Mi QR"), CONFIG("Configuración") }
+private enum class ProfileTab(val label: String) {
+    HISTORIAL("Historial"),
+    ROL("Mi rol"),
+    QR("Mi QR"),
+}
 
-/**
- * Pantalla de Perfil del turista.
- *
- * Header: avatar circular con inicial + public key truncada + botón copiar.
- * Tabs:
- *   - Historial: lista de pagos (entrantes/salientes) desde Horizon.
- *   - Mi QR: código QR de mi address para recibir pagos / mostrar al barrio.
- *   - Configuración: botones placeholder (ver seed, cerrar sesión, ayuda).
- *
- * Bottom nav: comparte la misma de WalletScreen para mantener UX consistente.
- */
 @Composable
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
@@ -104,7 +103,7 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            Header(publicKey = state.wallet.publicKey)
+            Header(publicKey = state.wallet.publicKey, role = state.effectiveRole)
             BalancesRow(
                 usdcStroops = state.wallet.usdcBalanceStroops,
                 points = state.wallet.points,
@@ -112,72 +111,87 @@ fun ProfileScreen(
             TabBar(selected = tab, onSelect = { tab = it })
 
             when (tab) {
-                ProfileTab.HISTORIAL -> HistoryTab(
+                ProfileTab.HISTORIAL -> HistoryTab(state = state)
+                ProfileTab.ROL -> RoleTab(
                     state = state,
-                    myAccount = state.wallet.publicKey,
+                    onOverride = viewModel::setRoleOverride,
+                    onVote = viewModel::vote,
                 )
                 ProfileTab.QR -> QrTab(publicKey = state.wallet.publicKey)
-                ProfileTab.CONFIG -> ConfigTab()
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Header
+// Header con chip de rol
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(publicKey: String) {
+private fun Header(publicKey: String, role: UserRole) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Avatar circular con inicial
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(RaizBlack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = publicKey.first().toString(),
-                color = RaizYellow,
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            )
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(RaizBlack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = publicKey.first().toString(),
+                    color = RaizYellow,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                )
+            }
+            Spacer(modifier = Modifier.size(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Mi wallet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+                Text(
+                    text = "${publicKey.take(8)}…${publicKey.takeLast(6)}",
+                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
+                    color = RaizBlack,
+                )
+            }
+            IconButton(onClick = {
+                clipboard.setText(AnnotatedString(publicKey))
+                Toast.makeText(context, "Dirección copiada", Toast.LENGTH_SHORT).show()
+            }) {
+                Icon(
+                    imageVector = Icons.Outlined.ContentCopy,
+                    contentDescription = "Copiar dirección",
+                    tint = RaizBlack,
+                )
+            }
         }
-        Spacer(modifier = Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Mi wallet",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-            Text(
-                text = "${publicKey.take(8)}…${publicKey.takeLast(6)}",
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontFamily = FontFamily.Monospace,
-                ),
-                color = RaizBlack,
-            )
-        }
-        IconButton(onClick = {
-            clipboard.setText(AnnotatedString(publicKey))
-            Toast.makeText(context, "Dirección copiada", Toast.LENGTH_SHORT).show()
-        }) {
-            Icon(
-                imageVector = Icons.Outlined.ContentCopy,
-                contentDescription = "Copiar dirección",
-                tint = RaizBlack,
-            )
-        }
+        Spacer(modifier = Modifier.height(8.dp))
+        RoleChip(role = role)
     }
+}
+
+@Composable
+private fun RoleChip(role: UserRole) {
+    val color = when (role) {
+        UserRole.TOURIST -> RaizYellow
+        UserRole.RESIDENT -> RaizPurple
+        UserRole.MERCHANT -> RaizGreen
+    }
+    AssistChip(
+        onClick = { /* nada — informativo */ },
+        label = { Text(role.label, color = RaizBlack, style = MaterialTheme.typography.labelLarge) },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = color.copy(alpha = 0.18f),
+            labelColor = RaizBlack,
+        ),
+        border = null,
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,28 +206,13 @@ private fun BalancesRow(usdcStroops: Long, points: Long) {
             .padding(horizontal = 20.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        BalanceTile(
-            label = "Saldo",
-            value = usdcStroops.formatUsdc(),
-            accent = RaizGreen,
-            modifier = Modifier.weight(1f),
-        )
-        BalanceTile(
-            label = "Puntos",
-            value = points.toString(),
-            accent = RaizPurple,
-            modifier = Modifier.weight(1f),
-        )
+        BalanceTile("Saldo", usdcStroops.formatUsdc(), RaizGreen, Modifier.weight(1f))
+        BalanceTile("Puntos", points.toString(), RaizPurple, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun BalanceTile(
-    label: String,
-    value: String,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
+private fun BalanceTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -223,7 +222,7 @@ private fun BalanceTile(
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = RaizBlack.copy(alpha = 0.6f))
         Text(
-            text = value,
+            value,
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
             color = accent,
         )
@@ -240,7 +239,7 @@ private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
         selectedTabIndex = selected.ordinal,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = RaizBlack,
-        indicator = { positions ->
+        indicator = { _ ->
             TabRowDefaults.SecondaryIndicator(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
@@ -255,7 +254,7 @@ private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
                 onClick = { onSelect(t) },
                 text = {
                     Text(
-                        text = t.label,
+                        t.label,
                         style = MaterialTheme.typography.labelLarge,
                         color = if (t == selected) RaizBlack else RaizBlack.copy(alpha = 0.5f),
                     )
@@ -270,41 +269,15 @@ private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HistoryTab(state: ProfileUiState, myAccount: String) {
+private fun HistoryTab(state: ProfileUiState) {
     when {
-        state.historyLoading -> Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(40.dp),
-            contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator(color = RaizYellow) }
-
-        state.historyError != null -> Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "No pudimos cargar el historial.\n${state.historyError}",
-                color = RaizBlack.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
-        state.history.isEmpty() -> Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(40.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "Aún no tienes pagos. Escanea un QR para empezar.",
-                color = RaizBlack.copy(alpha = 0.6f),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
+        state.historyLoading -> CenteredSpinner()
+        state.historyError != null -> CenteredText(
+            "No pudimos cargar el historial.\n${state.historyError}",
+        )
+        state.history.isEmpty() -> CenteredText(
+            "Aún no tienes pagos. Escanea un QR para empezar.",
+        )
         else -> LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -345,19 +318,15 @@ private fun PaymentRow(payment: PaymentRecord) {
         }
         Spacer(modifier = Modifier.size(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            Text("$direction · ${payment.assetCode}", style = MaterialTheme.typography.labelLarge, color = RaizBlack)
             Text(
-                text = "$direction · ${payment.assetCode}",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
-            )
-            Text(
-                text = "${counterparty.take(8)}…${counterparty.takeLast(6)}",
+                "${counterparty.take(8)}…${counterparty.takeLast(6)}",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
                 color = RaizBlack.copy(alpha = 0.5f),
             )
         }
         Text(
-            text = "$signo${payment.amountStroops.formatUsdc()}",
+            "$signo${payment.amountStroops.formatUsdc()}",
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             color = accent,
         )
@@ -392,77 +361,349 @@ private fun QrTab(publicKey: String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab: Configuración (placeholders)
+// Tab: Mi rol — contenido condicional
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ConfigTab() {
+private fun RoleTab(
+    state: ProfileUiState,
+    onOverride: (UserRole?) -> Unit,
+    onVote: (Long, Boolean) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ConfigItem(
-            icon = Icons.Outlined.Key,
-            label = "Ver frase de recuperación",
-            subtitle = "Tu seed phrase de 12 palabras",
-        )
-        ConfigItem(
-            icon = Icons.Outlined.HelpOutline,
-            label = "Ayuda",
-            subtitle = "Cómo funciona el Tip Barrio",
-        )
-        ConfigItem(
-            icon = Icons.Outlined.Logout,
-            label = "Cerrar sesión",
-            subtitle = "Eliminar wallet de este dispositivo",
-            destructive = true,
-        )
+        // Demo switch (solo si el rol detectado real es turista)
+        if (state.detectedRole?.role == UserRole.TOURIST) {
+            DemoRoleSwitch(current = state.effectiveRole, onSelect = onOverride)
+        }
+
+        when (state.effectiveRole) {
+            UserRole.TOURIST -> TouristSection()
+            UserRole.RESIDENT -> ResidentSection(state = state, onVote = onVote)
+            UserRole.MERCHANT -> MerchantSection(state = state)
+        }
     }
 }
 
 @Composable
-private fun ConfigItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    subtitle: String,
-    destructive: Boolean = false,
-) {
-    val context = LocalContext.current
-    Row(
+private fun DemoRoleSwitch(current: UserRole, onSelect: (UserRole?) -> Unit) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(RaizWhite)
             .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (destructive) Color(0xFFB00020) else RaizBlack,
+        Text(
+            text = "Modo demo · ver como…",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
         )
-        Spacer(modifier = Modifier.size(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = "Tu address real es turista. Para mostrar las otras vistas en el demo, simula otro rol — las lecturas usan datos reales de los barrios.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.6f),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DemoChip("Turista", current == UserRole.TOURIST) { onSelect(null) }
+            DemoChip("Residente", current == UserRole.RESIDENT) { onSelect(UserRole.RESIDENT) }
+            DemoChip("Comerciante", current == UserRole.MERCHANT) { onSelect(UserRole.MERCHANT) }
+        }
+    }
+}
+
+@Composable
+private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    AssistChip(
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (selected) RaizYellow else RaizBlack.copy(alpha = 0.05f),
+            labelColor = RaizBlack,
+        ),
+        border = null,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección: Turista
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun TouristSection() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "Estás pagando como turista",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        Text(
+            text = "Cada pago con Tip Barrio aporta al fondo del comercio que visitas y te da puntos para canjear por artesanías del lugar.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.7f),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "¿Vives en un barrio RAÍZ? Pide a tu admin local que te mintea el token de residencia — desde ahí podrás proponer y votar en qué se invierte el fondo.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.6f),
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección: Residente — propuestas activas + voto
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ResidentSection(
+    state: ProfileUiState,
+    onVote: (Long, Boolean) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Tu barrio · ${state.activeBarrioName}",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        Text(
+            text = "Como residente puedes proponer cómo se invierte el fondo del barrio y votar en propuestas abiertas.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.6f),
+        )
+
+        when {
+            state.proposalsLoading -> CenteredSpinner()
+            state.proposalsError != null -> CenteredText(
+                "No pudimos cargar propuestas.\n${state.proposalsError}",
+            )
+            state.residentProposals.isEmpty() -> Text(
+                text = "No hay propuestas activas en este barrio.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+            else -> state.residentProposals.forEach { p ->
+                ProposalCard(
+                    p = p,
+                    voteStatus = state.voteState[p.id],
+                    onVote = { support -> onVote(p.id, support) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProposalCard(
+    p: Proposal,
+    voteStatus: VoteStatus?,
+    onVote: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(p.description, style = MaterialTheme.typography.labelLarge, color = RaizBlack)
+        Row {
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (destructive) Color(0xFFB00020) else RaizBlack,
+                "Pide ${p.amountStroops.formatUsdc()}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+                modifier = Modifier.weight(1f),
             )
             Text(
-                text = subtitle,
+                "${p.votesFor} a favor · ${p.votesAgainst} en contra",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.6f),
             )
         }
+        LinearProgressIndicator(
+            progress = { if (p.totalVotes == 0) 0f else p.votesFor.toFloat() / p.totalVotes },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = RaizGreen,
+            trackColor = RaizBlack.copy(alpha = 0.08f),
+        )
+
+        // Estado del voto en curso / completado / con error
+        when (voteStatus) {
+            VoteStatus.Submitting -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    color = RaizYellow,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Enviando voto a la red…", style = MaterialTheme.typography.bodyMedium, color = RaizBlack.copy(alpha = 0.7f))
+            }
+            VoteStatus.Ok -> Text(
+                "✓ Tu voto quedó on-chain",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizGreen,
+            )
+            is VoteStatus.Failed -> Text(
+                voteStatus.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB00020),
+            )
+            null -> Unit
+        }
+
+        val voting = voteStatus is VoteStatus.Submitting
+        val alreadyOk = voteStatus is VoteStatus.Ok
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { onVote(true) },
+                enabled = !voting && !alreadyOk,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RaizGreen,
+                    contentColor = RaizWhite,
+                    disabledContainerColor = RaizGreen.copy(alpha = 0.5f),
+                ),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Icon(Icons.Outlined.ThumbUp, contentDescription = null)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("A favor", style = MaterialTheme.typography.labelLarge)
+            }
+            Button(
+                onClick = { onVote(false) },
+                enabled = !voting && !alreadyOk,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RaizBlack,
+                    contentColor = RaizWhite,
+                    disabledContainerColor = RaizBlack.copy(alpha = 0.5f),
+                ),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Icon(Icons.Outlined.ThumbDown, contentDescription = null)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("En contra", style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
-    // Subrayado sutil entre items vía spacer + grayLight no necesario porque
-    // ya tenemos fondo blanco redondeado.
-    @Suppress("UNUSED_EXPRESSION") RaizGrayLight  // referencia para no warning
-    @Suppress("UNUSED_EXPRESSION") context
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección: Comerciante — ventas recibidas
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MerchantSection(state: ProfileUiState) {
+    val incoming = state.history.filter { !it.isOutgoing }
+    val incomingTotal = incoming.sumOf { it.amountStroops }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Tu negocio · ${state.activeBarrioName}",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        Text(
+            text = "Recibes pagos en USDC vía la red Stellar. RAÍZ retiene un 0.5% como fee del protocolo; el 2% del tip va al pool del barrio.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.6f),
+        )
+
+        // Resumen ventas
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(RaizWhite)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Storefront, contentDescription = null, tint = RaizGreen)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "Ventas recibidas",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                )
+            }
+            Text(
+                text = incomingTotal.formatUsdc(),
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                color = RaizGreen,
+            )
+            Text(
+                text = "${incoming.size} pagos en total",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+        }
+
+        if (incoming.isEmpty()) {
+            Text(
+                text = "Aún no recibes pagos en esta cuenta. Comparte tu QR (tab Mi QR) para que te paguen.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+        } else {
+            Text(
+                text = "Últimos cobros",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
+            incoming.take(5).forEach { p ->
+                PaymentRow(payment = p)
+                HorizontalDivider(color = Color.Transparent, thickness = 4.dp)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CenteredSpinner() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(40.dp),
+        contentAlignment = Alignment.Center,
+    ) { CircularProgressIndicator(color = RaizYellow) }
 }
 
 @Composable
-@Suppress("unused")
-private fun PreviewPaddingValues(): PaddingValues = PaddingValues(0.dp)
+private fun CenteredText(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            color = RaizBlack.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}

@@ -33,10 +33,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
-        // Secret demo del turista — desde local.properties, NO del repo.
-        // En release real esto debería estar vacío y la app debería pedir al
-        // usuario su seed phrase o usar passkey.
+        // Secrets demo — desde local.properties, NO del repo.
+        // En release real estarían vacíos y la app pediría seed phrase / passkey.
         buildConfigField("String", "DEMO_TOURIST_SECRET", "\"${localProp("raiz.tourist.secret")}\"")
+        buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"${localProp("raiz.resident.secret")}\"")
     }
 
     buildTypes {

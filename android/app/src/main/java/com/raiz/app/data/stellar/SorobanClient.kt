@@ -4,9 +4,12 @@ import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Merchant
 import com.raiz.app.data.model.MerchantCategory
+import com.raiz.app.data.model.Proposal
+import com.raiz.app.data.model.ProposalStatus
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.model.ResidentToken
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.contract.ContractClient
@@ -57,7 +60,23 @@ class SorobanClient @Inject constructor(
             network = network,
         ).also { cachedPoolClient = it }
 
+    private suspend fun governanceClient(): ContractClient =
+        cachedGovClient ?: ContractClient.forContract(
+            contractId = deployments.governance,
+            rpcUrl = rpcUrl,
+            network = network,
+        ).also { cachedGovClient = it }
+
+    private suspend fun rewardsClient(): ContractClient =
+        cachedRewardsClient ?: ContractClient.forContract(
+            contractId = deployments.rewards,
+            rpcUrl = rpcUrl,
+            network = network,
+        ).also { cachedRewardsClient = it }
+
     private var cachedPoolClient: ContractClient? = null
+    private var cachedGovClient: ContractClient? = null
+    private var cachedRewardsClient: ContractClient? = null
 
     // ── Pool: get_pool_balance ────────────────────────────────────────────
 
@@ -249,6 +268,146 @@ class SorobanClient @Inject constructor(
                 }
                 RaizResult.Error(code, "payMerchant: ${e.message}")
             },
+        )
+    }
+
+    // ── Governance: get_resident / list_active_proposals / get_resident_count ──
+
+    /** Si el address tiene ResidentToken, lo retorna. NOT_FOUND si no. */
+    suspend fun getResident(address: String): RaizResult<ResidentToken> {
+        return runCatching {
+            governanceClient().invoke<ResidentToken>(
+                functionName = "get_resident",
+                arguments = mapOf("resident" to address),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    val f = ScvalParse.asStruct(scval)
+                    ResidentToken(
+                        resident = ScvalParse.asAddressString(f.req("resident")),
+                        barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                        issuedAt = ScvalParse.asULongAsLong(f.req("issued_at")),
+                    )
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                // Error #6 = NotAResident en Governance.
+                if ("NotAResident" in msg || "Error(Contract, #6)" in msg) {
+                    RaizResult.Error(RaizErrorCode.NOT_FOUND, "no es residente")
+                } else {
+                    RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getResident: ${e.message}")
+                }
+            },
+        )
+    }
+
+    /** Propuestas Active de un barrio. */
+    suspend fun listActiveProposals(barrioId: String): RaizResult<List<Proposal>> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            governanceClient().invoke<List<Proposal>>(
+                functionName = "list_active_proposals",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    ScvalParse.asVec(scval).map { item ->
+                        val f = ScvalParse.asStruct(item)
+                        Proposal(
+                            id = ScvalParse.asULongAsLong(f.req("id")),
+                            barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                            proposer = ScvalParse.asAddressString(f.req("proposer")),
+                            description = ScvalParse.asString(f.req("description")),
+                            amountStroops = ScvalParse.asLong(f.req("amount")),
+                            recipient = ScvalParse.asAddressString(f.req("recipient")),
+                            votesFor = ScvalParse.asUIntAsInt(f.req("votes_for")),
+                            votesAgainst = ScvalParse.asUIntAsInt(f.req("votes_against")),
+                            createdAt = ScvalParse.asULongAsLong(f.req("created_at")),
+                            closesAt = ScvalParse.asULongAsLong(f.req("closes_at")),
+                            status = ProposalStatus.fromSymbol(
+                                ScvalParse.asSymbol(f.req("status")),
+                            ),
+                        )
+                    }
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "listActiveProposals: ${e.message}")
+            },
+        )
+    }
+
+    suspend fun getResidentCount(barrioId: String): RaizResult<Int> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            governanceClient().invoke<Int>(
+                functionName = "get_resident_count",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { ScvalParse.asUIntAsInt(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { RaizResult.Error(RaizErrorCode.NETWORK_ERROR, it.message ?: "?") },
+        )
+    }
+
+    // ── Governance: vote (ESCRITURA firmada) ─────────────────────────────
+
+    suspend fun vote(
+        resident: KeyPair,
+        proposalId: Long,
+        support: Boolean,
+    ): RaizResult<Unit> {
+        return runCatching {
+            governanceClient().invoke<Unit>(
+                functionName = "vote",
+                arguments = mapOf(
+                    "resident" to resident.getAccountId(),
+                    "proposal_id" to proposalId.toULong(),
+                    "support" to support,
+                ),
+                source = resident.getAccountId(),
+                signer = resident,
+                parseResultXdrFn = { /* void */ },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                val code = when {
+                    "AlreadyVoted" in msg || "Error(Contract, #10)" in msg -> RaizErrorCode.ALREADY_VOTED
+                    "NotAResident" in msg || "Error(Contract, #6)" in msg -> RaizErrorCode.NOT_A_RESIDENT
+                    "ProposalClosed" in msg || "Error(Contract, #11)" in msg -> RaizErrorCode.PROPOSAL_CLOSED
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, "vote: ${e.message}")
+            },
+        )
+    }
+
+    // ── Rewards: get_points ──────────────────────────────────────────────
+
+    suspend fun getPoints(tourist: String): RaizResult<Long> {
+        return runCatching {
+            rewardsClient().invoke<Long>(
+                functionName = "get_points",
+                arguments = mapOf("tourist" to tourist),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { ScvalParse.asULongAsLong(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { RaizResult.Error(RaizErrorCode.NETWORK_ERROR, it.message ?: "?") },
         )
     }
 
