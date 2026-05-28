@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
@@ -27,6 +28,7 @@ import com.raiz.app.ui.theme.RaizTheme
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Entry point. Placeholder visual con la paleta RAÍZ; será reemplazado por
@@ -34,17 +36,25 @@ import dagger.hilt.android.AndroidEntryPoint
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var sorobanClient: SorobanClient
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Edge-to-edge: barras translúcidas con iconos oscuros sobre el fondo claro.
         enableEdgeToEdge()
+
+        // Smoke test: confirma que Hilt cablea DeploymentsLoader → SorobanClient
+        // y que el deployments.json de assets/ parsea correctamente.
+        val poolId = sorobanClient.debugDeployments().pool
+        android.util.Log.i("RAIZ", "Pool contract id desde assets: $poolId")
+
         setContent {
             RaizTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.background,
                 ) {
-                    PaletteShowcase()
+                    PaletteShowcase(poolId = poolId)
                 }
             }
         }
@@ -56,7 +66,7 @@ class MainActivity : ComponentActivity() {
  * Sirve de smoke test del theme antes de meter las pantallas reales.
  */
 @Composable
-private fun PaletteShowcase() {
+private fun PaletteShowcase(poolId: String = "—") {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -73,6 +83,11 @@ private fun PaletteShowcase() {
             text = "Tu paga, el barrio crece",
             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
             color = RaizBlack,
+        )
+        Text(
+            text = "Pool on-chain: ${poolId.take(16)}…",
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = RaizGreen,
         )
 
         Swatch("Negro #1A1A1A", RaizBlack, RaizWhite)

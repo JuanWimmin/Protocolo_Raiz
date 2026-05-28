@@ -1,14 +1,17 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
-hilt = "2.52"
+kotlin = "2.1.21"
+ksp = "2.1.21-2.0.2"
+hilt = "2.56"
 hiltNavigation = "1.2.0"
 composeBom = "2024.12.01"
 activityCompose = "1.9.3"
 lifecycle = "2.8.7"
 navigation = "2.8.5"
 coreKtx = "1.15.0"
+stellarSdk = "1.6.0"
+coroutines = "1.9.0"
+serialization = "1.7.3"
 
 [libraries]
 # Core / Compose
@@ -35,9 +38,20 @@ hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt"
 hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
 hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigation" }
 
+# Stellar SDK (Soneso KMP) — Horizon + Soroban RPC + smart accounts
+stellar-sdk = { module = "com.soneso.stellar:stellar-sdk", version.ref = "stellarSdk" }
+
+# Coroutines (lo usamos para los suspend de SorobanClient)
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Para parsear deployments.json desde assets
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
