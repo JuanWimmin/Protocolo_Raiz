@@ -113,6 +113,9 @@ dependencies {
     implementation(libs.conscrypt.android)
     // Ktor core — necesario para referenciar HttpClient en HorizonStream.
     implementation(libs.ktor.client.core)
+    // ZXing para QR: core (generación) + embedded (Activity de escaneo).
+    implementation(libs.zxing.core)
+    implementation(libs.zxing.android.embedded)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)

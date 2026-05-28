@@ -1,6 +1,7 @@
 package com.raiz.app.ui.pay
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.Merchant
@@ -20,46 +21,57 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 sealed interface PayUiState {
+    data object Loading : PayUiState
     data class Editing(
         val preview: PaymentPreview,
         val tipEnabled: Boolean,
         val submitting: Boolean,
     ) : PayUiState
-
     data class Success(val merchantName: String, val totalStroops: Long, val pointsEarned: Long) : PayUiState
     data class Error(val code: RaizErrorCode, val message: String) : PayUiState
 }
 
 @HiltViewModel
 class PayViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val walletManager: WalletManager,
     private val sorobanClient: SorobanClient,
 ) : ViewModel() {
 
-    // Para el demo arrancamos con el primer merchant del Centro Histórico
-    // (Cafe Don Aurelio del seed). Cuando integremos QR, este state se
-    // inicializa con el merchant escaneado.
-    private val demoMerchant = Merchant(
-        address = "GA7CDZDQJVKUQGMY5ZCTYOCDOXIWEDRPE5YAGHGJZOB4QM6WMUVE4TSN",
-        name = "Cafe Don Aurelio",
-        barrioId = "ce47120000000000000000000000000000000000000000000000000000000001",
-        verified = true,
-        latE6 = 10_422_100,
-        lngE6 = -75_547_800,
-        category = MerchantCategory.CAFE,
-    )
+    // address del merchant, vía nav arg `merchant_address`. Si está vacío
+    // usamos el merchant demo (Cafe Don Aurelio) para compat con flow viejo.
+    private val merchantAddress: String =
+        savedStateHandle.get<String>("merchant_address").orEmpty().ifBlank { DEMO_MERCHANT_ADDR }
 
-    // 5 USDC default — usuario puede cambiar en una próxima versión con un input.
-    private val defaultAmountStroops = 50_000_000L
+    private val defaultAmountStroops = 50_000_000L  // 5 USDC
 
-    private val _state = MutableStateFlow<PayUiState>(
-        PayUiState.Editing(
-            preview = PaymentPreview(demoMerchant, defaultAmountStroops, RaizConstants.DEFAULT_TIP_BPS),
-            tipEnabled = true,
-            submitting = false,
-        ),
-    )
+    private val _state = MutableStateFlow<PayUiState>(PayUiState.Loading)
     val state: StateFlow<PayUiState> = _state.asStateFlow()
+
+    init {
+        loadMerchant()
+    }
+
+    private fun loadMerchant() {
+        viewModelScope.launch {
+            // Fast-path para el demo merchant (sin round-trip): valores conocidos.
+            if (merchantAddress == DEMO_MERCHANT_ADDR) {
+                _state.value = stateFor(demoMerchant)
+                return@launch
+            }
+            Log.i(TAG, "Cargando merchant: $merchantAddress")
+            when (val r = sorobanClient.getMerchant(merchantAddress)) {
+                is RaizResult.Success -> _state.value = stateFor(r.data)
+                is RaizResult.Error -> _state.value = PayUiState.Error(r.code, r.message)
+            }
+        }
+    }
+
+    private fun stateFor(m: Merchant): PayUiState.Editing = PayUiState.Editing(
+        preview = PaymentPreview(m, defaultAmountStroops, RaizConstants.DEFAULT_TIP_BPS),
+        tipEnabled = true,
+        submitting = false,
+    )
 
     fun toggleTip() {
         _state.update { current ->
@@ -117,5 +129,15 @@ class PayViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
+        const val DEMO_MERCHANT_ADDR = "GA7CDZDQJVKUQGMY5ZCTYOCDOXIWEDRPE5YAGHGJZOB4QM6WMUVE4TSN"
+        val demoMerchant = Merchant(
+            address = DEMO_MERCHANT_ADDR,
+            name = "Cafe Don Aurelio",
+            barrioId = "ce47120000000000000000000000000000000000000000000000000000000001",
+            verified = true,
+            latE6 = 10_422_100,
+            lngE6 = -75_547_800,
+            category = MerchantCategory.CAFE,
+        )
     }
 }

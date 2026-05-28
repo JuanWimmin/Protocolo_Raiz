@@ -59,6 +59,17 @@ fun PayScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         when (val s = state) {
+            PayUiState.Loading -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(color = RaizYellow)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Buscando comercio…", color = RaizBlack)
+            }
             is PayUiState.Editing -> PayEditing(
                 state = s,
                 onToggleTip = viewModel::toggleTip,

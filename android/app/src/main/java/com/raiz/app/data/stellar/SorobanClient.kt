@@ -161,6 +161,44 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Pool: get_merchant ────────────────────────────────────────────────
+
+    /** Devuelve los datos del merchant dado su address G...  */
+    suspend fun getMerchant(merchantAddress: String): RaizResult<Merchant> {
+        return runCatching {
+            poolClient().invoke<Merchant>(
+                functionName = "get_merchant",
+                arguments = mapOf("merchant" to merchantAddress),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    val f = ScvalParse.asStruct(scval)
+                    Merchant(
+                        address = ScvalParse.asAddressString(f.req("address")),
+                        name = ScvalParse.asString(f.req("name")),
+                        barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                        verified = ScvalParse.asBoolean(f.req("verified")),
+                        latE6 = ScvalParse.asInt32(f.req("lat_e6")),
+                        lngE6 = ScvalParse.asInt32(f.req("lng_e6")),
+                        category = MerchantCategory.fromSymbol(
+                            ScvalParse.asSymbol(f.req("category"))
+                        ),
+                    )
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                if ("MerchantNotFound" in msg || "Error(Contract, #4)" in msg) {
+                    RaizResult.Error(RaizErrorCode.NOT_FOUND, "merchant no registrado")
+                } else {
+                    RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getMerchant: ${e.message}")
+                }
+            },
+        )
+    }
+
     // ── Pool: pay_merchant (ESCRITURA firmada) ───────────────────────────
 
     /**

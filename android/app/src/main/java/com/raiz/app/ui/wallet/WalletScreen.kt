@@ -1,5 +1,7 @@
 package com.raiz.app.ui.wallet
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,9 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.BalanceCard
@@ -55,17 +60,40 @@ import com.raiz.app.ui.theme.RaizYellow
  */
 @Composable
 fun WalletScreen(
-    onScanAndPay: () -> Unit = {},
+    onPayMerchant: (merchantAddress: String) -> Unit = {},
+    onNavigateProfile: () -> Unit = {},
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTab by remember { mutableStateOf(RaizDestination.Home) }
+    val context = LocalContext.current
+
+    // Launcher para el escáner de QR de zxing-android-embedded.
+    // Valida que el contenido sea una Stellar address G... antes de navegar
+    // a PayScreen. Si el contenido no es válido, muestra un Toast.
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val raw = result.contents?.trim().orEmpty()
+        val addr = raw.takeIf { it.isStellarPublicKey() }
+        if (addr != null) {
+            onPayMerchant(addr)
+        } else if (raw.isNotEmpty()) {
+            Toast.makeText(
+                context,
+                "QR inválido: se esperaba una cuenta G… de Stellar",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+        // Si raw está vacío, el usuario canceló — no hacemos nada.
+    }
 
     Scaffold(
         bottomBar = {
             RaizBottomNav(
                 selected = selectedTab,
-                onSelect = { selectedTab = it },
+                onSelect = { dest ->
+                    selectedTab = dest
+                    if (dest == RaizDestination.Profile) onNavigateProfile()
+                },
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -76,12 +104,23 @@ fun WalletScreen(
             is WalletUiState.Ready -> WalletReady(
                 wallet = s.wallet,
                 poolBalanceLabel = s.poolBalanceLabel,
-                onScanAndPay = onScanAndPay,
+                onScanAndPay = {
+                    val opts = ScanOptions()
+                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        .setBeepEnabled(false)
+                        .setOrientationLocked(true)
+                        .setPrompt("Apunta al QR del comercio")
+                    scanLauncher.launch(opts)
+                },
                 contentPadding = padding,
             )
         }
     }
 }
+
+/** Heurística: G... de 56 chars base32 = Stellar public key. */
+private fun String.isStellarPublicKey(): Boolean =
+    length == 56 && startsWith("G") && all { it in 'A'..'Z' || it in '2'..'7' }
 
 @Composable
 private fun WalletReady(

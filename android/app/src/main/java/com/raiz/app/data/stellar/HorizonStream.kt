@@ -2,8 +2,13 @@ package com.raiz.app.data.stellar
 
 import android.util.Log
 import com.raiz.app.data.model.Deployments
+import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizConstants
+import com.raiz.app.data.model.RaizErrorCode
+import com.raiz.app.data.model.RaizResult
 import com.soneso.stellar.sdk.horizon.HorizonServer
+import com.soneso.stellar.sdk.horizon.requests.RequestBuilder
+import com.soneso.stellar.sdk.horizon.responses.operations.PaymentOperationResponse
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -69,6 +74,45 @@ class HorizonStream @Inject constructor(
             Log.w(TAG, "horizon poll falló: ${e.message}")
             0L
         }
+    }
+
+    /**
+     * Historial de pagos de una cuenta. Lista los últimos `limit` pagos
+     * (tipo `payment` clásico de Stellar). Soroban host fns como
+     * `pay_merchant` ejecutan `usdc.transfer` internamente, lo cual genera
+     * operaciones tipo `payment` que aparecen aquí.
+     *
+     * Filtra solo `PaymentOperationResponse` — ignora path_payments, manage_data,
+     * etc. para mantener la lista limpia.
+     */
+    suspend fun paymentHistory(
+        accountId: String,
+        limit: Int = 20,
+    ): RaizResult<List<PaymentRecord>> {
+        return runCatching {
+            val page = horizonServer.payments()
+                .forAccount(accountId)
+                .order(RequestBuilder.Order.DESC)
+                .limit(limit)
+                .execute()
+            page.records.filterIsInstance<PaymentOperationResponse>().map { op ->
+                PaymentRecord(
+                    txHash = op.transactionHash,
+                    from = op.from,
+                    to = op.to,
+                    amountStroops = op.amount.toUsdcStroops(),
+                    assetCode = if (op.assetType == "native") "XLM" else (op.assetCode ?: "?"),
+                    createdAt = op.createdAt,
+                    isOutgoing = op.from == accountId,
+                )
+            }
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                Log.w(TAG, "paymentHistory falló: ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+            },
+        )
     }
 
     /**

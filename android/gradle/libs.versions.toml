@@ -15,6 +15,8 @@ serialization = "1.7.3"
 bignum = "0.3.10"
 conscrypt = "2.5.2"
 ktor = "3.3.2"
+zxing = "3.5.3"
+zxingEmbedded = "4.3.0"
 
 [libraries]
 # Core / Compose
@@ -66,6 +68,12 @@ conscrypt-android = { module = "org.conscrypt:conscrypt-android", version.ref = 
 # explícito para poder referenciar el tipo HttpClient en HorizonStream
 # (constructor de HorizonServer lo requiere).
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+
+# ZXing — generación y escaneo de QR.
+# `core` puro JVM para generar bitmaps; `android-embedded` provee un
+# Activity de escaneo basado en cámara.
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingEmbedded" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
