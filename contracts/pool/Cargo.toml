@@ -15,3 +15,6 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Para tests: registramos el contrato Rewards real en el env de test
+# así el cross-contract call a accrue_points funciona.
+rewards = { path = "../rewards" }

@@ -4,26 +4,15 @@
 //! Cubre: inicialización, registro de barrio/comercio, pago con tip,
 //! actualización de estadísticas, y retiro autorizado por el treasury.
 //!
-//! IMPORTANTE — cross-contract call a Rewards:
-//! pay_merchant llama rewards.accrue_points() cuando tip > 0. En estos tests
-//! unitarios la rewards_contract es una Address placeholder, NO un contrato real,
-//! así que esa llamada haría panic. Dos formas de manejarlo en Claude Code:
-//!
-//!   (A) Desplegar el contrato Rewards real en el test setup y pasar su Address
-//!       (test de integración — recomendado para el contrato final).
-//!   (B) Hacer que accrue_points sea best-effort: envolver la llamada en el
-//!       contrato Pool de forma que un fallo no revierta el pago (try_invoke),
-//!       o gatear la llamada tras una bandera de config.
-//!
-//! Para que ESTOS tests pasen tal cual, despliega un Rewards mock mínimo en
-//! setup() que exponga accrue_points(addr, i128) como no-op, y pasa su Address.
-//! El test test_pay_merchant_splits_correctly asume ese mock. Si prefieres,
-//! comenta la sección de cross-contract en pay_merchant mientras desarrollas Pool
-//! aislado, y reactívala al integrar los 4 contratos.
+//! Cross-contract a Rewards: el `setup()` registra el contrato Rewards real
+//! (crate `rewards`, declarado como dev-dependency) en el env de test y le
+//! pasa esa Address al `initialize` del Pool. Así `pay_merchant` puede llamar
+//! `accrue_points` sin panic.
 
 extern crate std;
 
 use super::*;
+use rewards::RewardsContract;
 use soroban_sdk::{
     testutils::{Address as _, BytesN as _, Events},
     token, Address, BytesN, Env, String, Symbol,
@@ -38,9 +27,8 @@ fn create_usdc<'a>(env: &Env, admin: &Address) -> (Address, token::StellarAssetC
     (addr, admin_client)
 }
 
-// Helper de setup: registra el contrato Pool y devuelve su cliente.
-// Para los tests usamos una Address cualquiera como "rewards_contract";
-// los tests que ejercitan accrue_points usan un test de integración separado.
+// Helper de setup: registra el contrato Pool y el contrato Rewards real
+// (no un placeholder) para que el cross-contract call funcione.
 fn setup<'a>(
     env: &Env,
 ) -> (
@@ -51,13 +39,15 @@ fn setup<'a>(
 ) {
     let admin = Address::generate(env);
     let (usdc_addr, usdc_admin) = create_usdc(env, &admin);
-    let rewards = Address::generate(env); // placeholder
+
+    // Registra el contrato Rewards real para que `accrue_points` sea callable.
+    let rewards_addr = env.register(RewardsContract, ());
 
     let contract_id = env.register(PoolContract, ());
     let client = PoolContractClient::new(env, &contract_id);
 
     env.mock_all_auths();
-    client.initialize(&admin, &usdc_addr, &rewards, &50u32); // fee 0.5%
+    client.initialize(&admin, &usdc_addr, &rewards_addr, &50u32); // fee 0.5%
     (client, admin, usdc_addr, usdc_admin)
 }
 
@@ -159,7 +149,7 @@ fn test_pay_merchant_splits_correctly() {
 fn test_unique_tourists_counts_once() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _admin, usdc_addr, usdc_admin) = setup(&env);
+    let (client, _admin, _usdc_addr, usdc_admin) = setup(&env);
 
     let bid = barrio_id(&env);
     let treasury = Address::generate(&env);
@@ -213,15 +203,15 @@ fn test_withdraw_only_by_treasury() {
     // Genera saldo en el pool vía un pago con tip
     let tourist = Address::generate(&env);
     usdc_admin.mint(&tourist, &1_000_000_000i128);
+    // 100_000_000 stroops = 10 USDC. tip = 10 * 2% = 0.2 USDC = 2_000_000 stroops en el pool.
     client.pay_merchant(&tourist, &merchant_addr, &100_000_000i128, &200u32);
-    // tip = 100 * 0.02 = 2 USDC = 20_000_000 stroops en el pool
 
     let recipient = Address::generate(&env);
-    // El treasury retira 1 USDC al beneficiario
-    client.withdraw_to(&treasury, &bid, &recipient, &10_000_000i128);
+    // El treasury retira 0.1 USDC (1_000_000 stroops) al beneficiario.
+    client.withdraw_to(&treasury, &bid, &recipient, &1_000_000i128);
 
-    assert_eq!(usdc.balance(&recipient), 10_000_000);
-    assert_eq!(client.get_pool_balance(&bid), 10_000_000); // 20M - 10M
+    assert_eq!(usdc.balance(&recipient), 1_000_000);
+    assert_eq!(client.get_pool_balance(&bid), 1_000_000); // 2M - 1M
 }
 
 #[test]
