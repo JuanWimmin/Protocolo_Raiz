@@ -14,8 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.raiz.app.ui.theme.RaizBlack
+import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizWhite
-import com.raiz.app.ui.theme.RaizYellow
 
 enum class RaizDestination(val label: String, val icon: ImageVector) {
     Home("Inicio", Icons.Outlined.Home),
@@ -48,9 +48,9 @@ fun RaizBottomNav(
                 icon = { Icon(dest.icon, contentDescription = dest.label) },
                 label = { Text(dest.label) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = RaizBlack,
+                    selectedIconColor = RaizWhite,
                     selectedTextColor = RaizBlack,
-                    indicatorColor = RaizYellow,
+                    indicatorColor = RaizGreen,
                     unselectedIconColor = RaizBlack.copy(alpha = 0.5f),
                     unselectedTextColor = RaizBlack.copy(alpha = 0.5f),
                 ),

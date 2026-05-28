@@ -3,12 +3,15 @@ package com.raiz.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Paleta RAÍZ — aprobada en el diseño, no se cambia sin avisar.
+ * Paleta RAÍZ.
  *
  * - Negro principal: cards primarias (Balance USDC, QR scanner).
- * - Amarillo: CTA principal (botón "Escanear y pagar", "Confirmar pago").
- * - Púrpura: acentos secundarios, badges.
- * - Verde: Tip Barrio, estados de éxito.
+ * - Verde: PRIMARY del color scheme — CTA principal (botón "Escanear y pagar",
+ *   "Confirmar pago"), Tip Barrio, indicadores de tab/nav, estados de éxito,
+ *   header del RAÍZ Passport.
+ * - Amarillo: acento decorativo (sellos del passport, chip de Turista, fondos
+ *   sutiles con alpha bajo). Antes era CTA; hoy queda como sub-acento.
+ * - Púrpura: acentos secundarios, badges (puntos, residente).
  * - Fondo: background general de pantallas.
  */
 val RaizBlack = Color(0xFF1A1A1A)

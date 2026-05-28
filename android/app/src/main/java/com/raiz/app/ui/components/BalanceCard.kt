@@ -22,8 +22,8 @@ import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGrayLight
 import com.raiz.app.ui.theme.RaizTheme
+import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizWhite
-import com.raiz.app.ui.theme.RaizYellow
 
 /**
  * Card negro con el balance USDC del turista. Pieza visual central de
@@ -51,7 +51,7 @@ fun BalanceCard(
         Icon(
             imageVector = Icons.Outlined.AccountBalanceWallet,
             contentDescription = null,
-            tint = RaizYellow,
+            tint = RaizGreen,
         )
         Text(
             text = "Tu saldo",

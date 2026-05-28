@@ -8,10 +8,11 @@ import androidx.compose.runtime.Composable
  * MaterialTheme de RAÍZ.
  *
  * Mapeo paleta → Material 3 roles:
- *   - primary       = amarillo (CTA dominante)
- *   - onPrimary     = negro (texto sobre amarillo)
+ *   - primary       = verde (CTA dominante, indicadores, bottom nav activo)
+ *   - onPrimary     = blanco (texto sobre verde)
  *   - secondary     = púrpura (acentos)
- *   - tertiary      = verde (Tip Barrio, éxito)
+ *   - tertiary      = amarillo (acento decorativo, sellos del passport,
+ *                    chip de Turista — solo decorativo, no llamada a acción)
  *   - background    = #FAFAF7 (fondo de pantalla)
  *   - surface       = blanco (cards normales)
  *   - onSurface     = negro
@@ -26,12 +27,12 @@ import androidx.compose.runtime.Composable
  * que es el patrón canónico de Activity en Compose.
  */
 private val RaizLightColorScheme = lightColorScheme(
-    primary = RaizYellow,
-    onPrimary = RaizBlack,
+    primary = RaizGreen,
+    onPrimary = RaizWhite,
     secondary = RaizPurple,
     onSecondary = RaizWhite,
-    tertiary = RaizGreen,
-    onTertiary = RaizWhite,
+    tertiary = RaizYellow,
+    onTertiary = RaizBlack,
     background = RaizBackground,
     onBackground = RaizBlack,
     surface = RaizWhite,

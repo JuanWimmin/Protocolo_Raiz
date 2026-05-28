@@ -66,7 +66,7 @@ fun PayScreen(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                CircularProgressIndicator(color = RaizYellow)
+                CircularProgressIndicator(color = RaizGreen)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Buscando comercio…", color = RaizBlack)
             }
@@ -133,16 +133,16 @@ private fun PayEditing(
                 .fillMaxWidth()
                 .height(64.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = RaizYellow,
-                contentColor = RaizBlack,
-                disabledContainerColor = RaizYellow.copy(alpha = 0.5f),
-                disabledContentColor = RaizBlack.copy(alpha = 0.5f),
+                containerColor = RaizGreen,
+                contentColor = RaizWhite,
+                disabledContainerColor = RaizGreen.copy(alpha = 0.5f),
+                disabledContentColor = RaizWhite.copy(alpha = 0.5f),
             ),
             shape = RoundedCornerShape(16.dp),
         ) {
             if (state.submitting) {
                 CircularProgressIndicator(
-                    color = RaizBlack,
+                    color = RaizWhite,
                     strokeWidth = 2.dp,
                     modifier = Modifier.height(24.dp),
                 )
@@ -328,8 +328,8 @@ private fun PaySuccess(
         Button(
             onClick = onDone,
             colors = ButtonDefaults.buttonColors(
-                containerColor = RaizYellow,
-                contentColor = RaizBlack,
+                containerColor = RaizGreen,
+                contentColor = RaizWhite,
             ),
             shape = RoundedCornerShape(12.dp),
         ) {

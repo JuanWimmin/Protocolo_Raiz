@@ -143,7 +143,7 @@ private fun Header(publicKey: String, role: UserRole) {
             ) {
                 Text(
                     text = publicKey.first().toString(),
-                    color = RaizYellow,
+                    color = RaizGreen,
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 )
             }
@@ -546,7 +546,7 @@ private fun ProposalCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircularProgressIndicator(
-                    color = RaizYellow,
+                    color = RaizGreen,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(16.dp),
                 )
@@ -685,7 +685,7 @@ private fun CenteredSpinner() {
             .fillMaxSize()
             .padding(40.dp),
         contentAlignment = Alignment.Center,
-    ) { CircularProgressIndicator(color = RaizYellow) }
+    ) { CircularProgressIndicator(color = RaizGreen) }
 }
 
 @Composable

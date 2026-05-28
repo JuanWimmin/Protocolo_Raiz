@@ -2,6 +2,8 @@ package com.raiz.app.ui.wallet
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,15 +37,19 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.raiz.app.data.model.PassportData
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.BalanceCard
+import com.raiz.app.ui.components.PassportCard
 import com.raiz.app.ui.components.RaizBottomNav
 import com.raiz.app.ui.components.RaizDestination
+import com.raiz.app.ui.components.SellosCatalog
 import com.raiz.app.ui.components.StatBox
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
+import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
 
 /**
@@ -104,6 +110,7 @@ fun WalletScreen(
             is WalletUiState.Ready -> WalletReady(
                 wallet = s.wallet,
                 poolBalanceLabel = s.poolBalanceLabel,
+                passport = s.passport,
                 onScanAndPay = {
                     val opts = ScanOptions()
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -126,69 +133,87 @@ private fun String.isStellarPublicKey(): Boolean =
 private fun WalletReady(
     wallet: WalletState,
     poolBalanceLabel: String,
+    passport: PassportData?,
     onScanAndPay: () -> Unit,
     contentPadding: PaddingValues,
 ) {
-    // Aporte al barrio: por ahora un placeholder derivado de los puntos.
-    // Cuando tengamos PaymentRepository, se calculará sumando los tips
-    // emitidos en eventos `payment` del Pool donde el turista figura.
-    val contributionStroopsPlaceholder = wallet.points * 100_000L
+    // Aporte al barrio: prefiere el dato real del passport si ya cargó;
+    // si no, fallback derivado de los puntos del wallet (placeholder).
+    val contributionStroops = passport?.aportadoAlBarrioStroops
+        ?: (wallet.points * 100_000L)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(contentPadding),
     ) {
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "RAÍZ",
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            color = RaizBlack,
-        )
-        // Smoke test del cableado Soroban: muestra el balance del pool del
-        // Centro Histórico leído del contrato Pool en testnet.
-        Text(
-            text = "Pool del barrio · $poolBalanceLabel",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizGreen,
-        )
-
-        BalanceCard(
-            balanceStroops = wallet.usdcBalanceStroops,
-            publicKey = wallet.publicKey,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        // Contenido scrolleable
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            StatBox(
-                label = "Puntos",
-                value = wallet.points.toString(),
-                accent = RaizPurple,
-                modifier = Modifier.weight(1f),
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "RAÍZ",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                color = RaizBlack,
             )
-            StatBox(
-                label = "Aporte al barrio",
-                value = contributionStroopsPlaceholder.formatUsdc(),
-                accent = RaizGreen,
-                modifier = Modifier.weight(1f),
+            // Smoke test del cableado Soroban: muestra el balance del pool del
+            // Centro Histórico leído del contrato Pool en testnet.
+            Text(
+                text = "Pool del barrio · $poolBalanceLabel",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizGreen,
             )
+
+            BalanceCard(
+                balanceStroops = wallet.usdcBalanceStroops,
+                publicKey = wallet.publicKey,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                StatBox(
+                    label = "Puntos",
+                    value = wallet.points.toString(),
+                    accent = RaizPurple,
+                    modifier = Modifier.weight(1f),
+                )
+                StatBox(
+                    label = "Aporte al barrio",
+                    value = contributionStroops.formatUsdc(),
+                    accent = RaizGreen,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            // RAÍZ Passport — solo cuando ya cargó la data.
+            if (passport != null) {
+                PassportCard(
+                    data = passport,
+                    sellos = SellosCatalog.DEFAULT,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
+        // CTA fijo abajo, fuera del scroll.
         Button(
             onClick = onScanAndPay,
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
                 .height(64.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = RaizYellow,
-                contentColor = RaizBlack,
+                containerColor = RaizGreen,
+                contentColor = RaizWhite,
             ),
             shape = RoundedCornerShape(16.dp),
         ) {
@@ -216,7 +241,7 @@ private fun WalletLoading(padding: PaddingValues) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CircularProgressIndicator(color = RaizYellow)
+        CircularProgressIndicator(color = RaizGreen)
     }
 }
 
