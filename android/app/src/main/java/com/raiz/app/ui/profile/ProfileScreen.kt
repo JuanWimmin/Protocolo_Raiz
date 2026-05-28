@@ -81,6 +81,7 @@ private enum class ProfileTab(val label: String) {
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
+    onNavigateMap: () -> Unit = {},
     onLogout: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -97,6 +98,7 @@ fun ProfileScreen(
                     when (dest) {
                         RaizDestination.Home -> onNavigateHome()
                         RaizDestination.Rewards -> onNavigateRewards()
+                        RaizDestination.Map -> onNavigateMap()
                         else -> Unit
                     }
                 },

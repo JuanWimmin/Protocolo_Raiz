@@ -69,6 +69,7 @@ fun WalletScreen(
     onPayMerchant: (merchantAddress: String) -> Unit = {},
     onNavigateProfile: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
+    onNavigateMap: () -> Unit = {},
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -102,6 +103,7 @@ fun WalletScreen(
                     when (dest) {
                         RaizDestination.Profile -> onNavigateProfile()
                         RaizDestination.Rewards -> onNavigateRewards()
+                        RaizDestination.Map -> onNavigateMap()
                         else -> Unit
                     }
                 },

@@ -18,6 +18,8 @@ ktor = "3.3.2"
 zxing = "3.5.3"
 zxingEmbedded = "4.3.0"
 securityCrypto = "1.1.0-alpha06"
+mapbox = "11.9.0"
+mapboxCompose = "11.9.0"
 
 [libraries]
 # Core / Compose
@@ -80,6 +82,13 @@ zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", ve
 # una clave que vive en el Android Keystore (TEE en hardware si está
 # disponible). Necesario para guardar la wallet del usuario al crear/importar.
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
+
+# Mapbox Maps SDK + extensión Compose.
+# Descarga del Maven privado de Mapbox; requiere MAPBOX_DOWNLOADS_TOKEN (sk.*)
+# en ~/.gradle/gradle.properties global (NO en el repo). El runtime usa el
+# token público pk.* desde local.properties → BuildConfig.MAPBOX_TOKEN.
+mapbox-maps-android = { module = "com.mapbox.maps:android", version.ref = "mapbox" }
+mapbox-maps-compose = { module = "com.mapbox.extension:maps-compose", version.ref = "mapboxCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

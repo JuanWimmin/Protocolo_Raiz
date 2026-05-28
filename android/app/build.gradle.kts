@@ -37,6 +37,8 @@ android {
         // En release real estarían vacíos y la app pediría seed phrase / passkey.
         buildConfigField("String", "DEMO_TOURIST_SECRET", "\"${localProp("raiz.tourist.secret")}\"")
         buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"${localProp("raiz.resident.secret")}\"")
+        // Mapbox public token (pk.*) — runtime de la app para descargar tiles.
+        buildConfigField("String", "MAPBOX_TOKEN", "\"${localProp("mapbox.access.token")}\"")
     }
 
     buildTypes {
@@ -119,6 +121,9 @@ dependencies {
     // EncryptedSharedPreferences para guardar la seed phrase de la wallet
     // cifrada con clave del Android Keystore.
     implementation(libs.androidx.security.crypto)
+    // Mapbox Maps + extensión Compose.
+    implementation(libs.mapbox.maps.android)
+    implementation(libs.mapbox.maps.compose)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)

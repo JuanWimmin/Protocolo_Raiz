@@ -38,7 +38,26 @@ class RaizApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installSecurity()
-        // TODO: MapboxOptions.accessToken = getString(R.string.mapbox_access_token)
+        installMapbox()
+    }
+
+    /**
+     * Inicializa Mapbox con el public token (pk.*). Sin esto, MapboxMap
+     * renderiza gris al cargar el style. El token viene de BuildConfig que
+     * a su vez sale de local.properties → mapbox.access.token.
+     */
+    private fun installMapbox() {
+        val token = BuildConfig.MAPBOX_TOKEN
+        if (token.isBlank()) {
+            Log.w(TAG, "Mapbox access token vacío — el mapa no cargará tiles")
+            return
+        }
+        runCatching {
+            com.mapbox.common.MapboxOptions.accessToken = token
+            Log.i(TAG, "Mapbox token configurado")
+        }.onFailure {
+            Log.e(TAG, "Mapbox init falló: ${it.message}")
+        }
     }
 
     private fun installSecurity() {

@@ -75,6 +75,7 @@ import com.raiz.app.ui.theme.RaizYellow
 fun RewardsScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateProfile: () -> Unit = {},
+    onNavigateMap: () -> Unit = {},
     viewModel: RewardsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -89,6 +90,7 @@ fun RewardsScreen(
                     when (dest) {
                         RaizDestination.Home -> onNavigateHome()
                         RaizDestination.Profile -> onNavigateProfile()
+                        RaizDestination.Map -> onNavigateMap()
                         else -> Unit
                     }
                 },

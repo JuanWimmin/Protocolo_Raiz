@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.raiz.app.data.stellar.WalletManager
+import com.raiz.app.ui.map.BarrioMapScreen
 import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
 import com.raiz.app.ui.rewards.RewardsScreen
@@ -122,6 +123,7 @@ private fun RaizApp(
                 },
                 onNavigateProfile = { goTo(Routes.PROFILE) },
                 onNavigateRewards = { goTo(Routes.REWARDS) },
+                onNavigateMap = { goTo(Routes.MAP) },
             )
         }
         composable(
@@ -134,6 +136,7 @@ private fun RaizApp(
             ProfileScreen(
                 onNavigateHome = { goTo(Routes.WALLET) },
                 onNavigateRewards = { goTo(Routes.REWARDS) },
+                onNavigateMap = { goTo(Routes.MAP) },
                 onLogout = {
                     onLogout()
                     hasWallet = false
@@ -147,6 +150,17 @@ private fun RaizApp(
             RewardsScreen(
                 onNavigateHome = { goTo(Routes.WALLET) },
                 onNavigateProfile = { goTo(Routes.PROFILE) },
+                onNavigateMap = { goTo(Routes.MAP) },
+            )
+        }
+        composable(Routes.MAP) {
+            BarrioMapScreen(
+                onPayMerchant = { merchantAddress ->
+                    nav.navigate("${Routes.PAY_PREFIX}/$merchantAddress")
+                },
+                onNavigateHome = { goTo(Routes.WALLET) },
+                onNavigateProfile = { goTo(Routes.PROFILE) },
+                onNavigateRewards = { goTo(Routes.REWARDS) },
             )
         }
     }
@@ -161,4 +175,5 @@ private object Routes {
     const val PAY_PREFIX = "pay"
     const val PROFILE = "profile"
     const val REWARDS = "rewards"
+    const val MAP = "map"
 }
