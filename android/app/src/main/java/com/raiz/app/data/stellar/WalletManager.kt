@@ -1,9 +1,11 @@
 package com.raiz.app.data.stellar
 
+import com.raiz.app.BuildConfig
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.WalletAuthMethod
 import com.raiz.app.data.model.WalletState
+import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.sep.sep05.Mnemonic
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -85,12 +87,42 @@ class WalletManager @Inject constructor(
      * `raiz-tourist` del seed (ver `scripts/seed_testnet.sh`). Esa cuenta sí
      * tiene saldo USDC real on-chain, así que con HorizonStream conectado se
      * ve el balance real en vivo.
+     *
+     * NOTA: `publicKey` se hardcodea en lugar de derivarlo del demoKeyPair()
+     * porque ese es suspend (criptografía); sería incómodo en un getter sync.
+     * Si rotamos el secret del demo, actualizar también `DEMO_PUBLIC` abajo.
      */
     fun mockWallet(): WalletState = WalletState(
-        publicKey = "GDLGYDO4XY6YC6TNSPZELYEP73QOL4SUOVPUMJPHYC7WTTRQNORQIZM7",
+        publicKey = DEMO_PUBLIC,
         usdcBalanceStroops = 0L,                 // se actualiza vía HorizonStream
         xlmBalanceStroops = 100_000_000_000L,    // friendbot inicial
         points = 320,
         authMethod = WalletAuthMethod.SEED_PHRASE,
     )
+
+    /**
+     * KeyPair firmable de la cuenta demo. Vuelve null si
+     * BuildConfig.DEMO_TOURIST_SECRET está vacío (típico cuando alguien clona
+     * el repo y no tiene su `local.properties` configurado). En ese caso,
+     * la app no puede firmar pagos pero sí leer.
+     *
+     * WARNING: Esta key sale de `local.properties` que NO está en git, pero
+     * SÍ queda en el APK debug. No es para producción.
+     */
+    suspend fun demoKeyPair(): KeyPair? {
+        cachedDemoKp?.let { return it }
+        val secret = BuildConfig.DEMO_TOURIST_SECRET
+        if (secret.isBlank()) return null
+        return runCatching { KeyPair.fromSecretSeed(secret) }
+            .onSuccess { cachedDemoKp = it }
+            .getOrNull()
+    }
+
+    private var cachedDemoKp: KeyPair? = null
+
+    private companion object {
+        // G... de `stellar keys address raiz-tourist`. Si rotamos el secret
+        // en local.properties, regenerar este string con el comando.
+        const val DEMO_PUBLIC = "GDLGYDO4XY6YC6TNSPZELYEP73QOL4SUOVPUMJPHYC7WTTRQNORQIZM7"
+    }
 }

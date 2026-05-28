@@ -44,6 +44,29 @@ class WalletViewModel @Inject constructor(
     init {
         observeUsdcBalance()
         loadCentroPoolBalance()
+        smokeTestStructs()
+    }
+
+    /** Smoke test de structs: getBarrio + listMerchants. Solo loguea. */
+    private fun smokeTestStructs() {
+        viewModelScope.launch {
+            when (val r = sorobanClient.getBarrio(BARRIO_CENTRO_ID)) {
+                is RaizResult.Success -> Log.i(
+                    TAG,
+                    "Barrio: ${r.data.name} · tx=${r.data.txCount} · turistas=${r.data.uniqueTourists}",
+                )
+                is RaizResult.Error -> Log.e(TAG, "getBarrio: ${r.message}")
+            }
+            when (val r = sorobanClient.listMerchants(BARRIO_CENTRO_ID)) {
+                is RaizResult.Success -> {
+                    Log.i(TAG, "Comercios Centro: ${r.data.size}")
+                    r.data.forEach { m ->
+                        Log.i(TAG, "  · ${m.name} [${m.category.symbol}] ${m.lat},${m.lng}")
+                    }
+                }
+                is RaizResult.Error -> Log.e(TAG, "listMerchants: ${r.message}")
+            }
+        }
     }
 
     /** Polling del balance USDC vía Horizon. Actualiza el WalletState. */

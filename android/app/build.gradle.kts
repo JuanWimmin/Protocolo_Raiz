@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,16 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+// Carga `local.properties` (NO commiteado) para inyectar secrets/config local
+// como BuildConfig fields. Pattern estándar de Android para evitar exponer
+// valores sensibles en el repo.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun localProp(key: String, default: String = ""): String =
+    localProps.getProperty(key, default)
 
 android {
     namespace = "com.raiz.app"
@@ -20,6 +32,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        // Secret demo del turista — desde local.properties, NO del repo.
+        // En release real esto debería estar vacío y la app debería pedir al
+        // usuario su seed phrase o usar passkey.
+        buildConfigField("String", "DEMO_TOURIST_SECRET", "\"${localProp("raiz.tourist.secret")}\"")
     }
 
     buildTypes {
