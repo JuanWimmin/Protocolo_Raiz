@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Wallet/seed phrase nunca debe estar en backups en la nube. -->
+    <exclude domain="sharedpref" path="raiz_wallet"/>
+</full-backup-content>

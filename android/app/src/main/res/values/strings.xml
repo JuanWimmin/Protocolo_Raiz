@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RAÍZ</string>
+    <string name="app_tagline">Tu paga, el barrio crece</string>
+
+    <!-- Wallet / Home -->
+    <string name="scan_and_pay">Escanear y pagar</string>
+    <string name="balance">Saldo</string>
+    <string name="points">Puntos</string>
+    <string name="contribution">Aporte al barrio</string>
+
+    <!-- Bottom nav -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_map">Mapa</string>
+    <string name="nav_rewards">Premios</string>
+    <string name="nav_profile">Perfil</string>
+</resources>
