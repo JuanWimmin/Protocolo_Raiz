@@ -12,7 +12,7 @@
 extern crate std;
 
 use super::*;
-use rewards::RewardsContract;
+use rewards::{RewardsContract, RewardsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, BytesN as _, Events},
     token, Address, BytesN, Env, String, Symbol,
@@ -40,13 +40,15 @@ fn setup<'a>(
     let admin = Address::generate(env);
     let (usdc_addr, usdc_admin) = create_usdc(env, &admin);
 
-    // Registra el contrato Rewards real para que `accrue_points` sea callable.
+    // Registra Rewards y Pool. Inicializa Rewards apuntando al Pool para que
+    // verifique correctamente al caller en accrue_points.
     let rewards_addr = env.register(RewardsContract, ());
-
     let contract_id = env.register(PoolContract, ());
     let client = PoolContractClient::new(env, &contract_id);
+    let rewards = RewardsContractClient::new(env, &rewards_addr);
 
     env.mock_all_auths();
+    rewards.initialize(&admin, &contract_id);
     client.initialize(&admin, &usdc_addr, &rewards_addr, &50u32); // fee 0.5%
     (client, admin, usdc_addr, usdc_admin)
 }

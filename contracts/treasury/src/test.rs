@@ -11,7 +11,7 @@ extern crate std;
 use super::*;
 use governance::{GovernanceContract, GovernanceContractClient};
 use pool::{MerchantData, PoolContract, PoolContractClient};
-use rewards::RewardsContract;
+use rewards::{RewardsContract, RewardsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, BytesN as _, Ledger},
     token, Address, BytesN, Env, String, Symbol,
@@ -51,8 +51,10 @@ fn build_stack<'a>(env: &Env) -> Stack<'a> {
     let pool = PoolContractClient::new(env, &pool_addr);
     let governance = GovernanceContractClient::new(env, &governance_addr);
     let treasury = TreasuryContractClient::new(env, &treasury_addr);
+    let rewards = RewardsContractClient::new(env, &rewards_addr);
 
-    // Wire: initialize cada uno
+    // Wire: initialize cada uno. Orden importa para Rewards (necesita la pool_addr).
+    rewards.initialize(&protocol_admin, &pool_addr);
     pool.initialize(&protocol_admin, &usdc_addr, &rewards_addr, &50u32);
     governance.initialize(&protocol_admin, &treasury_addr);
     treasury.initialize(&pool_addr, &governance_addr);

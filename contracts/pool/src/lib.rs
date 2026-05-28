@@ -270,7 +270,9 @@ impl PoolContract {
             .persistent()
             .set(&DataKey::Barrio(barrio_id.clone()), &barrio);
 
-        // Cross-contract: acumula puntos en Rewards (proporcional al tip)
+        // Cross-contract: acumula puntos en Rewards (proporcional al tip).
+        // Rewards verifica que el caller es este Pool — por eso pasamos
+        // current_contract_address() como primer arg.
         if tip > 0 {
             let rewards_addr: Address = env
                 .storage()
@@ -278,7 +280,7 @@ impl PoolContract {
                 .get(&DataKey::RewardsContract)
                 .ok_or(Error::NotInitialized)?;
             let rewards = rewards_contract::Client::new(&env, &rewards_addr);
-            rewards.accrue_points(&tourist, &tip);
+            rewards.accrue_points(&env.current_contract_address(), &tourist, &tip);
         }
 
         // Evento
