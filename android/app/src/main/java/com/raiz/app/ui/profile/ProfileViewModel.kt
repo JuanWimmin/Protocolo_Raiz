@@ -140,10 +140,13 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(voteState = it.voteState + (proposalId to VoteStatus.Submitting)) }
 
+            // Override "ver como residente" usa la cuenta demo de residente
+            // del seed (la wallet del usuario casi nunca tiene ResidentToken).
+            // Si no hay override → firma con la wallet activa del usuario.
             val signer = if (state.value.roleOverride == UserRole.RESIDENT) {
                 walletManager.demoResidentKeyPair()
             } else {
-                walletManager.demoKeyPair()
+                walletManager.currentKeyPair()
             }
 
             if (signer == null) {

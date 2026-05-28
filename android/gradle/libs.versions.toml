@@ -17,6 +17,7 @@ conscrypt = "2.5.2"
 ktor = "3.3.2"
 zxing = "3.5.3"
 zxingEmbedded = "4.3.0"
+securityCrypto = "1.1.0-alpha06"
 
 [libraries]
 # Core / Compose
@@ -74,6 +75,11 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 # Activity de escaneo basado en cámara.
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingEmbedded" }
+
+# EncryptedSharedPreferences — persistencia de la seed phrase cifrada con
+# una clave que vive en el Android Keystore (TEE en hardware si está
+# disponible). Necesario para guardar la wallet del usuario al crear/importar.
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

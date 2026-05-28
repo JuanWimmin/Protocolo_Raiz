@@ -5,62 +5,116 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
 import com.raiz.app.ui.rewards.RewardsScreen
 import com.raiz.app.ui.theme.RaizTheme
 import com.raiz.app.ui.wallet.WalletScreen
+import com.raiz.app.ui.welcome.CreateWalletScreen
+import com.raiz.app.ui.welcome.ImportWalletScreen
+import com.raiz.app.ui.welcome.WelcomeScreen
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
- * Entry point. Navega entre las 6 pantallas spec con un NavHost.
+ * Entry point.
  *
- * Rutas:
- *   - wallet                 → home/balance/passport/escanear
- *   - pay/{merchant_address} → pantalla de pago (address viene del QR)
- *   - profile                → perfil con rol + historial + QR
- *   - rewards                → catálogo de premios + canje
- *   - (TODO) barrio_map      → 4ª pantalla con Mapbox
- *
- * Cada pantalla con bottom nav navega entre las anteriores. El NavController
- * único de la app preserva el back stack — al tocar back en cualquier
- * pantalla, se vuelve a la anterior visitada (no a wallet de la fuerza).
+ * Si el usuario tiene wallet guardada (SecureWalletStore) o hay demo
+ * configurado → arranca en `wallet`. Sino arranca en `welcome` con las
+ * opciones de crear / importar / demo.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var walletManager: WalletManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             RaizTheme {
-                RaizApp()
+                RaizApp(
+                    initiallyHasWallet = walletManager.hasUsableWallet(),
+                    onLogout = { walletManager.logout() },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RaizApp() {
+private fun RaizApp(
+    initiallyHasWallet: Boolean,
+    onLogout: () -> Unit,
+) {
     val nav = rememberNavController()
+    // Sigue el flag por si el usuario hace logout durante la sesión.
+    var hasWallet by remember { mutableStateOf(initiallyHasWallet) }
 
-    // Helper: navega a una ruta principal sin acumular duplicados en el stack.
+    LaunchedEffect(Unit) { /* placeholder por si queremos splash más adelante */ }
+
     fun goTo(route: String) {
         nav.navigate(route) {
-            // popUpTo wallet (start dest) inclusive=false → la wallet siempre
-            // queda al fondo del stack para que back en cualquier pantalla
-            // termine eventualmente en home.
             popUpTo(Routes.WALLET) { saveState = true }
             launchSingleTop = true
             restoreState = true
         }
     }
 
-    NavHost(navController = nav, startDestination = Routes.WALLET) {
+    val start = if (hasWallet) Routes.WALLET else Routes.WELCOME
+
+    NavHost(navController = nav, startDestination = start) {
+        // ── Welcome flow ─────────────────────────────────────────────────
+        composable(Routes.WELCOME) {
+            WelcomeScreen(
+                demoEnabled = BuildConfig.DEMO_TOURIST_SECRET.isNotBlank(),
+                onCreateWallet = { nav.navigate(Routes.CREATE_WALLET) },
+                onImportWallet = { nav.navigate(Routes.IMPORT_WALLET) },
+                onUseDemo = {
+                    // No persiste nada — solo entra a wallet con la cuenta
+                    // demo activa (raiz-tourist).
+                    hasWallet = true
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.CREATE_WALLET) {
+            CreateWalletScreen(
+                onBack = { nav.popBackStack() },
+                onWalletReady = {
+                    hasWallet = true
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.IMPORT_WALLET) {
+            ImportWalletScreen(
+                onBack = { nav.popBackStack() },
+                onWalletReady = {
+                    hasWallet = true
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+            )
+        }
+
+        // ── App principal ────────────────────────────────────────────────
         composable(Routes.WALLET) {
             WalletScreen(
                 onPayMerchant = { merchantAddress ->
@@ -80,6 +134,13 @@ private fun RaizApp() {
             ProfileScreen(
                 onNavigateHome = { goTo(Routes.WALLET) },
                 onNavigateRewards = { goTo(Routes.REWARDS) },
+                onLogout = {
+                    onLogout()
+                    hasWallet = false
+                    nav.navigate(Routes.WELCOME) {
+                        popUpTo(Routes.WALLET) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Routes.REWARDS) {
@@ -92,6 +153,10 @@ private fun RaizApp() {
 }
 
 private object Routes {
+    const val WELCOME = "welcome"
+    const val CREATE_WALLET = "welcome/create"
+    const val IMPORT_WALLET = "welcome/import"
+
     const val WALLET = "wallet"
     const val PAY_PREFIX = "pay"
     const val PROFILE = "profile"

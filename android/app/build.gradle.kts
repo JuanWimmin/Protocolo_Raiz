@@ -116,6 +116,9 @@ dependencies {
     // ZXing para QR: core (generación) + embedded (Activity de escaneo).
     implementation(libs.zxing.core)
     implementation(libs.zxing.android.embedded)
+    // EncryptedSharedPreferences para guardar la seed phrase de la wallet
+    // cifrada con clave del Android Keystore.
+    implementation(libs.androidx.security.crypto)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)

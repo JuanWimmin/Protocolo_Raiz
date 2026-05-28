@@ -81,6 +81,7 @@ private enum class ProfileTab(val label: String) {
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
+    onLogout: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -122,7 +123,10 @@ fun ProfileScreen(
                     onOverride = viewModel::setRoleOverride,
                     onVote = viewModel::vote,
                 )
-                ProfileTab.QR -> QrTab(publicKey = state.wallet.publicKey)
+                ProfileTab.QR -> QrTab(
+                    publicKey = state.wallet.publicKey,
+                    onLogout = onLogout,
+                )
             }
         }
     }
@@ -339,7 +343,7 @@ private fun PaymentRow(payment: PaymentRecord) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun QrTab(publicKey: String) {
+private fun QrTab(publicKey: String, onLogout: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -358,6 +362,19 @@ private fun QrTab(publicKey: String) {
             caption = "${publicKey.take(12)}…${publicKey.takeLast(8)}",
             sizeDp = 240,
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Logout — borra la wallet local y vuelve a Welcome.
+        androidx.compose.material3.OutlinedButton(
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = Color(0xFFB00020),
+            ),
+        ) {
+            Text("Cerrar sesión y borrar wallet", style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 

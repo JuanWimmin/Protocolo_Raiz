@@ -94,11 +94,11 @@ class PayViewModel @Inject constructor(
         _state.update { editing.copy(submitting = true) }
 
         viewModelScope.launch {
-            val keyPair = walletManager.demoKeyPair()
+            val keyPair = walletManager.currentKeyPair()
             if (keyPair == null) {
                 _state.value = PayUiState.Error(
                     RaizErrorCode.UNAUTHORIZED,
-                    "Wallet demo no configurada. Revisa local.properties.",
+                    "No hay wallet configurada para firmar pagos.",
                 )
                 return@launch
             }

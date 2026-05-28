@@ -96,13 +96,13 @@ class RewardsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(redeemState = it.redeemState + (reward.id to RedeemStatus.Submitting)) }
 
-            val keyPair = walletManager.demoKeyPair()
+            val keyPair = walletManager.currentKeyPair()
             if (keyPair == null) {
                 _state.update {
                     it.copy(
                         redeemState = it.redeemState + (reward.id to RedeemStatus.Failed(
                             RaizErrorCode.UNAUTHORIZED,
-                            "Wallet demo no configurada.",
+                            "No hay wallet configurada para canjear.",
                         )),
                     )
                 }

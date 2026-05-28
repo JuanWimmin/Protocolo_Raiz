@@ -13,25 +13,76 @@ import javax.inject.Singleton
 /**
  * Custodia de claves de la wallet del turista.
  *
- * Dos métodos:
- *   - PASSKEY (preferido): usa androidx.credentials + WebAuthn / FIDO2.
- *     La clave privada nunca sale del TEE. Pendiente de implementar.
- *   - SEED_PHRASE (fallback): BIP-39 de 12 palabras, derivación SEP-05
- *     (m/44'/148'/0'). El SDK de Soneso hace toda la criptografía.
+ * Orden de resolución de "qué wallet usar":
+ *   1. La guardada en SecureWalletStore (crear/importar desde WelcomeScreen).
+ *   2. La demo del local.properties (BuildConfig.DEMO_TOURIST_SECRET).
+ *   3. Placeholder (no firmable, solo lectura).
  *
- * La seed phrase nunca debe loggearse, persistirse en SharedPreferences sin
- * cifrar, ni hacerle backup en la nube (ver xml/backup_rules.xml).
+ * Métodos públicos clave:
+ *   - hasUsableWallet() — sync — ¿la app puede ofrecer la home directo?
+ *   - currentAccountId() — sync — public key del wallet activo (null si no hay).
+ *   - currentKeyPair() — suspend — KeyPair firmable (null si no hay).
+ *   - currentWallet() — sync — WalletState placeholder con publicKey real.
  *
- * Balances (USDC/XLM/points) se llenan en 0 cuando se crea la wallet — los
- * pulea el WalletViewModel suscribiéndose a Horizon SSE + Rewards.get_points.
+ * Los métodos suspend solo se llaman para firmar; los sync para inicializar
+ * UI y observar balances vía Horizon.
  */
 @Singleton
 class WalletManager @Inject constructor(
-    // Cuando metamos persistencia segura, inyectar aquí un EncryptedSeedStore
-    // basado en androidx.security.crypto.EncryptedSharedPreferences.
+    private val store: SecureWalletStore,
 ) {
 
-    /** Genera una nueva seed phrase de 12 palabras (SEP-05 / BIP-39). */
+    /** ¿Hay una wallet usable (guardada o demo)? */
+    fun hasUsableWallet(): Boolean =
+        store.hasStoredWallet() || BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()
+
+    /**
+     * Public key activo en este momento (sync).
+     * Prioridad: guardada > demo > null.
+     */
+    fun currentAccountId(): String? {
+        store.storedAccountId()?.let { return it }
+        if (BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()) return DEMO_PUBLIC
+        return null
+    }
+
+    /**
+     * Estado base del wallet activo. Los balances/puntos los llena el
+     * ViewModel via Horizon + Rewards; aquí solo nos importa el publicKey.
+     */
+    fun currentWallet(): WalletState = WalletState(
+        publicKey = currentAccountId() ?: PLACEHOLDER_ACCOUNT,
+        usdcBalanceStroops = 0L,
+        xlmBalanceStroops = 100_000_000_000L,
+        points = 0L,
+        authMethod = if (store.hasStoredWallet()) WalletAuthMethod.SEED_PHRASE
+                     else WalletAuthMethod.SEED_PHRASE,
+    )
+
+    /**
+     * KeyPair firmable. Suspend porque deriva criptografía.
+     * Prioridad: guardada > demo > null.
+     */
+    suspend fun currentKeyPair(): KeyPair? {
+        // 1. Wallet guardada
+        store.storedSeedPhrase()?.let { phrase ->
+            return runCatching {
+                Mnemonic.from(phrase).use { it.getKeyPair(0) }
+            }.getOrNull()
+        }
+        // 2. Demo de BuildConfig
+        return demoKeyPair()
+    }
+
+    /**
+     * Compat: lo usaban WalletViewModel/ProfileViewModel/RewardsViewModel
+     * para obtener el publicKey rápidamente. Ahora delega a currentWallet().
+     */
+    fun mockWallet(): WalletState = currentWallet()
+
+    // ── Crear / importar / borrar ─────────────────────────────────────────
+
+    /** Genera una nueva seed phrase de 12 palabras BIP-39. */
     suspend fun generateSeedPhrase(): RaizResult<List<String>> = runCatching {
         Mnemonic.generate12WordsMnemonic().split(" ")
     }.fold(
@@ -40,30 +91,25 @@ class WalletManager @Inject constructor(
     )
 
     /**
-     * Crea una wallet desde una seed phrase existente.
-     * Deriva la cuenta en path m/44'/148'/0' y devuelve un WalletState con
-     * balances en cero (los actualiza después WalletViewModel vía streams).
+     * Crea una wallet desde una seed phrase y la persiste en el dispositivo.
+     * La phrase puede venir de generateSeedPhrase() (crear) o del usuario
+     * tipeando 12 palabras (importar).
      */
-    suspend fun createWithSeedPhrase(words: List<String>): RaizResult<WalletState> {
+    suspend fun saveWallet(words: List<String>): RaizResult<WalletState> {
         val phrase = words.joinToString(" ").trim()
         if (phrase.isEmpty()) {
             return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "seed phrase vacía")
         }
         return runCatching {
-            val mnemonic = Mnemonic.from(phrase)
-            try {
-                val keypair = mnemonic.getKeyPair(index = 0)
-                WalletState(
-                    publicKey = keypair.getAccountId(),
-                    usdcBalanceStroops = 0L,
-                    xlmBalanceStroops = 0L,
-                    points = 0L,
-                    authMethod = WalletAuthMethod.SEED_PHRASE,
-                )
-            } finally {
-                // Zero-out de la seed interna en memoria — importante.
-                mnemonic.close()
-            }
+            val accountId = Mnemonic.from(phrase).use { it.getKeyPair(0) }.getAccountId()
+            store.save(phrase, accountId)
+            WalletState(
+                publicKey = accountId,
+                usdcBalanceStroops = 0L,
+                xlmBalanceStroops = 0L,
+                points = 0L,
+                authMethod = WalletAuthMethod.SEED_PHRASE,
+            )
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = {
@@ -72,43 +118,24 @@ class WalletManager @Inject constructor(
         )
     }
 
+    /** Borra la wallet guardada — efecto: la app vuelve a Welcome. */
+    fun logout() {
+        store.clear()
+        cachedDemoKp = null
+    }
+
+    // ── Passkey: pendiente ────────────────────────────────────────────────
+
     @Suppress("UNUSED_PARAMETER")
     suspend fun createWithPasskey(): RaizResult<WalletState> {
-        // TODO: integrar androidx.credentials.CredentialManager
-        //       + smart contract account (passkey-bound).
         return RaizResult.Error(
             code = RaizErrorCode.UNKNOWN,
-            message = "WalletManager.createWithPasskey: TODO — pendiente Credentials API",
+            message = "Passkey wallet: pendiente Credentials API",
         )
     }
 
-    /**
-     * Solo para tests/UI: devuelve un WalletState mock que apunta a la cuenta
-     * `raiz-tourist` del seed (ver `scripts/seed_testnet.sh`). Esa cuenta sí
-     * tiene saldo USDC real on-chain, así que con HorizonStream conectado se
-     * ve el balance real en vivo.
-     *
-     * NOTA: `publicKey` se hardcodea en lugar de derivarlo del demoKeyPair()
-     * porque ese es suspend (criptografía); sería incómodo en un getter sync.
-     * Si rotamos el secret del demo, actualizar también `DEMO_PUBLIC` abajo.
-     */
-    fun mockWallet(): WalletState = WalletState(
-        publicKey = DEMO_PUBLIC,
-        usdcBalanceStroops = 0L,                 // se actualiza vía HorizonStream
-        xlmBalanceStroops = 100_000_000_000L,    // friendbot inicial
-        points = 320,
-        authMethod = WalletAuthMethod.SEED_PHRASE,
-    )
+    // ── Demo keypair (raiz-tourist del seed) ──────────────────────────────
 
-    /**
-     * KeyPair firmable de la cuenta demo. Vuelve null si
-     * BuildConfig.DEMO_TOURIST_SECRET está vacío (típico cuando alguien clona
-     * el repo y no tiene su `local.properties` configurado). En ese caso,
-     * la app no puede firmar pagos pero sí leer.
-     *
-     * WARNING: Esta key sale de `local.properties` que NO está en git, pero
-     * SÍ queda en el APK debug. No es para producción.
-     */
     suspend fun demoKeyPair(): KeyPair? {
         cachedDemoKp?.let { return it }
         val secret = BuildConfig.DEMO_TOURIST_SECRET
@@ -118,12 +145,7 @@ class WalletManager @Inject constructor(
             .getOrNull()
     }
 
-    /**
-     * KeyPair de un residente del Centro Histórico, también desde
-     * local.properties. Solo se usa cuando el modo demo override es
-     * "ver como residente" y el usuario quiere disparar un voto real.
-     * Vuelve null si el secret está vacío.
-     */
+    /** KeyPair de residente del Centro Histórico (para voto demo). */
     suspend fun demoResidentKeyPair(): KeyPair? {
         cachedResidentKp?.let { return it }
         val secret = BuildConfig.DEMO_RESIDENT_SECRET
@@ -137,8 +159,9 @@ class WalletManager @Inject constructor(
     private var cachedResidentKp: KeyPair? = null
 
     private companion object {
-        // G... de `stellar keys address raiz-tourist`. Si rotamos el secret
-        // en local.properties, regenerar este string con el comando.
+        /** G... de raiz-tourist del seed; coincide con DEMO_TOURIST_SECRET. */
         const val DEMO_PUBLIC = "GDLGYDO4XY6YC6TNSPZELYEP73QOL4SUOVPUMJPHYC7WTTRQNORQIZM7"
+        /** Placeholder si no hay wallet alguna — fuerza al Welcome. */
+        const val PLACEHOLDER_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
     }
 }
