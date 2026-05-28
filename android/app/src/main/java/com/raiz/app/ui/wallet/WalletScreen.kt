@@ -68,6 +68,7 @@ import com.raiz.app.ui.theme.RaizYellow
 fun WalletScreen(
     onPayMerchant: (merchantAddress: String) -> Unit = {},
     onNavigateProfile: () -> Unit = {},
+    onNavigateRewards: () -> Unit = {},
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -98,7 +99,11 @@ fun WalletScreen(
                 selected = selectedTab,
                 onSelect = { dest ->
                     selectedTab = dest
-                    if (dest == RaizDestination.Profile) onNavigateProfile()
+                    when (dest) {
+                        RaizDestination.Profile -> onNavigateProfile()
+                        RaizDestination.Rewards -> onNavigateRewards()
+                        else -> Unit
+                    }
                 },
             )
         },

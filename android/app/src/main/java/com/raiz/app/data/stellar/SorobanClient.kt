@@ -10,6 +10,7 @@ import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.ResidentToken
+import com.raiz.app.data.model.Reward
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.contract.ContractClient
@@ -394,7 +395,7 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Rewards: get_points ──────────────────────────────────────────────
+    // ── Rewards: get_points / list_rewards / redeem ──────────────────────
 
     suspend fun getPoints(tourist: String): RaizResult<Long> {
         return runCatching {
@@ -408,6 +409,80 @@ class SorobanClient @Inject constructor(
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { RaizResult.Error(RaizErrorCode.NETWORK_ERROR, it.message ?: "?") },
+        )
+    }
+
+    /** Lista los rewards (artesanías) disponibles de un barrio. */
+    suspend fun listRewards(barrioId: String): RaizResult<List<Reward>> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            rewardsClient().invoke<List<Reward>>(
+                functionName = "list_rewards",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    ScvalParse.asVec(scval).map { item ->
+                        val f = ScvalParse.asStruct(item)
+                        Reward(
+                            id = ScvalParse.asULongAsLong(f.req("id")),
+                            barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                            name = ScvalParse.asString(f.req("name")),
+                            artisan = ScvalParse.asAddressString(f.req("artisan")),
+                            pointsCost = ScvalParse.asULongAsLong(f.req("points_cost")),
+                            stock = ScvalParse.asUIntAsInt(f.req("stock")),
+                            imageRef = ScvalParse.asString(f.req("image_ref")),
+                        )
+                    }
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "listRewards: ${e.message}")
+            },
+        )
+    }
+
+    /**
+     * Canjea un reward firmando con la KeyPair del turista.
+     * On-chain: el contrato quema los puntos, decrementa stock, crea Redemption
+     * y emite evento `redeem`. Errores típicos: InsufficientPoints (#5),
+     * OutOfStock (#6), RewardNotFound (#4).
+     *
+     * Retorna el `redemption_id` de la nueva Redemption creada.
+     */
+    suspend fun redeem(
+        tourist: KeyPair,
+        rewardId: Long,
+    ): RaizResult<Long> {
+        return runCatching {
+            rewardsClient().invoke<Long>(
+                functionName = "redeem",
+                arguments = mapOf(
+                    "tourist" to tourist.getAccountId(),
+                    "reward_id" to rewardId.toULong(),
+                ),
+                source = tourist.getAccountId(),
+                signer = tourist,
+                parseResultXdrFn = { ScvalParse.asULongAsLong(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                val code = when {
+                    "InsufficientPoints" in msg ||
+                        "Error(Contract, #5)" in msg -> RaizErrorCode.INSUFFICIENT_POINTS
+                    "OutOfStock" in msg ||
+                        "Error(Contract, #6)" in msg -> RaizErrorCode.OUT_OF_STOCK
+                    "RewardNotFound" in msg ||
+                        "Error(Contract, #4)" in msg -> RaizErrorCode.NOT_FOUND
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, "redeem: ${e.message}")
+            },
         )
     }
 

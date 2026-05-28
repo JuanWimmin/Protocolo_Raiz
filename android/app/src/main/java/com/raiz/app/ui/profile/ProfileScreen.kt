@@ -80,6 +80,7 @@ private enum class ProfileTab(val label: String) {
 @Composable
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
+    onNavigateRewards: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -92,7 +93,11 @@ fun ProfileScreen(
                 selected = selectedNav,
                 onSelect = { dest ->
                     selectedNav = dest
-                    if (dest == RaizDestination.Home) onNavigateHome()
+                    when (dest) {
+                        RaizDestination.Home -> onNavigateHome()
+                        RaizDestination.Rewards -> onNavigateRewards()
+                        else -> Unit
+                    }
                 },
             )
         },
