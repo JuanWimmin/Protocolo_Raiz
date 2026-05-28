@@ -89,6 +89,8 @@ dependencies {
 
     // Stellar SDK (Soneso KMP) — Horizon + Soroban RPC + SEP-*
     implementation(libs.stellar.sdk)
+    // BigInteger usado por Scv.fromInt128 — trayéndolo a la API pública.
+    implementation(libs.ionspin.bignum)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)
