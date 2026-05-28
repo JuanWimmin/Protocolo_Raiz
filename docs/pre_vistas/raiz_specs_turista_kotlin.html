@@ -1,0 +1,141 @@
+<h2 class="sr-only">Specs visuales de las pantallas del turista en la app RAÍZ: home wallet, pago con Tip Barrio, y premios canjeables.</h2>
+
+<style>
+  .raiz-wrap { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 16px; }
+  .phones { display: flex; flex-direction: column; gap: 20px; }
+  .phone { background: #1a1a1a; border-radius: 28px; padding: 10px; }
+  .pscreen { background: #FAFAF7; border-radius: 20px; padding: 16px 14px; min-height: 480px; }
+  .pcaption { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 8px; text-align: center; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 500; }
+  .pill-amber { background: #FAEEDA; color: #854F0B; }
+  .pill-teal { background: #E1F5EE; color: #0F6E56; }
+  .pill-purple { background: #EEEDFE; color: #3C3489; }
+  .balcard { background: #1a1a1a; color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .raizbtn { display: block; width: 100%; padding: 13px; background: #1a1a1a; color: #FBBF24; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; text-align: center; }
+  .raizbtn.amber { background: #FBBF24; color: #1a1a1a; }
+  .navbar { display: flex; justify-content: space-around; border-top: 0.5px solid rgba(0,0,0,0.12); padding-top: 10px; margin-top: 14px; }
+  .navitem { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: #888780; }
+  .navitem.active { color: #1a1a1a; }
+  .navitem i { font-size: 20px; }
+  .toggle { display: flex; align-items: center; gap: 10px; padding: 12px; background: #FAEEDA; border-radius: 10px; margin: 10px 0; }
+  .tsw { width: 38px; height: 22px; background: #BA7517; border-radius: 999px; position: relative; flex-shrink: 0; }
+  .tsw::after { content:''; position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; top: 2px; right: 2px; }
+  .merchant { display: flex; align-items: center; gap: 10px; padding: 10px; background: #F1EFE8; border-radius: 10px; margin-bottom: 10px; }
+  .micon { width: 40px; height: 40px; border-radius: 50%; background: #EEEDFE; display: flex; align-items: center; justify-content: center; color: #3C3489; font-size: 18px; flex-shrink: 0; }
+  .rrow { display: flex; justify-content: space-between; font-size: 13px; color: #5F5E5A; padding: 5px 0; }
+  .reward { display: flex; gap: 10px; padding: 10px; border: 0.5px solid rgba(0,0,0,0.12); border-radius: 12px; margin-bottom: 10px; }
+  .rimg { width: 56px; height: 56px; border-radius: 8px; background: #EEEDFE; display: flex; align-items: center; justify-content: center; color: #534AB7; font-size: 24px; flex-shrink: 0; }
+  .progress { height: 6px; background: #F1EFE8; border-radius: 999px; overflow: hidden; margin: 6px 0; }
+  .pfill { height: 100%; background: #1D9E75; }
+  .annot { font-size: 11px; color: #888780; font-style: italic; margin: 4px 0 0; }
+</style>
+
+<div class="raiz-wrap">
+  <div class="phones">
+
+    <div>
+      <p class="pcaption">Pantalla 1 · Home / Wallet</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div>
+            <div style="font-size:11px;color:#888780;">RAÍZ Pass</div>
+            <div style="font-size:15px;font-weight:500;">Hola, viajero</div>
+          </div>
+          <div style="width:36px;height:36px;border-radius:50%;background:#EEEDFE;display:flex;align-items:center;justify-content:center;color:#3C3489;font-weight:500;font-size:13px;">JV</div>
+        </div>
+        <div class="balcard">
+          <div style="font-size:11px;color:#FBBF24;margin-bottom:4px;">Saldo disponible</div>
+          <div style="font-size:28px;font-weight:500;">142.50 <span style="font-size:13px;color:#FBBF24;">USDC</span></div>
+          <div style="font-size:11px;opacity:0.7;margin-top:4px;">≈ 588,000 COP</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:14px;">
+          <div style="flex:1;background:#E1F5EE;border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:20px;font-weight:500;color:#0F6E56;">1,240</div>
+            <div style="font-size:11px;color:#0F6E56;">puntos</div>
+          </div>
+          <div style="flex:1;background:#EEEDFE;border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:20px;font-weight:500;color:#3C3489;">8.04</div>
+            <div style="font-size:11px;color:#3C3489;">aportado USDC</div>
+          </div>
+        </div>
+        <button class="raizbtn amber"><i class="ti ti-qrcode" aria-hidden="true"></i> Escanear y pagar</button>
+        <div class="navbar">
+          <div class="navitem active"><i class="ti ti-home" aria-hidden="true"></i>Inicio</div>
+          <div class="navitem"><i class="ti ti-map-2" aria-hidden="true"></i>Mapa</div>
+          <div class="navitem"><i class="ti ti-gift" aria-hidden="true"></i>Premios</div>
+          <div class="navitem"><i class="ti ti-user" aria-hidden="true"></i>Perfil</div>
+        </div>
+      </div></div>
+      <p class="annot">Compose: Scaffold + BottomNavigation. balanceCard lee WalletState vía HorizonStream (SSE). Puntos desde Rewards.getPoints().</p>
+    </div>
+
+    <div>
+      <p class="pcaption">Pantalla 2 · Pago con Tip Barrio</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div style="display:flex;align-items:center;gap:8px;"><i class="ti ti-arrow-left" aria-hidden="true" style="font-size:20px;"></i><span style="font-size:15px;font-weight:500;">Confirmar pago</span></div>
+        </div>
+        <div class="merchant">
+          <div class="micon"><i class="ti ti-coffee" aria-hidden="true"></i></div>
+          <div style="flex:1;">
+            <div style="font-size:14px;font-weight:500;">Café Don Aurelio</div>
+            <div style="font-size:11px;color:#888780;">Centro Histórico · <span class="pill pill-teal" style="padding:1px 6px;"><i class="ti ti-discount-check" aria-hidden="true"></i> verificado</span></div>
+          </div>
+        </div>
+        <div class="toggle">
+          <div class="tsw"></div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:500;color:#854F0B;">Tip Barrio · 2%</div>
+            <div style="font-size:11px;color:#854F0B;">Ganas 8 puntos · aporta al fondo</div>
+          </div>
+        </div>
+        <div class="rrow"><span>Subtotal</span><span>4.20 USDC</span></div>
+        <div class="rrow"><span>Tip Barrio (2%)</span><span>+0.084 USDC</span></div>
+        <div class="rrow" style="border-top:0.5px solid rgba(0,0,0,0.12);margin-top:4px;font-weight:500;color:#1a1a1a;"><span>Total</span><span>4.284 USDC</span></div>
+        <div style="margin-top:16px;"></div>
+        <button class="raizbtn"><i class="ti ti-fingerprint" aria-hidden="true"></i> Confirmar con huella</button>
+        <p style="font-size:10px;text-align:center;color:#888780;margin-top:8px;">Firma passkey · confirma en 5 segundos</p>
+      </div></div>
+      <p class="annot">Compose: PaymentPreview model calcula tip/total/puntos en vivo. Botón llama WalletManager.signWithPasskey() → SorobanClient.payMerchant().</p>
+    </div>
+
+    <div>
+      <p class="pcaption">Pantalla 3 · Premios (artesanías)</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div style="font-size:15px;font-weight:500;">Premios del barrio</div>
+          <span class="pill pill-teal"><i class="ti ti-coin" aria-hidden="true"></i> 1,240 pts</span>
+        </div>
+        <div class="reward">
+          <div class="rimg"><i class="ti ti-basket" aria-hidden="true"></i></div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:500;">Mochila wayuu artesanal</div>
+            <div style="font-size:11px;color:#888780;">por Tejidos Doña Carmen</div>
+            <div class="progress"><div class="pfill" style="width:82%;"></div></div>
+            <div style="font-size:11px;color:#5F5E5A;">1,240 / 1,500 pts</div>
+          </div>
+        </div>
+        <div class="reward">
+          <div class="rimg"><i class="ti ti-coffee" aria-hidden="true"></i></div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:500;">Bolsa de café de origen</div>
+            <div style="font-size:11px;color:#888780;">por Finca El Roble</div>
+            <div class="progress"><div class="pfill" style="width:100%;"></div></div>
+            <button class="raizbtn amber" style="padding:8px;margin-top:4px;font-size:12px;">Canjear · 800 pts</button>
+          </div>
+        </div>
+        <div class="reward" style="opacity:0.6;">
+          <div class="rimg"><i class="ti ti-vase" aria-hidden="true"></i></div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:500;">Cerámica pintada a mano</div>
+            <div style="font-size:11px;color:#888780;">por Taller Barichara</div>
+            <div style="font-size:11px;color:#5F5E5A;margin-top:4px;">Agotado</div>
+          </div>
+        </div>
+      </div></div>
+      <p class="annot">Compose: LazyColumn de Reward. Progreso = points / pointsCost. Canjear llama Rewards.redeem(); muestra estado stock.</p>
+    </div>
+
+  </div>
+</div>

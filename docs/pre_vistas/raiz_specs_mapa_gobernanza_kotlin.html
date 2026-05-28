@@ -1,0 +1,129 @@
+<h2 class="sr-only">Specs visuales de las pantallas de mapa de locales, votación de propuestas y dashboard de transparencia de RAÍZ.</h2>
+
+<style>
+  .raiz-wrap { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 16px; }
+  .phones { display: flex; flex-direction: column; gap: 20px; }
+  .phone { background: #1a1a1a; border-radius: 28px; padding: 10px; }
+  .pscreen { background: #FAFAF7; border-radius: 20px; padding: 16px 14px; min-height: 480px; }
+  .pcaption { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 8px; text-align: center; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 500; }
+  .pill-amber { background: #FAEEDA; color: #854F0B; }
+  .pill-teal { background: #E1F5EE; color: #0F6E56; }
+  .pill-purple { background: #EEEDFE; color: #3C3489; }
+  .raizbtn { display: block; width: 100%; padding: 12px; background: #1a1a1a; color: #FBBF24; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; text-align: center; }
+  .raizbtn.teal { background: #0F6E56; color: #fff; }
+  .raizbtn.ghost { background: transparent; border: 0.5px solid rgba(0,0,0,0.25); color: #1a1a1a; }
+  .annot { font-size: 11px; color: #888780; font-style: italic; margin: 4px 0 0; }
+  .mapcanvas { position: relative; height: 200px; background: #E8EBE4; border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+  .mappin { position: absolute; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; }
+  .mappin i { transform: rotate(45deg); color: #fff; font-size: 14px; }
+  .proposal { border: 0.5px solid rgba(0,0,0,0.12); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .progress { height: 7px; background: #F1EFE8; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+  .pfill { height: 100%; background: #1D9E75; }
+  .rrow { display: flex; justify-content: space-between; font-size: 12px; color: #5F5E5A; padding: 3px 0; }
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat { background: #F1EFE8; border-radius: 10px; padding: 12px; }
+  .stat .v { font-size: 20px; font-weight: 500; }
+  .stat .l { font-size: 11px; color: #888780; }
+  .txrow { display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; border-bottom: 0.5px solid rgba(0,0,0,0.08); }
+  .impact { display: flex; height: 26px; border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .iseg { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; color: #fff; }
+</style>
+
+<div class="raiz-wrap">
+  <div class="phones">
+
+    <div>
+      <p class="pcaption">Pantalla 4 · Mapa de locales (Mapbox)</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div style="font-size:15px;font-weight:500;">Centro Histórico</div>
+          <span class="pill pill-purple"><i class="ti ti-map-pin" aria-hidden="true"></i> 18 locales</span>
+        </div>
+        <div class="mapcanvas">
+          <div class="mappin" style="background:#534AB7;top:40px;left:60px;"><i class="ti ti-coffee" aria-hidden="true"></i></div>
+          <div class="mappin" style="background:#BA7517;top:90px;left:140px;"><i class="ti ti-basket" aria-hidden="true"></i></div>
+          <div class="mappin" style="background:#0F6E56;top:60px;left:220px;"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i></div>
+          <div class="mappin" style="background:#534AB7;top:130px;left:90px;"><i class="ti ti-building-store" aria-hidden="true"></i></div>
+          <div class="mappin" style="background:#BA7517;top:120px;left:250px;"><i class="ti ti-vase" aria-hidden="true"></i></div>
+        </div>
+        <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;font-weight:500;">Café Don Aurelio</div>
+            <span class="pill pill-teal"><i class="ti ti-discount-check" aria-hidden="true"></i> verificado</span>
+          </div>
+          <div style="font-size:11px;color:#888780;margin:4px 0 8px;">Café · ha aportado 42.80 USDC al barrio</div>
+          <button class="raizbtn" style="padding:8px;font-size:12px;"><i class="ti ti-qrcode" aria-hidden="true"></i> Pagar aquí</button>
+        </div>
+      </div></div>
+      <p class="annot">Compose: MapboxMap + Symbol layer desde Pool.listMerchants(). Tap pin → bottom sheet con MerchantMapPin (aporte acumulado).</p>
+    </div>
+
+    <div>
+      <p class="pcaption">Pantalla 5 · Votar propuesta (residente)</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div>
+            <div style="font-size:11px;color:#888780;">Residente verificado</div>
+            <div style="font-size:15px;font-weight:500;">Propuestas activas</div>
+          </div>
+          <span class="pill pill-teal"><i class="ti ti-shield-check" aria-hidden="true"></i> soulbound</span>
+        </div>
+        <div class="proposal">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="font-size:14px;font-weight:500;">Reparar techo del mercado</div>
+            <span class="pill pill-purple">3,200 USDC</span>
+          </div>
+          <div style="font-size:11px;color:#888780;margin:4px 0;">por Doña Rosa · cierra en 4 días</div>
+          <div class="progress"><div class="pfill" style="width:68%;"></div></div>
+          <div class="rrow"><span>68% a favor · 41 de 60 votos</span><span>quórum 30% ✓</span></div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="raizbtn teal" style="margin:0;"><i class="ti ti-check" aria-hidden="true"></i> A favor</button>
+            <button class="raizbtn ghost" style="margin:0;">En contra</button>
+          </div>
+        </div>
+        <div class="proposal">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="font-size:14px;font-weight:500;">Talleres para jóvenes</div>
+            <span class="pill pill-purple">1,800 USDC</span>
+          </div>
+          <div style="font-size:11px;color:#888780;margin:4px 0;">por Junta Vecinal · cierra en 9 días</div>
+          <div class="progress"><div class="pfill" style="width:42%;"></div></div>
+          <div class="rrow"><span>42% a favor · 25 de 60 votos</span><span>quórum pendiente</span></div>
+        </div>
+      </div></div>
+      <p class="annot">Compose: LazyColumn de Proposal. Botón vota vía Governance.vote(); deshabilita si ya votó (DataKey::Vote). reachedQuorum() pinta el check.</p>
+    </div>
+
+    <div>
+      <p class="pcaption">Pantalla 6 · Transparencia (pública)</p>
+      <div class="phone"><div class="pscreen">
+        <div class="topbar">
+          <div>
+            <div style="font-size:11px;color:#888780;">Dashboard público</div>
+            <div style="font-size:15px;font-weight:500;">Centro Histórico</div>
+          </div>
+          <span class="pill pill-teal"><i class="ti ti-circle-filled" aria-hidden="true" style="font-size:8px;"></i> en vivo</span>
+        </div>
+        <div class="statgrid">
+          <div class="stat"><div class="v" style="color:#0F6E56;">12,847</div><div class="l">USDC recaudado</div></div>
+          <div class="stat"><div class="v" style="color:#854F0B;">2,318</div><div class="l">turistas aportaron</div></div>
+        </div>
+        <div style="font-size:12px;color:#888780;margin-bottom:6px;">Cómo se usó el fondo</div>
+        <div class="impact">
+          <div class="iseg" style="background:#1D9E75;width:42%;">Infra 42%</div>
+          <div class="iseg" style="background:#BA7517;width:28%;">Educ 28%</div>
+          <div class="iseg" style="background:#534AB7;width:30%;">Cultura 30%</div>
+        </div>
+        <div style="font-size:12px;color:#888780;margin:12px 0 4px;">Últimas ejecuciones on-chain</div>
+        <div class="txrow"><span><i class="ti ti-arrow-up-right" aria-hidden="true" style="color:#993C1D;"></i> Mural comunitario</span><span style="font-weight:500;">-850 USDC</span></div>
+        <div class="txrow"><span><i class="ti ti-arrow-down-right" aria-hidden="true" style="color:#0F6E56;"></i> Tip · Café Don Aurelio</span><span style="font-weight:500;">+0.08</span></div>
+        <div class="txrow" style="border:none;"><span><i class="ti ti-vote" aria-hidden="true" style="color:#3C3489;"></i> Voto propuesta #12</span><span style="color:#888780;">on-chain</span></div>
+        <button class="raizbtn ghost" style="margin-top:12px;padding:8px;font-size:12px;"><i class="ti ti-external-link" aria-hidden="true"></i> Ver en Stellar Expert</button>
+      </div></div>
+      <p class="annot">Compose: BarrioDashboard model. Stats desde Pool.getBarrio(). Ejecuciones desde Treasury.getExecutionLog(). Link abre el explorer.</p>
+    </div>
+
+  </div>
+</div>

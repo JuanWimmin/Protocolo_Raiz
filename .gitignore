@@ -1,0 +1,43 @@
+# ─── Rust / Soroban ─────────────────────────────────────────────────
+target/
+**/*.rs.bk
+Cargo.lock.bak
+# WASM compilados (los re-genera cargo build)
+*.wasm
+# Snapshots auto-generados por testutils (regenera al correr tests)
+**/test_snapshots/
+
+# ─── Android / Gradle / Kotlin ──────────────────────────────────────
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/.idea/
+android/local.properties
+android/*.iml
+android/.kotlin/
+# secretos locales que NUNCA suben (Mapbox sk., API keys)
+android/keystore.properties
+gradle.properties
+
+# ─── IDE / SO ───────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ─── Node / scripts ─────────────────────────────────────────────────
+node_modules/
+scripts/dist/
+scripts/.env
+scripts/.env.local
+
+# ─── Outputs locales ────────────────────────────────────────────────
+# deployments.json sí versionamos (IDs de contratos públicos en testnet).
+# Pero los logs/output locales no:
+deployments.local.json
+*.log
+
+# ─── Claude Code ────────────────────────────────────────────────────
+.claude/settings.local.json
