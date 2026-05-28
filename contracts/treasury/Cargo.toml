@@ -15,3 +15,8 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Para tests integrados: registramos los 3 contratos hermanos en el env
+# de test y los wireamos como en producción.
+pool = { path = "../pool" }
+governance = { path = "../governance" }
+rewards = { path = "../rewards" }
