@@ -173,12 +173,17 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ## Gotchas conocidos del proyecto
 
-- **TLS en Android contra Stellar testnet**: `HttpsURLConnection` nativo de
-  Android falla contra `soroban-testnet.stellar.org` con "Trust anchor for
-  certification path not found" en algunos dispositivos (probado en Vivo
-  V2110 / Android 13). Solución: instalar Conscrypt como provider TLS #1 en
-  `RaizApplication.onCreate()`. Con eso el SDK Soneso (Ktor + CIO) sí valida
-  la cadena correctamente. NO quitar la inicialización de Conscrypt.
+- **TLS en Android contra Stellar testnet**: el cert de `*.stellar.org`
+  está firmado por "Sectigo Public Server Authentication CA DV R36". La
+  mayoría de Android lo valida bien con Conscrypt instalado en
+  `RaizApplication.installSecurity()`. CONFIRMADO funciona end-to-end en
+  Motorola G04 / Android 14 (lee Pool balance Centro = 0.3 USDC + balance
+  USDC vía Horizon).
+  Falla en algunos OEMs (Vivo V2110 / Android 13) con "Trust anchor for
+  certification path not found" porque su trust store no incluye Sectigo
+  Y Ktor con engine CIO ignora el SSLContext default + setea para el
+  TrustManager custom. No vale la pena perseguir esos casos hasta tener
+  ciclos: probar primero en otro dispositivo.
 
 - **Versiones Kotlin / KSP / Hilt acopladas**: Stellar SDK 1.6.0 trae
   kotlinx-serialization con metadata Kotlin 2.2 (no leíble por K2.0). Si
