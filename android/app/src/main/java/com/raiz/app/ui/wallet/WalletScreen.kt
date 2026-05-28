@@ -2,6 +2,7 @@ package com.raiz.app.ui.wallet
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -118,9 +120,7 @@ fun WalletScreen(
             WalletUiState.Loading -> WalletLoading(padding)
             is WalletUiState.Error -> WalletError(s.message, padding)
             is WalletUiState.Ready -> WalletReady(
-                wallet = s.wallet,
-                poolBalanceLabel = s.poolBalanceLabel,
-                passport = s.passport,
+                state = s,
                 onScanAndPay = {
                     val opts = ScanOptions()
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -130,6 +130,7 @@ fun WalletScreen(
                     scanLauncher.launch(opts)
                 },
                 onTransparencyTap = onNavigateDashboard,
+                onActivateUsdc = viewModel::activateUsdcTrustline,
                 contentPadding = padding,
             )
         }
@@ -142,13 +143,15 @@ private fun String.isStellarPublicKey(): Boolean =
 
 @Composable
 private fun WalletReady(
-    wallet: WalletState,
-    poolBalanceLabel: String,
-    passport: PassportData?,
+    state: WalletUiState.Ready,
     onScanAndPay: () -> Unit,
     onTransparencyTap: () -> Unit,
+    onActivateUsdc: () -> Unit,
     contentPadding: PaddingValues,
 ) {
+    val wallet = state.wallet
+    val poolBalanceLabel = state.poolBalanceLabel
+    val passport = state.passport
     // Aporte al barrio: dato real del passport (suma de tips al pool del
     // barrio). Si aún no cargó, mostramos 0 — sin valores fantasma.
     val contributionStroops = passport?.aportadoAlBarrioStroops ?: 0L
@@ -182,6 +185,15 @@ private fun WalletReady(
                     detectTapGestures(onTap = { onTransparencyTap() })
                 },
             )
+
+            // Banner activación USDC — solo si la cuenta no tiene trustline.
+            if (state.needsUsdcTrustline) {
+                ActivateUsdcBanner(
+                    activating = state.activatingTrustline,
+                    error = state.trustlineError,
+                    onActivate = onActivateUsdc,
+                )
+            }
 
             BalanceCard(
                 balanceStroops = wallet.usdcBalanceStroops,
@@ -242,6 +254,64 @@ private fun WalletReady(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+/**
+ * Banner amarillo que aparece cuando la wallet activa NO tiene trustline
+ * USDC. Sin trustline, la cuenta no puede recibir USDC y los pagos a su
+ * address fallan con error #13 "trustline entry is missing". Un solo tap
+ * dispara la operación ChangeTrust firmada con la wallet del usuario.
+ */
+@Composable
+private fun ActivateUsdcBanner(
+    activating: Boolean,
+    error: String?,
+    onActivate: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizYellow.copy(alpha = 0.18f))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "Activa tu cuenta para recibir USDC",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        Text(
+            text = "Stellar requiere un trustline al USDC antes de poder recibirlo. Tarda ~5 segundos.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.7f),
+        )
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodyMedium,
+                color = androidx.compose.ui.graphics.Color(0xFFB00020),
+            )
+        }
+        Button(
+            onClick = onActivate,
+            enabled = !activating,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = RaizGreen,
+                contentColor = RaizWhite,
+                disabledContainerColor = RaizGreen.copy(alpha = 0.5f),
+                disabledContentColor = RaizWhite.copy(alpha = 0.7f),
+            ),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            if (activating) {
+                CircularProgressIndicator(color = RaizWhite, strokeWidth = 2.dp)
+            } else {
+                Text("Activar trustline", style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 

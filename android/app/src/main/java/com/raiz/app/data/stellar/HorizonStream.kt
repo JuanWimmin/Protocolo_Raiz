@@ -6,6 +6,11 @@ import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.soneso.stellar.sdk.AssetTypeCreditAlphaNum4
+import com.soneso.stellar.sdk.ChangeTrustOperation
+import com.soneso.stellar.sdk.KeyPair
+import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -194,6 +199,53 @@ class HorizonStream @Inject constructor(
 
             else -> emptyList()
         }
+    }
+
+    /**
+     * Verifica si la cuenta tiene trustline al USDC del admin del protocolo.
+     * Sin esto, no puede recibir USDC y los pagos a su address fallarán.
+     */
+    suspend fun hasUsdcTrustline(accountId: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val account = horizonServer.accounts().account(accountId)
+            account.balances.any { b ->
+                b.assetCode == "USDC" && b.assetIssuer == deployments.admin
+            }
+        }.getOrElse { false }
+    }
+
+    /**
+     * Activa el trustline USDC para la cuenta del `signer`. Construye y firma
+     * una `ChangeTrustOperation` y la envía a Horizon. Tras esto, la cuenta
+     * puede recibir USDC (y mostrarse balance>0 en lugar del default 0).
+     *
+     * Errores comunes:
+     *  - InsufficientBalance: la cuenta debe tener al menos ~1 XLM de reserve.
+     *    (Cuentas creadas con friendbot vienen con 10000 XLM, no es problema.)
+     *  - El sequence number lo lee Horizon en loadAccount; refrescar si falla.
+     */
+    suspend fun enableUsdcTrustline(signer: KeyPair): RaizResult<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val accountId = signer.getAccountId()
+            val source = horizonServer.loadAccount(accountId)
+            val asset = AssetTypeCreditAlphaNum4("USDC", deployments.admin)
+            val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
+            val tx = TransactionBuilder(source, Network.TESTNET)
+                .setBaseFee(100L)
+                .addOperation(op)
+                .setTimeout(60L)
+                .build()
+            tx.sign(signer)
+            // submitTransaction de Horizon espera el XDR envelope base64.
+            horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
+            Log.i(TAG, "Trustline USDC activado para $accountId")
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                Log.e(TAG, "enableUsdcTrustline falló: ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+            },
+        )
     }
 
     /**

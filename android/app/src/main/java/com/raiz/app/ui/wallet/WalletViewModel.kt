@@ -25,7 +25,11 @@ sealed interface WalletUiState {
     data class Ready(
         val wallet: WalletState,
         val poolBalanceLabel: String,
-        val passport: PassportData? = null,        // null mientras se carga
+        val passport: PassportData? = null,
+        /** true = cuenta SIN trustline USDC. Mostrar banner "Activar para recibir USDC". */
+        val needsUsdcTrustline: Boolean = false,
+        val activatingTrustline: Boolean = false,
+        val trustlineError: String? = null,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -54,6 +58,59 @@ class WalletViewModel @Inject constructor(
         observeUsdcBalance()
         loadCentroPoolBalance()
         loadPassport()
+        checkTrustline()
+    }
+
+    /** Verifica si el wallet activo tiene trustline USDC. */
+    private fun checkTrustline() {
+        viewModelScope.launch {
+            val accountId = walletManager.currentAccountId() ?: return@launch
+            val has = horizonStream.hasUsdcTrustline(accountId)
+            Log.i(TAG, "Trustline USDC para $accountId: $has")
+            _state.update { current ->
+                if (current is WalletUiState.Ready) current.copy(needsUsdcTrustline = !has)
+                else current
+            }
+        }
+    }
+
+    /** Activa el trustline USDC en la cuenta del usuario (firma + submit). */
+    fun activateUsdcTrustline() {
+        viewModelScope.launch {
+            _state.update { current ->
+                if (current is WalletUiState.Ready)
+                    current.copy(activatingTrustline = true, trustlineError = null)
+                else current
+            }
+            val signer = walletManager.currentKeyPair()
+            if (signer == null) {
+                _state.update { current ->
+                    if (current is WalletUiState.Ready) current.copy(
+                        activatingTrustline = false,
+                        trustlineError = "No hay wallet activa para firmar.",
+                    ) else current
+                }
+                return@launch
+            }
+            when (val r = horizonStream.enableUsdcTrustline(signer)) {
+                is RaizResult.Success -> {
+                    Log.i(TAG, "Trustline activado")
+                    _state.update { current ->
+                        if (current is WalletUiState.Ready) current.copy(
+                            activatingTrustline = false,
+                            needsUsdcTrustline = false,
+                            trustlineError = null,
+                        ) else current
+                    }
+                }
+                is RaizResult.Error -> _state.update { current ->
+                    if (current is WalletUiState.Ready) current.copy(
+                        activatingTrustline = false,
+                        trustlineError = "No se pudo activar: ${r.message}",
+                    ) else current
+                }
+            }
+        }
     }
 
     /** Polling del balance USDC vía Horizon. Actualiza el WalletState. */
