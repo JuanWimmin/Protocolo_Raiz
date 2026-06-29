@@ -49,12 +49,19 @@ class RoleResolver @Inject constructor(
             }
         }
 
-        // 2. ¿Es comerciante en alguno de los barrios conocidos?
-        for ((barrioId, barrioName) in DEMO_BARRIOS) {
+        // 2. ¿Es comerciante? Itera los barrios ON-CHAIN (list_barrios). Si el
+        //    contrato aún no expone list_barrios (deploy previo) o lo devuelve
+        //    vacío, cae al fallback de los barrios del seed.
+        val barrioIds = when (val lb = sorobanClient.listBarrios()) {
+            is RaizResult.Success -> lb.data.ifEmpty { DEMO_BARRIOS.keys.toList() }
+            is RaizResult.Error -> DEMO_BARRIOS.keys.toList()
+        }
+        for (barrioId in barrioIds) {
             when (val r = sorobanClient.listMerchants(barrioId)) {
                 is RaizResult.Success -> {
                     val isMerchant = r.data.any { it.address == address }
                     if (isMerchant) {
+                        val barrioName = barrioNameFor(barrioId)
                         val ctx = RoleContext(
                             role = UserRole.MERCHANT,
                             barrioId = barrioId,
@@ -65,7 +72,8 @@ class RoleResolver @Inject constructor(
                         return ctx
                     }
                 }
-                is RaizResult.Error -> Log.w(TAG, "listMerchants($barrioName) falló: ${r.message}")
+                is RaizResult.Error ->
+                    Log.w(TAG, "listMerchants(${barrioNameFor(barrioId)}) falló: ${r.message}")
             }
         }
 

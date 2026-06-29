@@ -140,6 +140,32 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Pool: list_barrios (RBAC dinámico) ───────────────────────────────
+
+    /**
+     * IDs (hex) de todos los barrios registrados on-chain. Lectura pura.
+     * Solo existe en contratos desplegados con el índice `AllBarrios`; en un
+     * deploy previo la llamada falla → el caller debe tener fallback.
+     */
+    suspend fun listBarrios(): RaizResult<List<String>> {
+        return runCatching {
+            poolClient().invoke<List<String>>(
+                functionName = "list_barrios",
+                arguments = emptyMap(),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { scval ->
+                    ScvalParse.asVec(scval).map { ScvalParse.asHex(it) }
+                },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "listBarrios: ${e.message}")
+            },
+        )
+    }
+
     // ── Pool: get_barrio ──────────────────────────────────────────────────
 
     suspend fun getBarrio(barrioId: String): RaizResult<Barrio> {
