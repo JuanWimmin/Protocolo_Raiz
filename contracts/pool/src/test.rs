@@ -634,3 +634,62 @@ fn test_vault_redeem_emits_event() {
     assert!(!events.is_empty());
     assert!(events.len() >= 2);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests del índice global de barrios (DataKey::AllBarrios / list_barrios)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Sin registrar ningún barrio, list_barrios debe devolver un Vec vacío.
+#[test]
+fn test_list_barrios_empty_before_register() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, _usdc, _usdc_admin, _vault) = setup(&env);
+
+    let barrios = client.list_barrios();
+    assert_eq!(barrios.len(), 0);
+}
+
+/// Al registrar N barrios, list_barrios los devuelve todos en orden de inserción.
+#[test]
+fn test_list_barrios_returns_all_in_order() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, _usdc, _usdc_admin, _vault) = setup(&env);
+
+    let bid1 = barrio_id(&env);
+    let bid2 = barrio_id(&env);
+    let bid3 = barrio_id(&env);
+    let treasury = Address::generate(&env);
+
+    client.register_barrio(&bid1, &String::from_str(&env, "Centro"), &treasury);
+    client.register_barrio(&bid2, &String::from_str(&env, "Candelaria"), &treasury);
+    client.register_barrio(&bid3, &String::from_str(&env, "Usaquen"), &treasury);
+
+    let barrios = client.list_barrios();
+    assert_eq!(barrios.len(), 3);
+    assert_eq!(barrios.get(0).unwrap(), bid1);
+    assert_eq!(barrios.get(1).unwrap(), bid2);
+    assert_eq!(barrios.get(2).unwrap(), bid3);
+}
+
+/// Re-registrar el mismo barrio_id (sobreescritura de datos) no debe duplicarlo en el índice.
+#[test]
+fn test_list_barrios_no_duplicates_on_re_register() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, _usdc, _usdc_admin, _vault) = setup(&env);
+
+    let bid = barrio_id(&env);
+    let treasury = Address::generate(&env);
+
+    // Primer registro
+    client.register_barrio(&bid, &String::from_str(&env, "Centro"), &treasury);
+    // Re-registro del mismo id (sobreescribe nombre)
+    client.register_barrio(&bid, &String::from_str(&env, "Centro v2"), &treasury);
+
+    // El índice no debe tener duplicados
+    let barrios = client.list_barrios();
+    assert_eq!(barrios.len(), 1);
+    assert_eq!(barrios.get(0).unwrap(), bid);
+}

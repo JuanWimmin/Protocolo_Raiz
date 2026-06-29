@@ -31,6 +31,15 @@ pub enum DataKey {
     Merchant(Address),              // comercio -> MerchantData
     UsdcToken,                      // Address del token USDC (SAC)
     ProtocolFeeBps,                 // fee del protocolo en basis points (50 = 0.5%)
+    DefindexVault,                  // Address del vault DeFindex (instance)
+    BarrioMerchants(BytesN<32>),    // índice de comercios por barrio (para list_merchants)
+    TouristSeen(BytesN<32>, Address), // flag de turista único por barrio
+    VaultShares(BytesN<32>),        // shares del vault por barrio (persistent)
+    // Índice global de barrios (persistent Vec<BytesN<32>>).
+    // Alimentado por register_barrio; permite RBAC dinámico desde la app.
+    // NOTA: barrios registrados antes de añadir esta clave no aparecen
+    // hasta un re-seed. La app debe tener fallback en deployments.json.
+    AllBarrios,
 }
 
 #[contracttype]
@@ -82,6 +91,12 @@ pub fn register_merchant(env: Env, admin: Address, data: MerchantData) -> Result
 pub fn get_pool_balance(env: Env, barrio_id: BytesN<32>) -> i128;
 pub fn get_barrio(env: Env, barrio_id: BytesN<32>) -> BarrioData;
 pub fn list_merchants(env: Env, barrio_id: BytesN<32>) -> Vec<MerchantData>;  // para el mapa
+
+// Devuelve todos los barrio_id registrados, en orden de inserción.
+// Solo lectura, sin auth. Permite RBAC dinámico: la app no hardcodea IDs.
+// NOTA: barrios registrados antes de que existiera DataKey::AllBarrios no
+// aparecen aquí hasta re-seed. La app debe tener fallback en deployments.json.
+pub fn list_barrios(env: Env) -> Vec<BytesN<32>>;
 
 // ── Vault DeFindex (yield sobre fondos ociosos) ──────────────────────────────
 

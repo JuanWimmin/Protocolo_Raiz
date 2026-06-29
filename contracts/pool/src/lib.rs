@@ -87,6 +87,12 @@ pub enum DataKey {
     TouristSeen(BytesN<32>, Address),
     // Shares del vault por barrio (persistent)
     VaultShares(BytesN<32>),
+    // Índice global de barrios registrados (persistent Vec<BytesN<32>>).
+    // Alimentado por register_barrio; permite que la app descubra barrios
+    // dinámicamente sin hardcodear la lista. Los barrios registrados ANTES
+    // de este cambio no aparecerán aquí hasta un re-seed que los vuelva a
+    // registrar. La app debe mantener fallback (deployments.json) mientras tanto.
+    AllBarrios,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +238,20 @@ impl PoolContract {
             treasury_contract,
         };
         env.storage().persistent().set(&DataKey::Barrio(id.clone()), &barrio);
+
+        // Actualiza el índice global de barrios para que la app los descubra
+        // dinámicamente. Evita duplicados: si el mismo id ya figura en la lista
+        // (re-registro del barrio), no se inserta de nuevo.
+        let mut all: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllBarrios)
+            .unwrap_or(Vec::new(&env));
+        if !all.contains(&id) {
+            all.push_back(id.clone());
+            env.storage().persistent().set(&DataKey::AllBarrios, &all);
+        }
+
         // Inicializa el índice de comercios vacío
         let empty: Vec<Address> = Vec::new(&env);
         env.storage()
@@ -644,6 +664,20 @@ impl PoolContract {
             }
         }
         out
+    }
+
+    /// Devuelve todos los `barrio_id` registrados, en orden de inserción.
+    /// Solo lectura, sin autenticación. Permite que la app descubra barrios
+    /// dinámicamente sin hardcodear la lista en el cliente.
+    ///
+    /// NOTA: los barrios registrados ANTES de que se añadiera `DataKey::AllBarrios`
+    /// (este cambio) no aparecerán hasta un re-despliegue + re-seed. La app debe
+    /// mantener un fallback (deployments.json / lista hardcodeada) mientras tanto.
+    pub fn list_barrios(env: Env) -> Vec<BytesN<32>> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AllBarrios)
+            .unwrap_or(Vec::new(&env))
     }
 
     // ── Internos ──────────────────────────────────────────────────────────
