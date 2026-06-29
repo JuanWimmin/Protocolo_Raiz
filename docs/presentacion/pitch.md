@@ -51,7 +51,7 @@ Tres ideas clave:
 ## 4 · Cómo funciona + por qué Stellar (≈1.5 min)
 
 **Cuatro contratos Soroban (Rust), desplegados en testnet:**
-
+    
 | Contrato | Qué hace |
 |---|---|
 | **Pool** | Pagos turista→comercio + custodia del Tip Barrio |

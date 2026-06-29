@@ -82,6 +82,33 @@ pub fn register_merchant(env: Env, admin: Address, data: MerchantData) -> Result
 pub fn get_pool_balance(env: Env, barrio_id: BytesN<32>) -> i128;
 pub fn get_barrio(env: Env, barrio_id: BytesN<32>) -> BarrioData;
 pub fn list_merchants(env: Env, barrio_id: BytesN<32>) -> Vec<MerchantData>;  // para el mapa
+
+// ── Vault DeFindex (yield sobre fondos ociosos) ──────────────────────────────
+
+// BREAKING CHANGE en initialize: añade defindex_vault como 5° parámetro.
+pub fn initialize(env: Env, admin: Address, usdc_token: Address, rewards_contract: Address,
+    protocol_fee_bps: u32, defindex_vault: Address) -> Result<(), Error>;
+
+// Cambia el vault en caliente sin re-desplegar Pool. Solo admin.
+pub fn set_defindex_vault(env: Env, admin: Address, vault: Address) -> Result<(), Error>;
+
+// Deposita fondos ociosos al vault para generar yield.
+// caller debe ser admin O treasury_contract del barrio.
+// Requiere pre-autorizar usdc.transfer(pool, vault, amount) vía authorize_as_current_contract.
+// Evento: (symbol_short!("vault_dep"), barrio_id), (amount, shares)
+pub fn deposit_idle_to_vault(env: Env, caller: Address, barrio_id: BytesN<32>, amount: i128)
+    -> Result<(), Error>;
+
+// Rescata shares del vault de vuelta a pool_balance (realiza el yield).
+// caller debe ser admin O treasury_contract del barrio.
+// NO necesita authorize_as_current_contract (el vault transfiere sus propios fondos).
+// Evento: (symbol_short!("vault_red"), barrio_id), (shares, got)
+pub fn redeem_from_vault(env: Env, caller: Address, barrio_id: BytesN<32>, shares: i128)
+    -> Result<(), Error>;
+
+// Lecturas del vault
+pub fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128;
+pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128;  // llama vault.get_asset_amounts_per_shares
 ```
 
 ---
@@ -192,7 +219,9 @@ pub fn execute_proposal(env: Env, proposal_id: u64) -> Result<(), Error>;
 // → consulta Governance.tally(proposal_id) [cross-contract]
 // → solo si status == Passed
 // → consulta Governance.get_proposal para amount y recipient
-// → llama a Pool para transferir del pool al recipient
+// NUEVO: si pool.get_vault_shares(barrio_id) > 0, llama pool.redeem_from_vault
+//        para rescatar todo el yield de vuelta al pool antes del retiro
+// → llama a Pool.withdraw_to para transferir del pool al recipient
 // → registra Execution; marca proposal como Executed en Governance
 // → emite evento: execution(proposal_id, barrio_id, amount, recipient)
 // → cualquiera puede llamar esto (es trustless): si pasó, se ejecuta

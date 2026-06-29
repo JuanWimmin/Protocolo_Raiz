@@ -15,6 +15,11 @@ set -euo pipefail
 NETWORK="${NETWORK:-testnet}"
 IDENTITY="${IDENTITY:-raiz-admin}"
 PROTOCOL_FEE_BPS="${PROTOCOL_FEE_BPS:-50}"
+# DeFindex (Camino A): el Pool custodia el USDC de Blend (el mismo que acepta el
+# vault DeFindex) en vez de un USDC propio. SAC, emisor clásico y vault — fijos en testnet.
+USDC_SAC="${USDC_SAC:-CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU}"
+USDC_ISSUER="${USDC_ISSUER:-GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56}"
+DEFINDEX_VAULT="${DEFINDEX_VAULT:-CBMVK2JK6NTOT2O4HNQAIQFJY232BHKGLIMXDVQVHIIZKDACXDFZDWHN}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTRACTS_DIR="$ROOT_DIR/contracts"
@@ -63,32 +68,33 @@ for crate in rewards governance treasury pool; do
     log "  $crate.wasm — $size bytes"
 done
 
-# ── 3. Deploy USDC SAC ─────────────────────────────────────────────────────
-
-# El id del SAC es determinístico desde el asset, no hace falta consultarlo
-# después del deploy. Calculamos el id, luego desplegamos (si ya existe,
-# stellar contract asset deploy retorna error que ignoramos con || true).
-log "Calculando USDC SAC id (asset USDC:$ADMIN_ADDR)..."
-USDC_ID=$(stellar contract id asset \
-    --asset "USDC:$ADMIN_ADDR" \
-    --network "$NETWORK" 2>&1 | grep -E '^C[A-Z0-9]+$' | tail -1)
-log "USDC SAC esperado: $USDC_ID"
-
-log "Desplegando SAC si no existe..."
-stellar contract asset deploy \
-    --asset "USDC:$ADMIN_ADDR" \
-    --source-account "$IDENTITY" \
-    --network "$NETWORK" >/dev/null 2>&1 || warn "Asset deploy: ya existía (OK)"
+# ── 3. USDC (Blend testnet) ────────────────────────────────────────────────
+# Camino A: el Pool custodia el USDC de Blend (el que acepta el vault DeFindex),
+# NO un USDC propio. Ese SAC ya está desplegado en testnet; solo lo referenciamos.
+USDC_ID="$USDC_SAC"
+log "USDC (Blend) SAC: $USDC_ID  (emisor clásico USDC:$USDC_ISSUER)"
 
 # ── 4. Deploy los 4 contratos ──────────────────────────────────────────────
 
 deploy_contract() {
     local name="$1"
     local wasm="$WASM_DIR/$name.wasm"
-    stellar contract deploy \
-        --wasm "$wasm" \
-        --source-account "$IDENTITY" \
-        --network "$NETWORK" 2>&1 | tail -1 | tr -d '[:space:]'
+    local out="" tries=0
+    # Testnet RPC es flaky en deploys rápidos secuenciales → reintenta.
+    while [[ $tries -lt 5 ]]; do
+        out=$(stellar contract deploy \
+            --wasm "$wasm" \
+            --source-account "$IDENTITY" \
+            --network "$NETWORK" 2>/dev/null | tail -1 | tr -d '[:space:]' || true)
+        if [[ "$out" == C* && ${#out} -eq 56 ]]; then
+            echo "$out"; return 0
+        fi
+        tries=$((tries + 1))
+        warn "deploy $name reintento $tries/5..." >&2
+        sleep 5 2>/dev/null || true
+    done
+    err "deploy de $name falló tras 5 intentos"
+    return 1
 }
 
 log "Deploy Pool..."
@@ -113,11 +119,21 @@ log "  Rewards: $REWARDS_ID"
 invoke() {
     local contract_id="$1"
     shift
-    stellar contract invoke \
-        --id "$contract_id" \
-        --source-account "$IDENTITY" \
-        --network "$NETWORK" \
-        -- "$@"
+    local tries=0
+    while [[ $tries -lt 5 ]]; do
+        if stellar contract invoke \
+            --id "$contract_id" \
+            --source-account "$IDENTITY" \
+            --network "$NETWORK" \
+            -- "$@"; then
+            return 0
+        fi
+        tries=$((tries + 1))
+        warn "invoke reintento $tries/5..." >&2
+        sleep 5 2>/dev/null || true
+    done
+    err "invoke falló tras 5 intentos: $*"
+    return 1
 }
 
 log "Initialize Rewards (admin=$IDENTITY, pool=$POOL_ID)..."
@@ -125,12 +141,13 @@ invoke "$REWARDS_ID" initialize \
     --admin "$ADMIN_ADDR" \
     --pool_contract "$POOL_ID"
 
-log "Initialize Pool (admin, usdc, rewards, fee=$PROTOCOL_FEE_BPS)..."
+log "Initialize Pool (admin, usdc, rewards, fee=$PROTOCOL_FEE_BPS, defindex_vault)..."
 invoke "$POOL_ID" initialize \
     --admin "$ADMIN_ADDR" \
     --usdc_token "$USDC_ID" \
     --rewards_contract "$REWARDS_ID" \
-    --protocol_fee_bps "$PROTOCOL_FEE_BPS"
+    --protocol_fee_bps "$PROTOCOL_FEE_BPS" \
+    --defindex_vault "$DEFINDEX_VAULT"
 
 log "Initialize Governance (protocol_admin, treasury=$TREASURY_ID)..."
 invoke "$GOVERNANCE_ID" initialize \
@@ -156,7 +173,10 @@ cat > "$DEPLOYMENTS_JSON" <<EOF
   "treasury": "$TREASURY_ID",
   "rewards": "$REWARDS_ID",
   "protocol_fee_bps": $PROTOCOL_FEE_BPS,
-  "deployed_at": "$DEPLOYED_AT"
+  "deployed_at": "$DEPLOYED_AT",
+  "usdc_issuer": "$USDC_ISSUER",
+  "defindex_vault": "$DEFINDEX_VAULT",
+  "defindex_usdc": "$USDC_SAC"
 }
 EOF
 log "deployments.json escrito:"

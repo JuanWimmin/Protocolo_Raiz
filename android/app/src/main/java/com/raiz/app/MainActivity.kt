@@ -23,6 +23,7 @@ import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
 import com.raiz.app.ui.rewards.RewardsScreen
 import com.raiz.app.ui.theme.RaizTheme
+import com.raiz.app.ui.treasury.YieldScreen
 import com.raiz.app.ui.wallet.WalletScreen
 import com.raiz.app.ui.welcome.CreateWalletScreen
 import com.raiz.app.ui.welcome.ImportWalletScreen
@@ -176,7 +177,13 @@ private fun RaizApp(
             )
         }
         composable(Routes.DASHBOARD) {
-            DashboardScreen(onBack = { nav.popBackStack() })
+            DashboardScreen(
+                onBack = { nav.popBackStack() },
+                onOpenYield = { nav.navigate(Routes.YIELD) },
+            )
+        }
+        composable(Routes.YIELD) {
+            YieldScreen(onBack = { nav.popBackStack() })
         }
     }
 }
@@ -193,4 +200,5 @@ private object Routes {
     const val MAP = "map"
     const val DASHBOARD = "dashboard"
     const val BECOME_MERCHANT = "become_merchant"
+    const val YIELD = "yield"
 }

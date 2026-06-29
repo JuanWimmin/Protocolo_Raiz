@@ -32,6 +32,8 @@ GOVERNANCE=$(get_field governance)
 REWARDS=$(get_field rewards)
 TREASURY=$(get_field treasury)
 USDC=$(get_field usdc_sac)
+USDC_ISSUER=$(get_field usdc_issuer)
+DEFINDEX_VAULT=$(get_field defindex_vault)
 ADMIN_ADDR=$(get_field admin)
 TOURIST_ADDR=$(stellar keys address "$TOURIST" 2>/dev/null || echo "")
 
@@ -51,19 +53,36 @@ invoke() {
     local contract_id="$1"
     local source="$2"
     shift 2
-    local output
-    output=$(stellar contract invoke \
-        --id "$contract_id" \
-        --source-account "$source" \
-        --network "$NETWORK" \
-        -- "$@" 2>&1)
-    local rc=$?
-    if [[ $rc -ne 0 ]]; then
-        warn "invoke falló (rc=$rc): $*"
-        echo "$output" | tail -5 >&2
-        return $rc
-    fi
-    echo "$output" | tail -1
+    local output rc tries=0
+    # Testnet RPC es flaky → reintenta hasta 4 veces.
+    while [[ $tries -lt 4 ]]; do
+        output=$(stellar contract invoke \
+            --id "$contract_id" \
+            --source-account "$source" \
+            --network "$NETWORK" \
+            -- "$@" 2>&1)
+        rc=$?
+        if [[ $rc -eq 0 ]]; then
+            echo "$output" | tail -1
+            return 0
+        fi
+        tries=$((tries + 1))
+        sleep 4 2>/dev/null || true
+    done
+    warn "invoke falló (rc=$rc) tras $tries intentos: $*"
+    echo "$output" | tail -3 >&2
+    return $rc
+}
+
+# Fondea una cuenta con USDC de Blend via faucet público (~1000 USDC + trustlines).
+faucet_usdc() {
+    local alias="$1"
+    local addr; addr=$(stellar keys address "$alias" 2>/dev/null)
+    [[ -z "$addr" ]] && { warn "faucet: $alias sin address"; return 1; }
+    local xdr; xdr=$(curl -s "https://ewqw4hx7oa.execute-api.us-east-1.amazonaws.com/getAssets?userId=$addr" | tr -d '"')
+    [[ "$xdr" != AAAA* ]] && { warn "faucet: respuesta inesperada para $addr"; return 1; }
+    printf '%s' "$xdr" | stellar tx sign --sign-with-key "$alias" --network "$NETWORK" 2>/dev/null \
+        | stellar tx send --network "$NETWORK" >/dev/null 2>&1
 }
 
 # ── 0. Setup turista demo ──────────────────────────────────────────────────
@@ -75,15 +94,8 @@ if [[ -z "$TOURIST_ADDR" ]]; then
 fi
 log "Turista demo: $TOURIST_ADDR"
 
-log "Asegurando trustline turista → USDC..."
-stellar tx new change-trust \
-    --source-account "$TOURIST" \
-    --line "USDC:$ADMIN_ADDR" \
-    --network "$NETWORK" >/dev/null 2>&1 || warn "(trustline ya existía)"
-
-log "Minteando 5000 USDC al turista demo..."
-invoke "$USDC" "$ADMIN" mint --to "$TOURIST_ADDR" --amount 50000000000 >/dev/null \
-    || warn "(mint falló o ya tenía saldo)"
+log "Fondeando turista con USDC de Blend (faucet: ~1000 USDC + trustline)..."
+faucet_usdc "$TOURIST" && log "  ✓ turista fondeado" || warn "  (faucet turista falló o ya tenía saldo)"
 
 # ── 1. Helpers: crear merchant y resident ──────────────────────────────────
 
@@ -98,7 +110,7 @@ create_account_with_trustline() {
     # Trustline siempre (idempotente: si ya existe, falla silenciosamente).
     stellar tx new change-trust \
         --source-account "$alias" \
-        --line "USDC:$ADMIN_ADDR" \
+        --line "USDC:$USDC_ISSUER" \
         --network "$NETWORK" >/dev/null 2>&1 || true
     stellar keys address "$alias"
 }
@@ -213,6 +225,18 @@ log "  ✓ 2 pagos en Barrio Norte"
 invoke "$POOL" "$TOURIST" pay_merchant --tourist "$TOURIST_ADDR" --merchant "$M7" --amount 120000000 --tip_bps 200 >/dev/null # 12 USDC
 invoke "$POOL" "$TOURIST" pay_merchant --tourist "$TOURIST_ADDR" --merchant "$M8" --amount 70000000  --tip_bps 200 >/dev/null # 7 USDC
 log "  ✓ 2 pagos en Costa Vieja"
+
+# ── 5b. Camino A: depositar fondo ocioso del Centro al vault DeFindex ───────
+# Prueba el cross-contract Pool→vault (authorize_as_current_contract). El Centro
+# tiene ~0.3 USDC de tips acumulados; depositamos 0.2 y dejamos 0.1 líquidos.
+log "Camino A: depositando 0.2 USDC del fondo del Centro al vault DeFindex..."
+if invoke "$POOL" "$ADMIN" deposit_idle_to_vault \
+    --caller "$ADMIN_ADDR" --barrio_id "$BARRIO_CENTRO" --amount 2000000 >/dev/null; then
+    SHARES=$(invoke "$POOL" "$ADMIN" get_vault_shares --barrio_id "$BARRIO_CENTRO")
+    log "  ✓ Fondo del Centro rindiendo en DeFindex (shares=$SHARES)"
+else
+    warn "  ✗ deposit_idle_to_vault falló — revisar auth cross-contract"
+fi
 
 # ── 6. Propuestas activas (1 por barrio) ───────────────────────────────────
 

@@ -75,6 +75,11 @@ pub trait Pool {
         recipient: Address,
         amount: i128,
     );
+    /// Lee las shares del vault que tiene este barrio (sin requerir auth).
+    fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128;
+    /// Rescata todas las shares del vault de vuelta al pool_balance.
+    /// Solo puede llamar el admin o el treasury del barrio — Treasury pasa su propia Address.
+    fn redeem_from_vault(env: Env, caller: Address, barrio_id: BytesN<32>, shares: i128);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,9 +176,17 @@ impl TreasuryContract {
         // 2. Carga los detalles de la propuesta.
         let proposal = governance.get_proposal(&proposal_id);
 
-        // 3. Pool transfiere del pool al recipient.
+        // 3. Si hay shares en el vault, rescatarlas primero para que el saldo
+        //    idle del pool sea suficiente para el retiro. El yield queda en pool_balance.
         let treasury_addr = env.current_contract_address();
         let pool = PoolClient::new(&env, &pool_addr);
+        let vault_shares = pool.get_vault_shares(&proposal.barrio_id);
+        if vault_shares > 0 {
+            // redeem_from_vault sube pool_balance += got, baja VaultShares = 0
+            pool.redeem_from_vault(&treasury_addr, &proposal.barrio_id, &vault_shares);
+        }
+
+        // Ahora pool_balance >= vault_yield + idle anterior; ejecuta el retiro.
         pool.withdraw_to(
             &treasury_addr,
             &proposal.barrio_id,

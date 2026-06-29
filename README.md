@@ -12,6 +12,7 @@
 - **Contratos**: Rust + `soroban-sdk` 22.x (4 contratos en `contracts/`)
 - **App**: Android nativo, Kotlin + Jetpack Compose, Material 3
 - **Stellar SDK**: `kmp-stellar-sdk` de Soneso
+- **Yield**: **DeFindex** (vault USDC sobre Soroban) — el fondo del barrio rinde, cross-contract
 - **Mapas**: Mapbox Maps SDK 11.x
 - **Wallet**: passkey (WebAuthn) + fallback frase semilla BIP-39
 
@@ -82,8 +83,9 @@ stellar keys generate --global raiz-admin --network testnet --fund
 # 2. Despliega
 ./scripts/deploy_testnet.sh
 
-# 3. Pobla con datos demo
-cd scripts && npx tsx seed.ts
+# 3. Pobla con datos demo (3 barrios, comercios, residentes, propuestas, premios
+#    + deposita el fondo del Centro en el vault DeFindex)
+./scripts/seed_testnet.sh
 ```
 
 Los IDs de contratos quedan en `deployments.json` (versionado).

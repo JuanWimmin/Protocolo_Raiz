@@ -36,6 +36,8 @@ data class DashboardUiState(
     val merchantCount: Int = 0,
     val proposals: List<Proposal> = emptyList(),
     val proposalAction: Map<Long, ProposalActionState> = emptyMap(),
+    /** Camino A: shares del fondo del barrio en el vault DeFindex (≈ USDC a pps 1.0). */
+    val vaultSharesStroops: Long = 0L,
 ) {
     val selectedBarrioName: String
         get() = barriosMeta.firstOrNull { it.first == selectedBarrioId }?.second
@@ -153,11 +155,13 @@ class DashboardViewModel @Inject constructor(
             val executionsResult = sorobanClient.getExecutionLog(barrioId)
             val merchantsResult = sorobanClient.listMerchants(barrioId)
             val proposalsResult = sorobanClient.listActiveProposals(barrioId)
+            val vaultSharesResult = sorobanClient.getVaultShares(barrioId)
 
             val barrio = (barrioResult as? RaizResult.Success)?.data
             val executions = (executionsResult as? RaizResult.Success)?.data.orEmpty()
             val merchants = (merchantsResult as? RaizResult.Success)?.data.orEmpty()
             val proposals = (proposalsResult as? RaizResult.Success)?.data.orEmpty()
+            val vaultShares = (vaultSharesResult as? RaizResult.Success)?.data ?: 0L
 
             val firstError = listOfNotNull(
                 (barrioResult as? RaizResult.Error)?.message,
@@ -177,6 +181,7 @@ class DashboardViewModel @Inject constructor(
                     executions = executions,
                     merchantCount = merchants.size,
                     proposals = proposals,
+                    vaultSharesStroops = vaultShares,
                     // Limpia acciones resueltas para la nueva carga.
                     proposalAction = it.proposalAction.filterValues { v ->
                         v is ProposalActionState.Submitting

@@ -205,6 +205,23 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   (especialmente Vivo) los logs `Log.i` se filtran por defecto. Forzar
   visibilidad con: `adb shell setprop log.tag.RAIZ VERBOSE` antes de ejecutar.
 
+- **DeFindex / Blend testnet USDC**: la integración de yield usa el vault USDC de
+  DeFindex (`CBMVK2JK…`), que SOLO acepta el USDC de **Blend** (`USDC:GATALTGT…`,
+  SAC `CAQCFVLOBK…`) — no el USDC propio de RAÍZ. Desde el re-deploy de Camino A
+  los contratos custodian ese USDC; fondear cuentas con el faucet de Blend
+  (`GET https://ewqw4hx7oa.execute-api.us-east-1.amazonaws.com/getAssets?userId=<G>`
+  → firmar el XDR → enviar). El admin NO puede acuñarlo.
+
+- **Lecturas que el host trata como WRITE**: `get_asset_amounts_per_shares` del
+  vault DeFindex (y cualquier lectura sobre entradas con TTL expirado de Soroban,
+  ~1 mes) añade footprint de restore → `invoke(signer=null)` falla con "Signer
+  required for write call". Calcular valores desde lecturas puras (`total_supply`
+  + `fetch_total_managed_funds`); para datos viejos, un reseed con TTL fresco lo arregla.
+
+- **Deploys/invokes a testnet son flaky en ráfaga**: `deploy_testnet.sh` y
+  `seed_testnet.sh` reintentan cada operación (propagación RPC + rate-limit). Si
+  un deploy "se cuelga" o un init da "Contract not found", es propagación — reintenta.
+
 ---
 
 ## Estado actual (al iniciar el proyecto)

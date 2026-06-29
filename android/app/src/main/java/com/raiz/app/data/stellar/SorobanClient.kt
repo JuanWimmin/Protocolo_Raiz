@@ -114,6 +114,32 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Pool: get_vault_shares (Camino A — fondo del barrio en DeFindex) ───
+
+    /**
+     * Shares (stroops, 7 dec) que el fondo de un barrio tiene depositadas en el
+     * vault de DeFindex. Lectura pura de storage del Pool (read-only). A precio
+     * por share ~1.0 equivale a su valor en USDC. 0 si el barrio no ha depositado.
+     */
+    suspend fun getVaultShares(barrioId: String): RaizResult<Long> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            poolClient().invoke<Long>(
+                functionName = "get_vault_shares",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { ScvalParse.asLong(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getVaultShares: ${e.message}")
+            },
+        )
+    }
+
     // ── Pool: get_barrio ──────────────────────────────────────────────────
 
     suspend fun getBarrio(barrioId: String): RaizResult<Barrio> {

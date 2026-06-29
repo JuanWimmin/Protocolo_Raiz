@@ -6,6 +6,10 @@
 //! para el comercio y el "Tip Barrio" para el fondo comunitario, y llama
 //! cross-contract al contrato Rewards para acumular puntos.
 //!
+//! También gestiona el vault DeFindex: admin o treasury del barrio pueden
+//! depositar los fondos ociosos (`deposit_idle_to_vault`) y rescatarlos
+//! (`redeem_from_vault`). El yield queda en `pool_balance` tras el rescate.
+//!
 //! Convenciones:
 //!   - Montos en USDC se manejan como i128 en stroops (7 decimales). 1 USDC = 10_000_000.
 //!   - tip_bps = basis points (200 = 2%).
@@ -13,8 +17,9 @@
 //!   - El token USDC se maneja vía su Stellar Asset Contract (SAC) usando la interfaz token.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short,
-    token, Address, BytesN, Env, String, Symbol, Vec,
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
+    contract, contracterror, contractimpl, contracttype, symbol_short, vec,
+    token, Address, BytesN, Env, IntoVal, String, Symbol, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +38,7 @@ pub enum Error {
     BarrioNotFound = 6,
     InvalidAmount = 7,
     InvalidTipBps = 8,
+    VaultNotConfigured = 9,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,12 +77,16 @@ pub enum DataKey {
     UsdcToken,
     RewardsContract,
     ProtocolFeeBps,
+    // Vault DeFindex (instance): dirección del vault compartida para todos los barrios
+    DefindexVault,
     Barrio(BytesN<32>),
     Merchant(Address),
     // Índice de comercios por barrio, para list_merchants (alimenta el mapa)
     BarrioMerchants(BytesN<32>),
     // Set de turistas que ya aportaron a un barrio (para unique_tourists)
     TouristSeen(BytesN<32>, Address),
+    // Shares del vault por barrio (persistent)
+    VaultShares(BytesN<32>),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +105,61 @@ mod rewards_contract {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Interfaz del vault DeFindex (cliente declarado a mano)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Se usa `#[contractclient]` en lugar de `contractimport!` porque el wasm del
+// vault DeFindex no está en este repo.
+//
+// DECISIÓN sobre el tipo de retorno de `deposit`:
+//   La firma on-chain real es:
+//     deposit(...) -> (Vec<i128>, i128, Option<Vec<Option<AssetInvestmentAllocation>>>)
+//   Solo necesitamos el elemento `.1` (i128 de shares). El tercer elemento varía
+//   según la versión y configuración del vault:
+//     - Con invest=false: puede ser Void (None) → ScVal::Void
+//     - Con invest=true:  el vault DeFindex real devuelve [null] → ScVal::Vec([ScVal::Void])
+//   Usar `()` (→ Void) o `Option<...>` falla para el caso invest=true del vault real.
+//   SOLUCIÓN: usar `soroban_sdk::Val` (tipo comodín). `Val` implementa
+//   `TryFromVal<Env, Val>` de forma identitaria (soroban-env-common val.rs:271),
+//   por lo que acepta CUALQUIER valor XDR sin hacer type-checking. Solo lo ignoramos.
+//   Verificado que Val es aceptable como componente de tupla en #[contractclient].
+mod vault_client {
+    use soroban_sdk::{contractclient, Address, Env, Val, Vec};
+
+    #[allow(dead_code)]
+    #[contractclient(name = "DefindexVaultClient")]
+    pub trait DefindexVault {
+        /// Deposita `amounts_desired[0]` USDC desde `from` al vault.
+        /// Retorna (amounts_depositados, shares_minteadas, _alloc_ignorada).
+        /// Solo usamos el elemento `.1`. El tercer elemento es `Val` (comodín
+        /// que acepta cualquier XDR: Void cuando invest=false, Vec([Void]) cuando
+        /// invest=true con el vault DeFindex real).
+        fn deposit(
+            env: Env,
+            amounts_desired: Vec<i128>,
+            amounts_min: Vec<i128>,
+            from: Address,
+            invest: bool,
+        ) -> (Vec<i128>, i128, Val);
+
+        /// Quema `withdraw_shares` shares y transfiere USDC de vuelta a `from`.
+        /// Retorna vec de montos por asset (tomamos [0] para USDC).
+        fn withdraw(
+            env: Env,
+            withdraw_shares: i128,
+            min_amounts_out: Vec<i128>,
+            from: Address,
+        ) -> Vec<i128>;
+
+        /// Shares que tiene `id` en el vault.
+        fn balance(env: Env, id: Address) -> i128;
+
+        /// Valor USDC underlying de `vault_shares` shares (vec por asset).
+        fn get_asset_amounts_per_shares(env: Env, vault_shares: i128) -> Vec<i128>;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Contrato
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,12 +171,16 @@ pub struct PoolContract;
 #[contractimpl]
 impl PoolContract {
     /// Inicializa el contrato. Solo se llama una vez.
+    ///
+    /// BREAKING CHANGE vs versión anterior: añade `defindex_vault`.
+    /// Al re-desplegar en testnet hay que actualizar el script y deployments.json.
     pub fn initialize(
         env: Env,
         admin: Address,
         usdc_token: Address,
         rewards_contract: Address,
         protocol_fee_bps: u32,
+        defindex_vault: Address,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
@@ -125,6 +194,21 @@ impl PoolContract {
         env.storage()
             .instance()
             .set(&DataKey::ProtocolFeeBps, &protocol_fee_bps);
+        env.storage()
+            .instance()
+            .set(&DataKey::DefindexVault, &defindex_vault);
+        Ok(())
+    }
+
+    /// Actualiza la dirección del vault DeFindex. Solo admin.
+    /// Útil si hay que migrar a una nueva versión del vault sin re-desplegar Pool.
+    pub fn set_defindex_vault(env: Env, admin: Address, vault: Address) -> Result<(), Error> {
+        let stored_admin = Self::get_admin(&env)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::DefindexVault, &vault);
         Ok(())
     }
 
@@ -333,6 +417,162 @@ impl PoolContract {
         Ok(())
     }
 
+    // ── Vault DeFindex ────────────────────────────────────────────────────
+
+    /// Deposita fondos ociosos del pool en el vault DeFindex para generar yield.
+    ///
+    /// Solo puede llamar el admin del protocolo O el treasury del barrio.
+    ///
+    /// Auth cross-contract (lo más delicado):
+    ///   El vault hace `from.require_auth()` (satisfecho porque Pool es el invocador directo)
+    ///   Y además llama internamente a `usdc.transfer(pool, vault, amount)`. Esa sub-llamada
+    ///   la hace el VAULT, no el Pool → el Pool DEBE pre-autorizarla con
+    ///   `env.authorize_as_current_contract` antes de llamar `vault.deposit`.
+    ///
+    /// NOTA TEST: con `mock_all_auths()` el auth se bypasea y los tests pasan sin
+    ///   `authorize_as_current_contract`. El código es correcto para producción.
+    pub fn deposit_idle_to_vault(
+        env: Env,
+        caller: Address,
+        barrio_id: BytesN<32>,
+        amount: i128,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin = Self::get_admin(&env)?;
+        let mut barrio: BarrioData = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Barrio(barrio_id.clone()))
+            .ok_or(Error::BarrioNotFound)?;
+
+        if caller != admin && caller != barrio.treasury_contract {
+            return Err(Error::Unauthorized);
+        }
+        if amount <= 0 || amount > barrio.pool_balance {
+            return Err(Error::InvalidAmount);
+        }
+
+        let vault_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::DefindexVault)
+            .ok_or(Error::VaultNotConfigured)?;
+        let usdc_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UsdcToken)
+            .ok_or(Error::NotInitialized)?;
+
+        let pool_addr = env.current_contract_address();
+
+        // Pre-autoriza la sub-invocación que el vault hará internamente:
+        //   usdc.transfer(pool, vault, amount)
+        // La llama el VAULT (no Pool), así que Pool debe autorizarla explícitamente.
+        env.authorize_as_current_contract(vec![
+            &env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: usdc_addr.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: vec![
+                        &env,
+                        pool_addr.clone().into_val(&env),
+                        vault_addr.clone().into_val(&env),
+                        amount.into_val(&env),
+                    ],
+                },
+                sub_invocations: vec![&env],
+            }),
+        ]);
+
+        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
+        let amounts_desired = vec![&env, amount];
+        let amounts_min = vec![&env, 0i128];
+        let (_amounts_deposited, shares, _alloc) =
+            vault.deposit(&amounts_desired, &amounts_min, &pool_addr, &true);
+
+        barrio.pool_balance -= amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Barrio(barrio_id.clone()), &barrio);
+
+        let shares_key = DataKey::VaultShares(barrio_id.clone());
+        let prev_shares: i128 = env.storage().persistent().get(&shares_key).unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&shares_key, &(prev_shares + shares));
+
+        env.events().publish(
+            (symbol_short!("vault_dep"), barrio_id),
+            (amount, shares),
+        );
+        Ok(())
+    }
+
+    /// Rescata shares del vault DeFindex de vuelta al pool (realizando el yield).
+    ///
+    /// Solo puede llamar el admin del protocolo O el treasury del barrio.
+    ///
+    /// Auth: el vault hace `from.require_auth()` (Pool es el invocador → satisfecho
+    ///   automáticamente). El vault luego llama `usdc.transfer(vault, pool, amount)`:
+    ///   esa transferencia ES del vault, no del pool → pool NO necesita
+    ///   `authorize_as_current_contract` para esta dirección.
+    pub fn redeem_from_vault(
+        env: Env,
+        caller: Address,
+        barrio_id: BytesN<32>,
+        shares: i128,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin = Self::get_admin(&env)?;
+        let mut barrio: BarrioData = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Barrio(barrio_id.clone()))
+            .ok_or(Error::BarrioNotFound)?;
+
+        if caller != admin && caller != barrio.treasury_contract {
+            return Err(Error::Unauthorized);
+        }
+        if shares <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let vault_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::DefindexVault)
+            .ok_or(Error::VaultNotConfigured)?;
+
+        let pool_addr = env.current_contract_address();
+        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
+        let min_amounts_out = vec![&env, 0i128];
+        let amounts: Vec<i128> = vault.withdraw(&shares, &min_amounts_out, &pool_addr);
+
+        // Suma todos los montos devueltos (para vault multi-asset futuros).
+        // En nuestro caso vault single-asset (USDC), sería amounts[0].
+        let got: i128 = amounts.iter().fold(0i128, |acc, x| acc + x);
+
+        barrio.pool_balance += got;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Barrio(barrio_id.clone()), &barrio);
+
+        let shares_key = DataKey::VaultShares(barrio_id.clone());
+        let prev_shares: i128 = env.storage().persistent().get(&shares_key).unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&shares_key, &(prev_shares - shares));
+
+        env.events().publish(
+            (symbol_short!("vault_red"), barrio_id),
+            (shares, got),
+        );
+        Ok(())
+    }
+
     // ── Lecturas ──────────────────────────────────────────────────────────
 
     pub fn get_pool_balance(env: Env, barrio_id: BytesN<32>) -> i128 {
@@ -341,6 +581,35 @@ impl PoolContract {
             .get::<DataKey, BarrioData>(&DataKey::Barrio(barrio_id))
             .map(|b| b.pool_balance)
             .unwrap_or(0)
+    }
+
+    /// Shares del vault que tiene este barrio en el vault DeFindex.
+    pub fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VaultShares(barrio_id))
+            .unwrap_or(0)
+    }
+
+    /// Valor USDC actual de las shares del vault para un barrio.
+    /// Llama `vault.get_asset_amounts_per_shares` si hay shares > 0.
+    /// Devuelve 0 si no hay shares o el vault no está configurado.
+    pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128 {
+        let shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultShares(barrio_id.clone()))
+            .unwrap_or(0);
+        if shares == 0 {
+            return 0;
+        }
+        let vault_addr: Address = match env.storage().instance().get(&DataKey::DefindexVault) {
+            Some(addr) => addr,
+            None => return 0,
+        };
+        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
+        let amounts = vault.get_asset_amounts_per_shares(&shares);
+        amounts.get(0).unwrap_or(0)
     }
 
     pub fn get_barrio(env: Env, barrio_id: BytesN<32>) -> Result<BarrioData, Error> {

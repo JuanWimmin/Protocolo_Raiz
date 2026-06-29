@@ -50,6 +50,13 @@ class HorizonStream @Inject constructor(
 ) {
     private val deployments: Deployments by lazy { deploymentsLoader.load() }
 
+    /**
+     * Emisor del USDC para operaciones clásicas (trustline, balance, faucet).
+     * Tras el re-deploy a DeFindex será el USDC de Blend (`usdc_issuer` en
+     * deployments.json); si no está, cae al admin (compat con el deploy previo).
+     */
+    private val usdcIssuer: String by lazy { deployments.usdcIssuer ?: deployments.admin }
+
     private val horizonServer: HorizonServer by lazy {
         val url = when (deployments.network) {
             "testnet" -> RaizConstants.TESTNET_HORIZON_URL
@@ -87,7 +94,7 @@ class HorizonStream @Inject constructor(
         return runCatching {
             val account = horizonServer.accounts().account(accountId)
             val usdc = account.balances.firstOrNull { b ->
-                b.assetCode == "USDC" && b.assetIssuer == deployments.admin
+                b.assetCode == "USDC" && b.assetIssuer == usdcIssuer
             }
             usdc?.balance?.toUsdcStroops() ?: 0L
         }.getOrElse { e ->
@@ -215,7 +222,7 @@ class HorizonStream @Inject constructor(
         runCatching {
             val account = horizonServer.accounts().account(accountId)
             account.balances.any { b ->
-                b.assetCode == "USDC" && b.assetIssuer == deployments.admin
+                b.assetCode == "USDC" && b.assetIssuer == usdcIssuer
             }
         }.getOrElse { false }
     }
@@ -234,7 +241,7 @@ class HorizonStream @Inject constructor(
         runCatching {
             val accountId = signer.getAccountId()
             val source = horizonServer.loadAccount(accountId)
-            val asset = AssetTypeCreditAlphaNum4("USDC", deployments.admin)
+            val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
             val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
             val tx = TransactionBuilder(source, Network.TESTNET)
                 .setBaseFee(100L)
@@ -313,7 +320,7 @@ class HorizonStream @Inject constructor(
     ): RaizResult<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val source = horizonServer.loadAccount(adminSigner.getAccountId())
-            val asset = AssetTypeCreditAlphaNum4("USDC", deployments.admin)
+            val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
             val amount = amountStroops.toUsdcDecimal()
             val op = PaymentOperation(destination, asset, amount)
             val tx = TransactionBuilder(source, Network.TESTNET)

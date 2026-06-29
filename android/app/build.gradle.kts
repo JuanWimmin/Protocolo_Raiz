@@ -40,6 +40,10 @@ android {
         buildConfigField("String", "DEMO_ADMIN_SECRET", "\"${localProp("raiz.admin.secret")}\"")
         // Mapbox public token (pk.*) — runtime de la app para descargar tiles.
         buildConfigField("String", "MAPBOX_TOKEN", "\"${localProp("mapbox.access.token")}\"")
+        // DeFindex API key (OPCIONAL) — solo para mostrar APY en vivo vía REST.
+        // Sin ella la pantalla Yield funciona igual con datos on-chain
+        // (precio por share, TVL, rendimiento). Va en local.properties, no en el repo.
+        buildConfigField("String", "DEFINDEX_API_KEY", "\"${localProp("defindex.api.key")}\"")
     }
 
     buildTypes {

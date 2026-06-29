@@ -3,6 +3,7 @@ package com.raiz.app.ui.dashboard
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -76,6 +78,7 @@ import com.raiz.app.ui.theme.RaizYellow
 @Composable
 fun DashboardScreen(
     onBack: () -> Unit,
+    onOpenYield: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -98,6 +101,12 @@ fun DashboardScreen(
                 selected = state.selectedBarrioId,
                 onSelect = viewModel::selectBarrio,
             )
+
+            // Entrada a "Tesorería que rinde" — siempre visible (no depende de
+            // que carguen los datos on-chain del barrio).
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                YieldCta(onClick = onOpenYield)
+            }
 
             when {
                 state.loading && state.barrio == null -> LoadingState(PaddingValues(0.dp))
@@ -181,6 +190,9 @@ private fun DashboardBody(
     ) {
         item("stats") { StatsGrid(state = state) }
         item("usage") { UsageBar(state = state) }
+        if (state.vaultSharesStroops > 0L) {
+            item("vault-pos") { VaultPositionCard(state.vaultSharesStroops) }
+        }
 
         // ── Propuestas (con countdown + acciones trustless) ──────────
         item("proposals-title") {
@@ -626,5 +638,79 @@ private fun ErrorState(message: String) {
             color = RaizBlack.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyMedium,
         )
+    }
+}
+
+/** Tarjeta de entrada a la pantalla "Tesorería que rinde" (DeFindex). */
+@Composable
+private fun YieldCta(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizGreen)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(RaizWhite.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.TrendingUp, contentDescription = null, tint = RaizWhite)
+        }
+        Spacer(modifier = Modifier.size(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Tesorería que rinde",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizWhite,
+            )
+            Text(
+                text = "El fondo ocioso genera rendimiento en DeFindex",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = RaizWhite.copy(alpha = 0.85f),
+            )
+        }
+        Icon(Icons.Outlined.OpenInNew, contentDescription = null, tint = RaizWhite)
+    }
+}
+
+/** Camino A: posición del fondo del barrio en el vault DeFindex (cross-contract). */
+@Composable
+private fun VaultPositionCard(vaultStroops: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizPurple.copy(alpha = 0.10f))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(RaizGreen.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.TrendingUp, contentDescription = null, tint = RaizGreen)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Fondo rindiendo en DeFindex",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
+            Text(
+                text = "${vaultStroops.formatUsdc()} del fondo de este barrio generan yield on-chain",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+        }
     }
 }
