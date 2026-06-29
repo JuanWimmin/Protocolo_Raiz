@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Verde RAÍZ — fondo del adaptive icon; se ve en las esquinas que la
+         máscara del launcher recorta (coincide con el verde del arte). -->
+    <color name="ic_launcher_background">#0F6E56</color>
+</resources>

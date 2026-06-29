@@ -10,6 +10,7 @@ import com.raiz.app.data.model.PaymentPreview
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,8 @@ sealed interface PayUiState {
         val preview: PaymentPreview,
         val tipEnabled: Boolean,
         val submitting: Boolean,
+        /** Si true, confirmar el pago exige biometría/PIN (lock activado). */
+        val requireBiometric: Boolean = false,
     ) : PayUiState
     data class Success(val merchantName: String, val totalStroops: Long, val pointsEarned: Long) : PayUiState
     data class Error(val code: RaizErrorCode, val message: String) : PayUiState
@@ -36,6 +39,7 @@ class PayViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val walletManager: WalletManager,
     private val sorobanClient: SorobanClient,
+    private val appLock: AppLock,
 ) : ViewModel() {
 
     // address del merchant, vía nav arg `merchant_address`. Si está vacío
@@ -71,6 +75,7 @@ class PayViewModel @Inject constructor(
         preview = PaymentPreview(m, defaultAmountStroops, RaizConstants.DEFAULT_TIP_BPS),
         tipEnabled = true,
         submitting = false,
+        requireBiometric = appLock.isActive(),
     )
 
     fun toggleTip() {

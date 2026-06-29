@@ -29,11 +29,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.PaymentPreview
 import com.raiz.app.data.model.formatUsdc
+import com.raiz.app.ui.security.biometricConfirm
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGrayLight
 import com.raiz.app.ui.theme.RaizGreen
@@ -100,6 +103,7 @@ private fun PayEditing(
     contentPadding: PaddingValues,
 ) {
     val preview = state.preview
+    val activity = LocalContext.current as? FragmentActivity
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -127,7 +131,18 @@ private fun PayEditing(
         Spacer(modifier = Modifier.weight(1f))
 
         Button(
-            onClick = onConfirm,
+            onClick = {
+                if (state.requireBiometric) {
+                    biometricConfirm(
+                        activity = activity,
+                        title = "Confirmar pago",
+                        subtitle = "Autoriza con huella, rostro o PIN",
+                        onSuccess = onConfirm,
+                    )
+                } else {
+                    onConfirm()
+                }
+            },
             enabled = !state.submitting,
             modifier = Modifier
                 .fillMaxWidth()
