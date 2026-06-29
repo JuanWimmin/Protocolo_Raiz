@@ -31,6 +31,7 @@ import com.raiz.app.ui.security.LockScreen
 import com.raiz.app.ui.theme.RaizTheme
 import com.raiz.app.ui.treasury.YieldScreen
 import com.raiz.app.ui.wallet.WalletScreen
+import com.raiz.app.ui.welcome.ChooseRoleScreen
 import com.raiz.app.ui.welcome.CreateWalletScreen
 import com.raiz.app.ui.welcome.ImportWalletScreen
 import com.raiz.app.ui.welcome.WelcomeScreen
@@ -148,7 +149,7 @@ private fun RaizApp(
                 onBack = { nav.popBackStack() },
                 onWalletReady = {
                     hasWallet = true
-                    nav.navigate(Routes.WALLET) {
+                    nav.navigate(Routes.CHOOSE_ROLE) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
                 },
@@ -159,9 +160,23 @@ private fun RaizApp(
                 onBack = { nav.popBackStack() },
                 onWalletReady = {
                     hasWallet = true
-                    nav.navigate(Routes.WALLET) {
+                    nav.navigate(Routes.CHOOSE_ROLE) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
+                },
+            )
+        }
+        composable(Routes.CHOOSE_ROLE) {
+            ChooseRoleScreen(
+                onTourist = {
+                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
+                },
+                onMerchant = {
+                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
+                    nav.navigate(Routes.BECOME_MERCHANT)
+                },
+                onResident = {
+                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
                 },
             )
         }
@@ -203,8 +218,8 @@ private fun RaizApp(
             BecomeMerchantScreen(
                 onBack = { nav.popBackStack() },
                 onSuccess = {
-                    // Tras registrarse, vuelve a Profile para ver el nuevo rol.
-                    nav.popBackStack(Routes.PROFILE, inclusive = false)
+                    // Vuelve a la pantalla anterior (Perfil o Inicio según el origen).
+                    nav.popBackStack()
                 },
             )
         }
@@ -241,6 +256,7 @@ private object Routes {
     const val WELCOME = "welcome"
     const val CREATE_WALLET = "welcome/create"
     const val IMPORT_WALLET = "welcome/import"
+    const val CHOOSE_ROLE = "welcome/role"
 
     const val WALLET = "wallet"
     const val PAY_PREFIX = "pay"
