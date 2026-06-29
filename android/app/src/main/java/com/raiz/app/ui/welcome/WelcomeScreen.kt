@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Eco
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.Icon
@@ -43,13 +44,15 @@ import com.raiz.app.ui.theme.RaizYellow
 /**
  * Primera pantalla cuando no hay wallet guardada en el dispositivo.
  *
- * Tres caminos:
+ * Cuatro caminos:
  *   1. Crear wallet → CreateWalletScreen genera 12 palabras BIP-39.
  *   2. Importar wallet → ImportWalletScreen recibe 12 palabras y deriva.
- *   3. Modo demo → usa la cuenta `raiz-tourist` del seed (sin guardar nada).
- *      Solo disponible si BuildConfig.DEMO_TOURIST_SECRET está configurado;
- *      en builds limpias clonadas sin local.properties, este botón se
- *      oculta.
+ *   3. Crear con passkey → CreatePasskeyWalletScreen (smart account secp256r1).
+ *      Solo visible si BuildConfig.PASSKEY_RP_ID no está vacío Y el dispositivo
+ *      tiene Android 9+ (API 28). En builds sin local.properties este botón se
+ *      oculta automáticamente.
+ *   4. Modo demo → usa la cuenta `raiz-tourist` del seed (sin guardar nada).
+ *      Solo disponible si BuildConfig.DEMO_TOURIST_SECRET está configurado.
  */
 @Composable
 fun WelcomeScreen(
@@ -58,6 +61,8 @@ fun WelcomeScreen(
     onImportWallet: () -> Unit,
     onUseDemo: () -> Unit,
     onSeeDashboard: () -> Unit = {},
+    passkeyEnabled: Boolean = false,
+    onCreatePasskeyWallet: () -> Unit = {},
 ) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
@@ -84,6 +89,15 @@ fun WelcomeScreen(
                 accent = RaizPurple,
                 onClick = onImportWallet,
             )
+            if (passkeyEnabled) {
+                ChoiceCard(
+                    icon = Icons.Outlined.Fingerprint,
+                    title = "Crear con passkey",
+                    subtitle = "Sin palabras de respaldo. Usa huella, rostro o PIN (Android 9+, smart account).",
+                    accent = RaizPurple,
+                    onClick = onCreatePasskeyWallet,
+                )
+            }
             if (demoEnabled) {
                 ChoiceCard(
                     icon = Icons.Outlined.PlayCircle,

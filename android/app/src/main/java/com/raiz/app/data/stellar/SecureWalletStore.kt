@@ -46,25 +46,75 @@ class SecureWalletStore @Inject constructor(
         )
     }
 
-    /** ¿Hay una wallet guardada en este dispositivo? */
+    // ── Wallet BIP-39 (seed phrase) ───────────────────────────────────────
+
+    /** ¿Hay una wallet seed guardada en este dispositivo? */
     fun hasStoredWallet(): Boolean = prefs.contains(KEY_SEED) && prefs.contains(KEY_ACCOUNT_ID)
 
-    /** Public key (G...) de la wallet guardada, o null si no hay. */
+    /** Public key (G...) de la wallet seed guardada, o null si no hay. */
     fun storedAccountId(): String? = prefs.getString(KEY_ACCOUNT_ID, null)
 
     /** Las 12 palabras BIP-39 de la wallet guardada, o null si no hay. */
     fun storedSeedPhrase(): String? = prefs.getString(KEY_SEED, null)
 
-    /** Guarda la wallet (sobrescribe la anterior si existía). */
+    /** Guarda la wallet seed (sobrescribe la anterior si existía). */
     fun save(seedPhrase: String, accountId: String) {
         prefs.edit()
             .putString(KEY_SEED, seedPhrase.trim())
             .putString(KEY_ACCOUNT_ID, accountId)
             .apply()
-        Log.i(TAG, "Wallet guardada: $accountId")
+        Log.i(TAG, "Wallet seed guardada: $accountId")
     }
 
-    /** Borra la wallet — usado al hacer logout. */
+    // ── Wallet Passkey / Smart Account ────────────────────────────────────
+
+    /**
+     * ¿Hay una smart wallet (passkey / secp256r1) guardada en este dispositivo?
+     *
+     * Se guarda tras completar [PasskeyWalletManager.createSmartWallet].
+     * Los datos persisten mientras el usuario no haga logout explícito.
+     */
+    fun hasStoredPasskeyWallet(): Boolean =
+        prefs.contains(KEY_PASSKEY_CREDENTIAL_ID) && prefs.contains(KEY_PASSKEY_CONTRACT_ID)
+
+    /**
+     * credentialId de la passkey registrada (base64url del CBOR ID).
+     * Necesario para volver a conectar la smart wallet en sesiones futuras
+     * via `OZWalletOperations.connectWallet(...)`.
+     */
+    fun storedPasskeyCredentialId(): String? = prefs.getString(KEY_PASSKEY_CREDENTIAL_ID, null)
+
+    /**
+     * Dirección C... del smart account desplegado en Soroban.
+     * Es el equivalente al "publicKey" G... para las wallets de seed phrase.
+     */
+    fun storedPasskeyContractId(): String? = prefs.getString(KEY_PASSKEY_CONTRACT_ID, null)
+
+    /**
+     * Guarda la referencia de la smart wallet passkey.
+     * Los valores NO son secretos: el material privado vive en el FIDO2
+     * provider del SO (Android Keystore / TEE), no aquí.
+     */
+    fun savePasskeyWallet(credentialId: String, contractId: String) {
+        prefs.edit()
+            .putString(KEY_PASSKEY_CREDENTIAL_ID, credentialId)
+            .putString(KEY_PASSKEY_CONTRACT_ID, contractId)
+            .apply()
+        Log.i(TAG, "Smart wallet guardada: $contractId")
+    }
+
+    /** Borra solo la referencia passkey (no toca la seed wallet si existe). */
+    fun clearPasskeyWallet() {
+        prefs.edit()
+            .remove(KEY_PASSKEY_CREDENTIAL_ID)
+            .remove(KEY_PASSKEY_CONTRACT_ID)
+            .apply()
+        Log.i(TAG, "Smart wallet passkey borrada")
+    }
+
+    // ── General ───────────────────────────────────────────────────────────
+
+    /** Borra TODA la wallet (seed + passkey) — usado al hacer logout. */
     fun clear() {
         prefs.edit().clear().apply()
         Log.i(TAG, "Wallet borrada del dispositivo")
@@ -72,8 +122,12 @@ class SecureWalletStore @Inject constructor(
 
     private companion object {
         const val FILE_NAME = "raiz_wallet"
+        // Seed phrase (BIP-39)
         const val KEY_SEED = "seed_phrase"
         const val KEY_ACCOUNT_ID = "account_id"
+        // Passkey / smart account
+        const val KEY_PASSKEY_CREDENTIAL_ID = "passkey_credential_id"
+        const val KEY_PASSKEY_CONTRACT_ID = "passkey_contract_id"
         const val TAG = "RAIZ"
     }
 }

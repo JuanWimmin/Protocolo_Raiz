@@ -44,6 +44,16 @@ android {
         // Sin ella la pantalla Yield funciona igual con datos on-chain
         // (precio por share, TVL, rendimiento). Va en local.properties, no en el repo.
         buildConfigField("String", "DEFINDEX_API_KEY", "\"${localProp("defindex.api.key")}\"")
+
+        // Passkey / smart account (WebAuthn secp256r1).
+        // rpId DEBE coincidir con el dominio del servidor de assetlinks.json en
+        // producción. En desarrollo puede dejarse vacío — el botón "Crear wallet
+        // con passkey" se oculta cuando está vacío (ver WelcomeScreen.kt).
+        // Ejemplo de local.properties:
+        //   passkey.rp.id=raiz.app
+        //   passkey.rp.name=RAIZ
+        buildConfigField("String", "PASSKEY_RP_ID",   "\"${localProp("passkey.rp.id")}\"")
+        buildConfigField("String", "PASSKEY_RP_NAME", "\"${localProp("passkey.rp.name", "RAIZ")}\"")
     }
 
     buildTypes {
@@ -128,6 +138,11 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     // Biometric — bloqueo de la app (huella/rostro + PIN del dispositivo).
     implementation(libs.androidx.biometric)
+    // Credential Manager para passkey WebAuthn. Requerido por AndroidWebAuthnProvider
+    // del Stellar SDK. credentials-play-services-auth amplía soporte FIDO2 a Android 8-9
+    // a través de Google Play Services.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
     // Mapbox Maps + extensión Compose.
     implementation(libs.mapbox.maps.android)
     implementation(libs.mapbox.maps.compose)

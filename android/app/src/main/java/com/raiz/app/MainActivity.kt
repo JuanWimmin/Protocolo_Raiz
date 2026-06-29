@@ -19,7 +19,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import android.os.Build
 import com.raiz.app.data.security.AppLock
+import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
@@ -32,6 +34,7 @@ import com.raiz.app.ui.theme.RaizTheme
 import com.raiz.app.ui.treasury.YieldScreen
 import com.raiz.app.ui.wallet.WalletScreen
 import com.raiz.app.ui.welcome.ChooseRoleScreen
+import com.raiz.app.ui.welcome.CreatePasskeyWalletScreen
 import com.raiz.app.ui.welcome.CreateWalletScreen
 import com.raiz.app.ui.welcome.ImportWalletScreen
 import com.raiz.app.ui.welcome.WelcomeScreen
@@ -54,6 +57,7 @@ import javax.inject.Inject
 class MainActivity : FragmentActivity() {
 
     @Inject lateinit var walletManager: WalletManager
+    @Inject lateinit var passkeyManager: PasskeyWalletManager
     @Inject lateinit var appLock: AppLock
 
     /** true = la app está bloqueada y requiere desbloqueo ahora. */
@@ -72,6 +76,7 @@ class MainActivity : FragmentActivity() {
                     RaizApp(
                         initiallyHasWallet = walletManager.hasUsableWallet(),
                         onLogout = { walletManager.logout() },
+                        passkeyEnabled = passkeyManager.isAvailable,
                     )
                 }
             }
@@ -111,6 +116,7 @@ class MainActivity : FragmentActivity() {
 private fun RaizApp(
     initiallyHasWallet: Boolean,
     onLogout: () -> Unit,
+    passkeyEnabled: Boolean = false,
 ) {
     val nav = rememberNavController()
     // Sigue el flag por si el usuario hace logout durante la sesión.
@@ -142,6 +148,20 @@ private fun RaizApp(
                     }
                 },
                 onSeeDashboard = { nav.navigate(Routes.DASHBOARD) },
+                // Passkey: solo accesible si el rpId está configurado y API >= 28.
+                passkeyEnabled = passkeyEnabled,
+                onCreatePasskeyWallet = { nav.navigate(Routes.CREATE_PASSKEY_WALLET) },
+            )
+        }
+        composable(Routes.CREATE_PASSKEY_WALLET) {
+            CreatePasskeyWalletScreen(
+                onBack = { nav.popBackStack() },
+                onWalletReady = {
+                    hasWallet = true
+                    nav.navigate(Routes.CHOOSE_ROLE) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Routes.CREATE_WALLET) {
@@ -257,6 +277,7 @@ private object Routes {
     const val CREATE_WALLET = "welcome/create"
     const val IMPORT_WALLET = "welcome/import"
     const val CHOOSE_ROLE = "welcome/role"
+    const val CREATE_PASSKEY_WALLET = "welcome/passkey"
 
     const val WALLET = "wallet"
     const val PAY_PREFIX = "pay"

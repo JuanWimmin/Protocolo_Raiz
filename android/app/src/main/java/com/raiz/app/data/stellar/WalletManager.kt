@@ -32,19 +32,30 @@ class WalletManager @Inject constructor(
     private val store: SecureWalletStore,
 ) {
 
-    /** ¿Hay una wallet usable (guardada o demo)? */
+    /** ¿Hay una wallet usable (guardada seed, passkey guardada, o demo)? */
     fun hasUsableWallet(): Boolean =
-        store.hasStoredWallet() || BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()
+        store.hasStoredWallet() ||
+        store.hasStoredPasskeyWallet() ||
+        BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()
 
     /**
-     * Public key activo en este momento (sync).
-     * Prioridad: guardada > demo > null.
+     * Public key / address activo en este momento (sync).
+     * Prioridad: seed guardada > passkey guardada (C...) > demo > null.
+     *
+     * NOTA: Para wallets passkey este método retorna una dirección C...
+     * (contrato Soroban), no un G... clásico. Los callers que asuman G...
+     * deben verificar [WalletAuthMethod] antes de usarlo.
      */
     fun currentAccountId(): String? {
         store.storedAccountId()?.let { return it }
+        store.storedPasskeyContractId()?.let { return it }
         if (BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()) return DEMO_PUBLIC
         return null
     }
+
+    /** true si la wallet activa es un smart account (passkey). */
+    fun isPasskeyWallet(): Boolean =
+        !store.hasStoredWallet() && store.hasStoredPasskeyWallet()
 
     /**
      * Estado base del wallet activo. Los balances/puntos los llena el
@@ -55,8 +66,10 @@ class WalletManager @Inject constructor(
         usdcBalanceStroops = 0L,
         xlmBalanceStroops = 100_000_000_000L,
         points = 0L,
-        authMethod = if (store.hasStoredWallet()) WalletAuthMethod.SEED_PHRASE
-                     else WalletAuthMethod.SEED_PHRASE,
+        authMethod = when {
+            store.hasStoredPasskeyWallet() && !store.hasStoredWallet() -> WalletAuthMethod.PASSKEY
+            else -> WalletAuthMethod.SEED_PHRASE
+        },
     )
 
     /**
@@ -118,19 +131,36 @@ class WalletManager @Inject constructor(
         )
     }
 
-    /** Borra la wallet guardada — efecto: la app vuelve a Welcome. */
+    /** Borra TODA la wallet guardada (seed + passkey) — efecto: la app vuelve a Welcome. */
     fun logout() {
         store.clear()
         cachedDemoKp = null
     }
 
-    // ── Passkey: pendiente ────────────────────────────────────────────────
+    // ── Passkey ───────────────────────────────────────────────────────────
+    //
+    // La creación de la smart wallet passkey vive en PasskeyWalletManager
+    // (com.raiz.app.data.stellar.PasskeyWalletManager). Requiere un Activity
+    // como contexto porque el Credential Manager de Android necesita una
+    // Activity para mostrar el selector de passkey.
+    //
+    // WalletManager conserva el método stub por compatibilidad con el
+    // contrato documentado; las pantallas de UI usan PasskeyWalletManager
+    // directamente.
+    //
+    // TODO para pago end-to-end via passkey:
+    //   1. Conectar la smart wallet existente: OZWalletOperations.connectWallet()
+    //   2. Firmar transacciones: OZTransactionOperations.executeAndSubmit() /
+    //      contractCall() — en lugar del KeyPair.sign() actual de SorobanClient.
+    //   3. El saldo USDC del C... se lee via SAC (Stellar Asset Contract) en lugar
+    //      de la Horizon accounts API que usa HorizonStream (que asume G...).
 
     @Suppress("UNUSED_PARAMETER")
     suspend fun createWithPasskey(): RaizResult<WalletState> {
+        // Esta función se mantiene por interfaz; la UI debe usar PasskeyWalletManager.
         return RaizResult.Error(
             code = RaizErrorCode.UNKNOWN,
-            message = "Passkey wallet: pendiente Credentials API",
+            message = "Usa PasskeyWalletManager.createSmartWallet(activity) desde la UI.",
         )
     }
 

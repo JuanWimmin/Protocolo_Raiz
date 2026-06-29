@@ -19,6 +19,9 @@ zxing = "3.5.3"
 zxingEmbedded = "4.3.0"
 securityCrypto = "1.1.0-alpha06"
 biometric = "1.1.0"
+# Credential Manager para passkey WebAuthn. Ya viene transitivamente vía stellar-sdk,
+# pero lo declaramos explícito para que el build no dependa de ese detalle de transitividad.
+credentialsManager = "1.3.0"
 mapbox = "11.9.0"
 mapboxCompose = "11.9.0"
 
@@ -87,6 +90,15 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 # Biometric — BiometricPrompt para bloquear la app con huella/rostro + credencial
 # del dispositivo (PIN/patrón). No guardamos PIN propio: lo gestiona el SO.
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+
+# Credential Manager + FIDO2 Play Services para passkey WebAuthn (smart account).
+# credentials-play-services-auth delega en Google Play Services en dispositivos
+# Android 8 y 9 (API 26-28) que no implementan FIDO2 de forma nativa; en
+# Android 9+ lo gestiona el sistema directamente.
+# Ambas AARs ya están en el Gradle cache como transitivas de stellar-sdk-android,
+# pero las declaramos explícitas para no depender de ese detalle de empaquetado.
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentialsManager" }
+androidx-credentials-play-services-auth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentialsManager" }
 
 # Mapbox Maps SDK + extensión Compose.
 # Descarga del Maven privado de Mapbox; requiere MAPBOX_DOWNLOADS_TOKEN (sk.*)
