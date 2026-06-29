@@ -126,6 +126,8 @@ dependencies {
     // EncryptedSharedPreferences para guardar la seed phrase de la wallet
     // cifrada con clave del Android Keystore.
     implementation(libs.androidx.security.crypto)
+    // Biometric — bloqueo de la app (huella/rostro + PIN del dispositivo).
+    implementation(libs.androidx.biometric)
     // Mapbox Maps + extensión Compose.
     implementation(libs.mapbox.maps.android)
     implementation(libs.mapbox.maps.compose)

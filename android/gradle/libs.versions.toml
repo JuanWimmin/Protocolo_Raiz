@@ -18,6 +18,7 @@ ktor = "3.3.2"
 zxing = "3.5.3"
 zxingEmbedded = "4.3.0"
 securityCrypto = "1.1.0-alpha06"
+biometric = "1.1.0"
 mapbox = "11.9.0"
 mapboxCompose = "11.9.0"
 
@@ -82,6 +83,10 @@ zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", ve
 # una clave que vive en el Android Keystore (TEE en hardware si está
 # disponible). Necesario para guardar la wallet del usuario al crear/importar.
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
+
+# Biometric — BiometricPrompt para bloquear la app con huella/rostro + credencial
+# del dispositivo (PIN/patrón). No guardamos PIN propio: lo gestiona el SO.
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 
 # Mapbox Maps SDK + extensión Compose.
 # Descarga del Maven privado de Mapbox; requiere MAPBOX_DOWNLOADS_TOKEN (sk.*)

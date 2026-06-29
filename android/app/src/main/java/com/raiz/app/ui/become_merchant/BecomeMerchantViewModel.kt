@@ -48,7 +48,7 @@ data class BecomeMerchantUiState(
         get() = BARRIO_INFO[barrioId]?.first ?: "—"
 
     val canSubmit: Boolean
-        get() = name.isNotBlank() && !submitting && !success
+        get() = name.trim().length >= 2 && !submitting && !success
 }
 
 @HiltViewModel
@@ -61,7 +61,11 @@ class BecomeMerchantViewModel @Inject constructor(
     private val _state = MutableStateFlow(BecomeMerchantUiState())
     val state: StateFlow<BecomeMerchantUiState> = _state.asStateFlow()
 
-    fun updateName(value: String) = _state.update { it.copy(name = value, error = null) }
+    fun updateName(value: String) {
+        // Saneo básico: quita caracteres de control y limita a MAX_NAME.
+        val clean = value.replace(CONTROL_CHARS, "").take(MAX_NAME)
+        _state.update { it.copy(name = clean, error = null) }
+    }
     fun selectCategory(c: MerchantCategory) = _state.update { it.copy(category = c) }
     fun selectBarrio(barrioId: String) = _state.update { it.copy(barrioId = barrioId) }
 
@@ -121,5 +125,9 @@ class BecomeMerchantViewModel @Inject constructor(
         }
     }
 
-    private companion object { const val TAG = "RAIZ" }
+    private companion object {
+        const val TAG = "RAIZ"
+        const val MAX_NAME = 40
+        val CONTROL_CHARS = Regex("""\p{Cntrl}""")
+    }
 }

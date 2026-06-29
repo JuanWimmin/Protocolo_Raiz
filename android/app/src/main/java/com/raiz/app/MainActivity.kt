@@ -1,20 +1,25 @@
 package com.raiz.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
@@ -22,6 +27,7 @@ import com.raiz.app.ui.map.BarrioMapScreen
 import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
 import com.raiz.app.ui.rewards.RewardsScreen
+import com.raiz.app.ui.security.LockScreen
 import com.raiz.app.ui.theme.RaizTheme
 import com.raiz.app.ui.treasury.YieldScreen
 import com.raiz.app.ui.wallet.WalletScreen
@@ -37,23 +43,66 @@ import javax.inject.Inject
  * Si el usuario tiene wallet guardada (SecureWalletStore) o hay demo
  * configurado → arranca en `wallet`. Sino arranca en `welcome` con las
  * opciones de crear / importar / demo.
+ *
+ * **Bloqueo de la app:** si está activado (Perfil → Mi QR → seguridad) y hay
+ * wallet, se exige autenticación biométrica/PIN del dispositivo antes de
+ * mostrar la app, y se re-bloquea al volver de segundo plano. Usa el
+ * subsistema del SO vía `BiometricPrompt` (no guardamos PIN propio).
  */
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     @Inject lateinit var walletManager: WalletManager
+    @Inject lateinit var appLock: AppLock
+
+    /** true = la app está bloqueada y requiere desbloqueo ahora. */
+    private var locked by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        locked = appLock.isActive() && walletManager.hasUsableWallet()
         setContent {
             RaizTheme {
-                RaizApp(
-                    initiallyHasWallet = walletManager.hasUsableWallet(),
-                    onLogout = { walletManager.logout() },
-                )
+                if (locked) {
+                    LockScreen(onUnlock = ::requestUnlock)
+                    LaunchedEffect(Unit) { requestUnlock() }
+                } else {
+                    RaizApp(
+                        initiallyHasWallet = walletManager.hasUsableWallet(),
+                        onLogout = { walletManager.logout() },
+                    )
+                }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Re-bloquea al ir a segundo plano (si el bloqueo aplica).
+        if (appLock.isActive() && walletManager.hasUsableWallet()) {
+            locked = true
+        }
+    }
+
+    private fun requestUnlock() {
+        val executor = ContextCompat.getMainExecutor(this)
+        val prompt = BiometricPrompt(
+            this,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    locked = false
+                }
+                // En error/cancelación queda bloqueado; el botón de LockScreen reintenta.
+            },
+        )
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Desbloquear RAÍZ")
+            .setSubtitle("Confirma con huella, rostro o el PIN de tu dispositivo")
+            .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+            .build()
+        prompt.authenticate(info)
     }
 }
 

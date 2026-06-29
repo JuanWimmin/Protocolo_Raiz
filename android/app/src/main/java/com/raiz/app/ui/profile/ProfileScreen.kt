@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
@@ -36,6 +37,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -129,6 +132,9 @@ fun ProfileScreen(
                 )
                 ProfileTab.QR -> QrTab(
                     publicKey = state.wallet.publicKey,
+                    appLockEnabled = state.appLockEnabled,
+                    appLockAvailable = state.appLockAvailable,
+                    onToggleLock = viewModel::setAppLockEnabled,
                     onLogout = onLogout,
                 )
             }
@@ -347,7 +353,13 @@ private fun PaymentRow(payment: PaymentRecord) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun QrTab(publicKey: String, onLogout: () -> Unit) {
+private fun QrTab(
+    publicKey: String,
+    appLockEnabled: Boolean,
+    appLockAvailable: Boolean,
+    onToggleLock: (Boolean) -> Unit,
+    onLogout: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -365,6 +377,13 @@ private fun QrTab(publicKey: String, onLogout: () -> Unit) {
             content = publicKey,
             caption = "${publicKey.take(12)}…${publicKey.takeLast(8)}",
             sizeDp = 240,
+        )
+
+        // Seguridad — bloqueo biométrico/PIN de la app.
+        SecuritySettingsCard(
+            enabled = appLockEnabled,
+            available = appLockAvailable,
+            onToggle = onToggleLock,
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -771,6 +790,54 @@ private fun CenteredText(text: String) {
             text,
             color = RaizBlack.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seguridad — bloqueo biométrico de la app
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SecuritySettingsCard(
+    enabled: Boolean,
+    available: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Lock, contentDescription = null, tint = RaizGreen)
+        Spacer(modifier = Modifier.size(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Bloqueo biométrico",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
+            Text(
+                text = if (available) {
+                    "Pide huella, rostro o PIN del dispositivo al abrir la app."
+                } else {
+                    "Configura un bloqueo de pantalla en tu teléfono para activarlo."
+                },
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+        }
+        Switch(
+            checked = enabled && available,
+            enabled = available,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = RaizWhite,
+                checkedTrackColor = RaizGreen,
+            ),
         )
     }
 }

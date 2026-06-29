@@ -9,6 +9,7 @@ import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.RoleContext
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletState
+import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.RoleResolver
 import com.raiz.app.data.stellar.SorobanClient
@@ -44,6 +45,9 @@ data class ProfileUiState(
     val proposalsError: String? = null,
     /** Estado de un voto en curso (id → "submitting" | "ok" | "error msg"). */
     val voteState: Map<Long, VoteStatus> = emptyMap(),
+    /** Bloqueo biométrico de la app (Perfil → Mi QR → seguridad). */
+    val appLockEnabled: Boolean = false,
+    val appLockAvailable: Boolean = false,
 ) {
     val effectiveRole: UserRole get() = roleOverride ?: detectedRole?.role ?: UserRole.TOURIST
 
@@ -70,6 +74,7 @@ class ProfileViewModel @Inject constructor(
     private val horizonStream: HorizonStream,
     private val sorobanClient: SorobanClient,
     private val roleResolver: RoleResolver,
+    private val appLock: AppLock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -81,6 +86,15 @@ class ProfileViewModel @Inject constructor(
         observeBalance()
         loadHistory()
         resolveRole()
+        _state.update {
+            it.copy(appLockEnabled = appLock.enabled, appLockAvailable = appLock.canAuthenticate())
+        }
+    }
+
+    /** Activa/desactiva el bloqueo biométrico de la app (efecto en MainActivity). */
+    fun setAppLockEnabled(enabled: Boolean) {
+        appLock.enabled = enabled
+        _state.update { it.copy(appLockEnabled = enabled) }
     }
 
     private fun observeBalance() {
