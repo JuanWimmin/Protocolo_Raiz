@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Verificar residente · RAÍZ</title>
+<meta name="description" content="Verifica on-chain a qué barrio pertenece un residente de RAÍZ y en qué propuestas puede votar. Token soulbound, voto restringido a su barrio." />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<!-- Stellar SDK para consulta on-chain (Soroban RPC) -->
+<script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@13.3.0/dist/stellar-sdk.min.js"></script>
+<style>
+  :root{
+    --negro:#1a1a1a; --amarillo:#FBBF24; --purpura:#534AB7; --verde:#0F6E56; --fondo:#FAFAF7;
+  }
+  *{font-family:'Inter',system-ui,sans-serif;}
+  h1,h2,h3,.font-display{font-family:'Poppins',sans-serif;}
+  body{background:var(--fondo);color:var(--negro);}
+  .card{background:#fff;border:1px solid #ece9e1;border-radius:1rem;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .btn-amarillo{background:var(--amarillo);color:#1a1a1a;font-weight:700;}
+  .btn-amarillo:hover{filter:brightness(.96);}
+  .btn-amarillo:disabled{opacity:.55;cursor:not-allowed;}
+  .chip{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .6rem;border-radius:999px;font-size:.72rem;font-weight:600;}
+  .reveal{opacity:0;transform:translateY(8px);transition:.5s;}
+  .reveal.in{opacity:1;transform:none;}
+  .spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#1a1a1a;border-radius:50%;animation:r .7s linear infinite;}
+  @keyframes r{to{transform:rotate(360deg);}}
+  .mono{font-variant-ligatures:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+</style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-20 backdrop-blur bg-[#FAFAF7]/85 border-b border-[#ece9e1]">
+    <div class="max-w-3xl mx-auto px-5 h-16 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2">
+        <span class="w-9 h-9 rounded-full grid place-items-center" style="background:var(--verde)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22c0-6 0-9 3-12 0 0-5 0-7 3-1.5 2.2-1 6-1 9z" fill="#FBBF24"/></svg>
+        </span>
+        <span class="font-display font-extrabold text-xl tracking-tight">RAÍZ</span>
+      </a>
+      <a href="index.html" class="text-sm font-semibold" style="color:var(--verde)">← Volver al inicio</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-5 py-10">
+
+    <!-- Hero -->
+    <span class="chip" style="background:#ede9fb;color:var(--purpura)">🛂 Verificación on-chain · testnet</span>
+    <h1 class="font-display font-extrabold text-3xl sm:text-4xl mt-4 leading-tight">Verificar residente</h1>
+    <p class="text-[#555] mt-3 leading-relaxed">
+      Cada residente de RAÍZ tiene un <strong>token soulbound</strong> (no transferible) que lo acredita
+      como vecino de <strong>un barrio</strong>. Por diseño, un residente <strong>solo puede votar en las
+      propuestas y obras de su propio barrio</strong> — el contrato lo valida en la blockchain.
+      Ingresa una dirección Stellar y compruébalo en vivo.
+    </p>
+
+    <!-- Form -->
+    <div class="card p-5 sm:p-6 mt-7">
+      <label class="text-sm font-semibold text-[#333]">Dirección del residente (<span class="mono">G…</span> o <span class="mono">C…</span>)</label>
+      <div class="flex flex-col sm:flex-row gap-3 mt-2">
+        <input id="addr" type="text" autocomplete="off" spellcheck="false"
+          placeholder="GDVF… o CAHT…"
+          class="mono flex-1 px-4 py-3 rounded-xl border border-[#dcd9d0] bg-[#FAFAF7] text-sm focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/40" />
+        <button id="go" class="btn-amarillo px-6 py-3 rounded-xl flex items-center justify-center gap-2">
+          <span id="go-label">Verificar</span>
+        </button>
+      </div>
+      <p class="text-xs text-[#888] mt-2">
+        ¿No tienes una a mano?
+        <button id="ej" class="underline font-semibold" style="color:var(--purpura)">Probar con un ejemplo</button>
+      </p>
+    </div>
+
+    <!-- Resultado -->
+    <section id="result" class="mt-7 hidden"></section>
+
+    <!-- Cómo funciona -->
+    <div class="mt-12 grid sm:grid-cols-3 gap-4">
+      <div class="card p-4"><div class="text-2xl">🪪</div><h3 class="font-display font-bold mt-2 text-sm">Soulbound</h3><p class="text-xs text-[#666] mt-1">El token de residente no se puede transferir ni vender. 1 residente = 1 voto.</p></div>
+      <div class="card p-4"><div class="text-2xl">🏘️</div><h3 class="font-display font-bold mt-2 text-sm">Por barrio</h3><p class="text-xs text-[#666] mt-1">Cada token está atado a un barrio. Tu voz cuenta solo donde vives.</p></div>
+      <div class="card p-4"><div class="text-2xl">🔗</div><h3 class="font-display font-bold mt-2 text-sm">Verificable</h3><p class="text-xs text-[#666] mt-1">Todo on-chain en Stellar. Esta página lo lee en vivo del contrato Governance.</p></div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-12 pt-6 border-t border-[#ece9e1] text-sm text-[#777] flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+      <span>Contrato Governance:
+        <a class="mono underline" style="color:var(--verde)" target="_blank" rel="noopener"
+           href="https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE">CAENXDX7…77PVE ↗</a>
+      </span>
+      <span>Stellar PULSO Hackathon · testnet</span>
+    </footer>
+  </main>
+
+<script>
+(function(){
+  "use strict";
+  const RPC_URL = 'https://soroban-testnet.stellar.org';
+  const GOV     = 'CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE';
+  // Cuenta admin (existe en testnet): fuente para la simulación de lectura (NO firma nada).
+  const SOURCE  = 'GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P';
+  // Ejemplo: un residente minteado del Centro durante las pruebas.
+  const EJEMPLO = 'GDVFKUCFFQXDPOT5BM4ZSBF3E6LW2ZZQJPYNMCWCXKEMAURW4LTZOE6X';
+
+  const BARRIOS = {
+    'ce47120000000000000000000000000000000000000000000000000000000001': {name:'Centro Histórico', city:'Cartagena', emoji:'🏛️'},
+    'bba17e0000000000000000000000000000000000000000000000000000000002': {name:'Barrio Norte',     city:'Bogotá',    emoji:'🌳'},
+    'c057a9000000000000000000000000000000000000000000000000000000000a': {name:'Costa Vieja',       city:'Cartagena', emoji:'🏖️'},
+  };
+
+  const SDK = window.StellarSdk;
+  const RpcNS = SDK.rpc || SDK.SorobanRpc;             // v13 = rpc, v11 = SorobanRpc
+  const server = new RpcNS.Server(RPC_URL, { allowHttp:false });
+
+  const $ = (id)=>document.getElementById(id);
+  const expTx = (h)=>`https://stellar.expert/explorer/testnet/tx/${h}`;
+  const expAddr = (a)=>`https://stellar.expert/explorer/testnet/${a.startsWith('C')?'contract':'account'}/${a}`;
+  const bytesToHex = (b)=>Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('');
+  const fmtUsdc = (stroops)=>(Number(stroops)/1e7).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const short = (s)=>s.length>12 ? s.slice(0,6)+'…'+s.slice(-6) : s;
+
+  function setLoading(on){
+    $('go').disabled = on;
+    $('go-label').innerHTML = on ? '<span class="spin"></span>' : 'Verificar';
+  }
+
+  // Lectura pura de un contrato: simula la invocación (no envía ni firma).
+  async function readContract(fn, args){
+    const account = await server.getAccount(SOURCE);
+    const contract = new SDK.Contract(GOV);
+    const tx = new SDK.TransactionBuilder(account, {
+        fee: SDK.BASE_FEE,
+        networkPassphrase: SDK.Networks.TESTNET,
+      })
+      .addOperation(contract.call(fn, ...args))
+      .setTimeout(30)
+      .build();
+    const sim = await server.simulateTransaction(tx);
+    if (RpcNS.Api.isSimulationError(sim)) {
+      throw new Error(sim.error || 'simulación falló');
+    }
+    return SDK.scValToNative(sim.result.retval);
+  }
+
+  function statusChip(st){
+    const s = (typeof st === 'string') ? st : (st && (st.tag || Object.keys(st)[0])) || 'Active';
+    const map = {
+      Active:   ['#dcfce7','#166534','Activa'],
+      Passed:   ['#dbeafe','#1e40af','Aprobada'],
+      Rejected: ['#fee2e2','#991b1b','Rechazada'],
+      Executed: ['#ede9fb','#534AB7','Ejecutada'],
+    };
+    const [bg,fg,label] = map[s] || ['#eee','#444',s];
+    return `<span class="chip" style="background:${bg};color:${fg}">${label}</span>`;
+  }
+
+  function renderResidente(addr, token, proposals){
+    const hex = bytesToHex(token.barrio_id);
+    const b = BARRIOS[hex] || {name:'Barrio desconocido', city:'', emoji:'📍'};
+    const fecha = token.issued_at ? new Date(Number(token.issued_at)*1000).toLocaleDateString('es') : '—';
+
+    const props = proposals.map(p=>{
+      const total = Number(p.votes_for)+Number(p.votes_against);
+      const pct = total ? Math.round(Number(p.votes_for)*100/total) : 0;
+      return `
+      <div class="card p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="font-display font-bold text-sm">#${p.id} · ${p.description}</div>
+            <div class="text-xs text-[#666] mt-1">Solicita <strong>${fmtUsdc(p.amount)} USDC</strong> · cierra ${new Date(Number(p.closes_at)*1000).toLocaleDateString('es')}</div>
+          </div>
+          ${statusChip(p.status)}
+        </div>
+        <div class="mt-3">
+          <div class="h-2 rounded-full bg-[#eee] overflow-hidden">
+            <div class="h-full" style="width:${pct}%;background:var(--verde)"></div>
+          </div>
+          <div class="flex justify-between text-xs text-[#666] mt-1">
+            <span>👍 ${p.votes_for} a favor</span><span>👎 ${p.votes_against} en contra</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('result').innerHTML = `
+      <div class="reveal">
+        <!-- Tarjeta residente -->
+        <div class="card p-5 sm:p-6" style="background:var(--negro);color:#fff;border:none">
+          <div class="flex items-center gap-2 text-xs" style="color:#9ae6c4">✅ Residente verificado on-chain</div>
+          <div class="mt-3 flex items-center gap-3">
+            <span class="text-4xl">${b.emoji}</span>
+            <div>
+              <div class="font-display font-extrabold text-2xl">${b.name}</div>
+              <div class="text-sm text-[#bbb]">${b.city ? b.city+' · ' : ''}residente desde ${fecha}</div>
+            </div>
+          </div>
+          <a href="${expAddr(addr)}" target="_blank" rel="noopener" class="mono text-xs text-[#9aa] underline mt-3 inline-block">${short(addr)} ↗</a>
+        </div>
+
+        <p class="text-sm text-[#555] mt-5">
+          Esta dirección <strong>solo puede votar</strong> en las propuestas de <strong>${b.name}</strong>.
+          Intentar votar en otro barrio lo rechaza el contrato (<span class="mono">NotAResident</span> / barrio incorrecto).
+        </p>
+
+        <h2 class="font-display font-bold text-lg mt-6 mb-3">Propuestas activas de ${b.name} <span class="text-[#888] font-normal text-sm">(${proposals.length})</span></h2>
+        <div class="grid gap-3">${props || '<div class="card p-4 text-sm text-[#666]">No hay propuestas activas en este barrio ahora mismo.</div>'}</div>
+      </div>`;
+    $('result').classList.remove('hidden');
+    requestAnimationFrame(()=>$('result').querySelector('.reveal').classList.add('in'));
+  }
+
+  function renderError(title, detail){
+    $('result').innerHTML = `
+      <div class="card p-5" style="border-color:#f3d4d4;background:#fff7f7">
+        <div class="font-display font-bold" style="color:#b91c1c">${title}</div>
+        <div class="text-sm text-[#777] mt-1">${detail||''}</div>
+      </div>`;
+    $('result').classList.remove('hidden');
+  }
+
+  async function verificar(){
+    const addr = $('addr').value.trim();
+    if(!addr){ $('addr').focus(); return; }
+    // Validación de formato
+    try { SDK.StrKey ? (addr.startsWith('C') ? SDK.StrKey.isValidContract(addr) : SDK.StrKey.isValidEd25519PublicKey(addr)) : null; } catch(_){}
+    if(!/^[GC][A-Z2-7]{55}$/.test(addr)){
+      renderError('Dirección inválida', 'Debe ser una dirección Stellar válida (G… cuenta o C… contrato).');
+      return;
+    }
+    setLoading(true);
+    $('result').classList.add('hidden');
+    try {
+      const arg = SDK.Address.fromString(addr).toScVal();
+      let token;
+      try {
+        token = await readContract('get_resident', [arg]);
+      } catch(e){
+        // get_resident devuelve Err si no es residente → la simulación falla
+        renderError('No es residente', 'Esta dirección no tiene un token de residente en ningún barrio de RAÍZ. Para ser residente, el admin del barrio debe acuñarle el token (soulbound).');
+        return;
+      }
+      let proposals = [];
+      try {
+        const barrioArg = SDK.nativeToScVal(token.barrio_id, { type:'bytes' });
+        proposals = await readContract('list_active_proposals', [barrioArg]) || [];
+      } catch(e){ proposals = []; }
+      renderResidente(addr, token, proposals);
+    } catch(e){
+      renderError('No se pudo consultar', 'Error de red o RPC al leer la blockchain. Intenta de nuevo en unos segundos. (' + (e.message||e) + ')');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  $('go').addEventListener('click', verificar);
+  $('addr').addEventListener('keydown', (e)=>{ if(e.key==='Enter') verificar(); });
+  $('ej').addEventListener('click', ()=>{ $('addr').value = EJEMPLO; verificar(); });
+})();
+</script>
+</body>
+</html>
