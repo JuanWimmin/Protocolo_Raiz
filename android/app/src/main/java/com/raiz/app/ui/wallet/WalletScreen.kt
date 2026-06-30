@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.raiz.app.ui.util.StellarExpert
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.raiz.app.data.model.PassportData
@@ -211,6 +212,7 @@ private fun WalletReady(
     onRequestUsdc: () -> Unit,
     contentPadding: PaddingValues,
 ) {
+    val context = LocalContext.current
     val wallet = state.wallet
     val poolBalanceLabel = state.poolBalanceLabel
     val passport = state.passport
@@ -264,6 +266,9 @@ private fun WalletReady(
             BalanceCard(
                 balanceStroops = wallet.usdcBalanceStroops,
                 publicKey = wallet.publicKey,
+                onAddressTap = {
+                    StellarExpert.open(context, StellarExpert.addressUrl(wallet.publicKey))
+                },
             )
 
             Row(

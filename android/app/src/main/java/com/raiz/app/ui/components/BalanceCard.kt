@@ -1,17 +1,22 @@
 package com.raiz.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -32,12 +37,16 @@ import com.raiz.app.ui.theme.RaizWhite
  *
  * Diseño aprobado: fondo `RaizBlack`, texto blanco, acento amarillo en el
  * ícono de wallet.
+ *
+ * [onAddressTap] — callback opcional para abrir la dirección en Stellar Expert.
+ * Si se omite, la fila de dirección sigue siendo visible pero no es tappable.
  */
 @Composable
 fun BalanceCard(
     balanceStroops: Long,
     publicKey: String,
     modifier: Modifier = Modifier,
+    onAddressTap: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -68,12 +77,26 @@ fun BalanceCard(
             ),
             color = RaizWhite,
         )
-        // Public key truncada
-        Text(
-            text = publicKey.take(8) + "…" + publicKey.takeLast(6),
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizGrayLight,
-        )
+        // Public key truncada — tappable para abrir Stellar Expert
+        Row(
+            modifier = Modifier
+                .clickable(onClick = onAddressTap)
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = publicKey.take(8) + "…" + publicKey.takeLast(6),
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizGrayLight,
+            )
+            Icon(
+                imageVector = Icons.Outlined.OpenInNew,
+                contentDescription = "Ver dirección en Stellar Expert",
+                tint = RaizGrayLight.copy(alpha = 0.7f),
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
 

@@ -1,7 +1,5 @@
 package com.raiz.app.ui.dashboard
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.raiz.app.ui.util.StellarExpert
 import androidx.compose.material.icons.outlined.HowToVote
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Button
@@ -245,6 +244,21 @@ private fun DashboardBody(
         } else {
             items(state.executions, key = { it.txHash + it.executedAt }) { exec ->
                 ExecutionRow(exec)
+            }
+        }
+
+        // ── Contratos verificados (footer de transparencia) ──────────────
+        if (state.contractPool.isNotBlank()) {
+            item("contracts-title") {
+                Text(
+                    text = "Contratos verificados",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            item("contracts") {
+                ContratosCard(state = state)
             }
         }
     }
@@ -596,18 +610,75 @@ private fun ExecutionRow(exec: Execution) {
             color = RaizGreen,
         )
         Spacer(modifier = Modifier.size(8.dp))
+        // El txHash de Execution es sha256 determinístico del contrato — no es un txHash
+        // de Stellar real. Linkeamos al recipient para que el auditor vea el saldo recibido.
         IconButton(onClick = {
-            // Abrir Stellar Expert con el address del recipient (no tenemos
-            // el txHash real de Stellar; el txHash del contrato es un sha256
-            // determinístico, no es buscable en Stellar Expert). Linkeamos
-            // al recipient para que el auditor vea el saldo recibido.
-            val url = "https://stellar.expert/explorer/testnet/account/${exec.recipient}"
-            runCatching {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            }
+            StellarExpert.open(context, StellarExpert.addressUrl(exec.recipient))
         }) {
-            Icon(Icons.Outlined.OpenInNew, contentDescription = "Stellar Expert", tint = RaizBlack)
+            Icon(Icons.Outlined.OpenInNew, contentDescription = "Ver recipient en Stellar Expert", tint = RaizGreen)
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contratos verificados
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Card footer de transparencia: lista los 4 contratos Soroban desplegados con
+ * su dirección C… truncada y un enlace a Stellar Expert para cada uno.
+ * Solo se muestra si [DashboardUiState.contractPool] no está vacío (deployments cargados).
+ */
+@Composable
+private fun ContratosCard(state: DashboardUiState) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        ContratoFila(nombre = "Pool", address = state.contractPool)
+        ContratoFila(nombre = "Governance", address = state.contractGovernance)
+        ContratoFila(nombre = "Treasury", address = state.contractTreasury)
+        ContratoFila(nombre = "Rewards", address = state.contractRewards)
+    }
+}
+
+@Composable
+private fun ContratoFila(nombre: String, address: String) {
+    if (address.isBlank()) return
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { StellarExpert.open(context, StellarExpert.contractUrl(address)) }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = nombre,
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.7f),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "${address.take(8)}…${address.takeLast(6)}",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+            ),
+            color = RaizPurple,
+        )
+        Spacer(modifier = Modifier.size(4.dp))
+        Icon(
+            imageVector = Icons.Outlined.OpenInNew,
+            contentDescription = "Ver contrato $nombre en Stellar Expert",
+            tint = RaizPurple,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }
 

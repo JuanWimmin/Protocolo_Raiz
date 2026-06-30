@@ -40,6 +40,8 @@ sealed interface PayUiState {
         val pointsEarned: Long,
         /** Stroops del Tip Barrio; 0 si el tip estaba desactivado al confirmar. */
         val tipStroops: Long = 0L,
+        /** Dirección G… o C… del comercio — para el link a Stellar Expert en la pantalla de éxito. */
+        val merchantAddress: String = "",
     ) : PayUiState
     data class Error(val code: RaizErrorCode, val message: String) : PayUiState
 }
@@ -140,10 +142,11 @@ class PayViewModel @Inject constructor(
                     is RaizResult.Success -> {
                         Log.i(TAG, "Pago passkey OK")
                         _state.value = PayUiState.Success(
-                            merchantName = editing.preview.merchant.name,
-                            totalStroops = editing.preview.totalStroops,
-                            pointsEarned = editing.preview.pointsToEarn,
-                            tipStroops   = editing.preview.tipStroops,
+                            merchantName    = editing.preview.merchant.name,
+                            totalStroops    = editing.preview.totalStroops,
+                            pointsEarned    = editing.preview.pointsToEarn,
+                            tipStroops      = editing.preview.tipStroops,
+                            merchantAddress = editing.preview.merchant.address,
                         )
                     }
                     is RaizResult.Error -> {
@@ -175,10 +178,11 @@ class PayViewModel @Inject constructor(
                 is RaizResult.Success -> {
                     Log.i(TAG, "Pago OK")
                     _state.value = PayUiState.Success(
-                        merchantName = editing.preview.merchant.name,
-                        totalStroops = editing.preview.totalStroops,
-                        pointsEarned = editing.preview.pointsToEarn,
-                        tipStroops   = editing.preview.tipStroops,
+                        merchantName    = editing.preview.merchant.name,
+                        totalStroops    = editing.preview.totalStroops,
+                        pointsEarned    = editing.preview.pointsToEarn,
+                        tipStroops      = editing.preview.tipStroops,
+                        merchantAddress = editing.preview.merchant.address,
                     )
                 }
                 is RaizResult.Error -> {

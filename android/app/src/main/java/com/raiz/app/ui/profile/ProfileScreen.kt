@@ -2,6 +2,7 @@ package com.raiz.app.ui.profile
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.ButtonDefaults
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.PaymentRecord
+import com.raiz.app.ui.util.StellarExpert
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.QrCard
@@ -223,6 +226,16 @@ private fun Header(publicKey: String, role: UserRole) {
                     tint = RaizBlack,
                 )
             }
+            // Enlace a Stellar Expert — abre la dirección (G… cuenta, C… contrato)
+            IconButton(onClick = {
+                StellarExpert.open(context, StellarExpert.addressUrl(publicKey))
+            }) {
+                Icon(
+                    imageVector = Icons.Outlined.OpenInNew,
+                    contentDescription = "Ver en Stellar Expert",
+                    tint = RaizGreen,
+                )
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
         RoleChip(role = role)
@@ -346,6 +359,7 @@ private fun HistoryTab(state: ProfileUiState) {
 
 @Composable
 private fun PaymentRow(payment: PaymentRecord) {
+    val context = LocalContext.current
     val accent = if (payment.isOutgoing) RaizBlack else RaizGreen
     val arrow = if (payment.isOutgoing) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward
     val direction = if (payment.isOutgoing) "Enviado" else "Recibido"
@@ -357,6 +371,11 @@ private fun PaymentRow(payment: PaymentRecord) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(RaizWhite)
+            // Toda la fila abre la tx en Stellar Expert con un toque
+            .clickable(
+                enabled = payment.txHash.isNotBlank(),
+                onClick = { StellarExpert.open(context, StellarExpert.txUrl(payment.txHash)) },
+            )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -390,6 +409,16 @@ private fun PaymentRow(payment: PaymentRecord) {
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             color = accent,
         )
+        // Ícono de enlace externo — affordance visual de que la fila es tappable
+        if (payment.txHash.isNotBlank()) {
+            Spacer(modifier = Modifier.size(6.dp))
+            Icon(
+                imageVector = Icons.Outlined.OpenInNew,
+                contentDescription = "Ver transacción en Stellar Expert",
+                tint = RaizPurple.copy(alpha = 0.55f),
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
 }
 

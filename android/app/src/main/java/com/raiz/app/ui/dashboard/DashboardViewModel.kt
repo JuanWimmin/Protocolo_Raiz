@@ -9,6 +9,7 @@ import com.raiz.app.data.model.Proposal
 import com.raiz.app.data.model.ProposalStatus
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.stellar.DeploymentsLoader
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,6 +39,11 @@ data class DashboardUiState(
     val proposalAction: Map<Long, ProposalActionState> = emptyMap(),
     /** Camino A: shares del fondo del barrio en el vault DeFindex (≈ USDC a pps 1.0). */
     val vaultSharesStroops: Long = 0L,
+    // Direcciones C… de los contratos desplegados — vacías hasta que DeploymentsLoader cargue.
+    val contractPool: String = "",
+    val contractGovernance: String = "",
+    val contractTreasury: String = "",
+    val contractRewards: String = "",
 ) {
     val selectedBarrioName: String
         get() = barriosMeta.firstOrNull { it.first == selectedBarrioId }?.second
@@ -64,12 +70,26 @@ data class DashboardUiState(
 class DashboardViewModel @Inject constructor(
     private val sorobanClient: SorobanClient,
     private val walletManager: WalletManager,
+    private val deploymentsLoader: DeploymentsLoader,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
 
     init {
+        // Carga las direcciones de contratos desde deployments.json (en assets/).
+        // Si el archivo no existe o falla, los campos quedan vacíos y la sección
+        // "Contratos verificados" del Dashboard no se muestra.
+        runCatching { deploymentsLoader.load() }.getOrNull()?.let { deps ->
+            _state.update {
+                it.copy(
+                    contractPool       = deps.pool,
+                    contractGovernance = deps.governance,
+                    contractTreasury   = deps.treasury,
+                    contractRewards    = deps.rewards,
+                )
+            }
+        }
         loadFor(_state.value.selectedBarrioId)
     }
 

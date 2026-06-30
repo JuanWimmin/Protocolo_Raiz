@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +43,7 @@ import com.raiz.app.data.model.PaymentPreview
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.RaizSuccessAnimation
 import com.raiz.app.ui.security.biometricConfirm
+import com.raiz.app.ui.util.StellarExpert
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGrayLight
 import com.raiz.app.ui.theme.RaizGreen
@@ -91,12 +95,13 @@ fun PayScreen(
                 contentPadding = padding,
             )
             is PayUiState.Success -> PaySuccess(
-                merchantName = s.merchantName,
-                totalStroops = s.totalStroops,
-                tipStroops = s.tipStroops,
-                pointsEarned = s.pointsEarned,
-                onDone = onDone,
-                contentPadding = padding,
+                merchantName    = s.merchantName,
+                totalStroops    = s.totalStroops,
+                tipStroops      = s.tipStroops,
+                pointsEarned    = s.pointsEarned,
+                merchantAddress = s.merchantAddress,
+                onDone          = onDone,
+                contentPadding  = padding,
             )
             is PayUiState.Error -> PayError(
                 message = s.message,
@@ -353,7 +358,8 @@ private fun OrdenDeCobroBanner(amountStroops: Long) {
  * Estado de éxito del pago con animación nativa RAÍZ.
  *
  * Delega el checkmark animado y la cápsula "Tip Barrio" a [RaizSuccessAnimation].
- * Añade los puntos ganados (color púrpura) y el botón de retorno al inicio.
+ * Añade los puntos ganados (color púrpura), un enlace a Stellar Expert para ver
+ * el comercio on-chain y el botón de retorno al inicio.
  */
 @Composable
 private fun PaySuccess(
@@ -361,9 +367,12 @@ private fun PaySuccess(
     totalStroops: Long,
     tipStroops: Long,
     pointsEarned: Long,
+    merchantAddress: String,
     onDone: () -> Unit,
     contentPadding: PaddingValues,
 ) {
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -389,6 +398,30 @@ private fun PaySuccess(
                 style = MaterialTheme.typography.headlineMedium,
                 color = RaizPurple,
             )
+        }
+
+        // Enlace al comercio en Stellar Expert — affordance de verificación on-chain
+        if (merchantAddress.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = {
+                    StellarExpert.open(context, StellarExpert.addressUrl(merchantAddress))
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(end = 6.dp)
+                        .size(16.dp),
+                    tint = RaizGreen,
+                )
+                Text(
+                    text = "Ver comercio en Stellar Expert",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizGreen,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.weight(1f))

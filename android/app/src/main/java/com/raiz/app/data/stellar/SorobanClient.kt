@@ -1173,19 +1173,21 @@ class SorobanClient @Inject constructor(
             return null
         }
 
-        // ── [2] amount → i128 stroops ─────────────────────────────────────
-        // Nota: el contrato define `amount` = monto base al comercio (NO el total).
-        // total_deducido = amount + tip donde tip = amount * tip_bps / 10_000.
-        val amountStroops = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrElse { e ->
+        // ── [2] amount + [3] tip → i128 stroops ────────────────────────────
+        // El contrato define `amount` = monto base al comercio y `tip` = aporte al
+        // barrio (amount * tip_bps / 10_000). El TOTAL que se le descuenta al turista
+        // es amount + tip → eso es lo que mostramos en el historial (lo que pagó de verdad).
+        val amount = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrElse { e ->
             Log.w(TAG, "parsePaymentEvent: asLong(amount) lanzó ${e.message} en event=${event.id}")
             return null
         }
+        val tip = runCatching { ScvalParse.asLong(dataVec[3]) }.getOrElse { 0L }
 
         return PaymentRecord(
             txHash = event.transactionHash,
             from = tourist,
             to = merchant,
-            amountStroops = amountStroops,
+            amountStroops = amount + tip,   // total deducido = monto al comercio + tip al barrio
             assetCode = "USDC",
             createdAt = event.ledgerClosedAt,
             isOutgoing = true, // el turista siempre es el pagador en pay_merchant
