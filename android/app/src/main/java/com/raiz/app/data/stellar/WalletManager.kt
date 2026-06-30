@@ -33,11 +33,20 @@ class WalletManager @Inject constructor(
     private val store: SecureWalletStore,
 ) {
 
-    /** ¿Hay una wallet usable (guardada seed, passkey guardada, o demo)? */
+    /**
+     * ¿Hay una wallet REAL guardada (seed BIP-39 o passkey)?
+     *
+     * El modo demo NO cuenta a propósito: un usuario nuevo debe ver el
+     * onboarding completo (Welcome → crear/importar → elegir rol) y entrar
+     * con las pantallas de su rol. El demo es OPT-IN vía el botón "Probar
+     * modo demo" del Welcome (que entra como turista en sesión, sin persistir).
+     *
+     * Antes esto incluía `DEMO_TOURIST_SECRET.isNotBlank()`, lo que hacía que
+     * la app SIEMPRE arrancara en la home demo saltándose el onboarding.
+     */
     fun hasUsableWallet(): Boolean =
         store.hasStoredWallet() ||
-        store.hasStoredPasskeyWallet() ||
-        BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()
+        store.hasStoredPasskeyWallet()
 
     /**
      * Public key / address activo en este momento (sync).

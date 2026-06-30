@@ -148,8 +148,21 @@ class HorizonStream @Inject constructor(
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
-                Log.w(TAG, "paymentHistory falló: ${e.message}")
-                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+                val msg = e.message ?: ""
+                // Cuenta nueva sin fondear → Horizon responde 404 (Resource Missing).
+                // NO es un error: simplemente aún no hay historial. Devolvemos lista
+                // vacía para que la UI muestre el estado "sin transacciones" en vez
+                // de "No pudimos cargar el historial".
+                if (msg.contains("404") ||
+                    msg.contains("not found", ignoreCase = true) ||
+                    msg.contains("Resource Missing", ignoreCase = true)
+                ) {
+                    Log.i(TAG, "paymentHistory: cuenta sin actividad todavía → historial vacío")
+                    RaizResult.Success(emptyList())
+                } else {
+                    Log.w(TAG, "paymentHistory falló: ${e.message}")
+                    RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+                }
             },
         )
     }
