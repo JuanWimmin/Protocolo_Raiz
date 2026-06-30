@@ -29,6 +29,7 @@ import com.soneso.stellar.sdk.scval.Scv
 import com.soneso.stellar.sdk.xdr.HostFunctionXdr
 import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
 import com.soneso.stellar.sdk.xdr.SCSymbolXdr
+import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -971,125 +972,178 @@ class SorobanClient @Inject constructor(
     //   topic[1] = BytesN<32>(barrio_id)
     //   value    = Vec([tourist_addr, merchant_addr, amount_i128, tip_i128])
     //
-    // getEvents filtra por contractId (Pool) y topic[0]=Symbol("payment") se
-    // verifica en memoria. La ventana de lookback (~24h) cubre la retención
-    // típica de testnet; si el RPC rechaza por startLedger fuera de ventana,
-    // se devuelve lista vacía con éxito en lugar de error.
+    // NOTA DE PASSKEY: para wallets passkey, WalletManager.currentKeyPair()
+    // cae al demoKeyPair() (G...) porque la firma via smart-account no está
+    // conectada todavía. Por tanto, el evento tiene el G... del demo como
+    // tourist, pero currentAccountId() devuelve el C... del contrato.
+    // El ViewModel DEBE pasar el G... del KeyPair realmente usado en payMerchant
+    // (no el C... del smart account) para que este filtro funcione. Ver:
+    // WalletManager.demoKeyPair().getAccountId() o currentKeyPair().getAccountId().
     //
-    // LÍMITE CONOCIDO: testnet RPC retiene ~17 000 ledgers (~24h). El historial
-    // de pagos más antiguo no está disponible vía eventos. En mainnet la
-    // retención es configurable; aquí se asume testnet.
+    // LÍMITE DE RETENCIÓN: testnet RPC retiene ~17 000 ledgers (~24h). Si el RPC
+    // rechaza startLedger, se reintenta con ventana más pequeña (FALLBACK). Los
+    // errores se loguean explícitamente — nunca silenciosos.
 
     /**
      * Historial de pagos on-chain del turista, leído desde los eventos Soroban
-     * del contrato Pool. Complementa a [HorizonStream.paymentHistory] que solo
-     * captura pagos clásicos (y no ve las invocaciones Soroban).
+     * del contrato Pool. Complementa a [HorizonStream.paymentHistory] (que solo
+     * captura pagos clásicos y no ve las invocaciones Soroban).
      *
-     * @param touristAddress  Dirección G... del turista cuyo historial se consulta.
-     * @return Lista de [PaymentRecord] en orden de ledger descendente (más reciente primero).
-     *   - [PaymentRecord.from]         = dirección del turista
-     *   - [PaymentRecord.to]           = dirección del comercio
-     *   - [PaymentRecord.amountStroops]= monto base pagado por el turista (sin contar fee)
-     *   - [PaymentRecord.assetCode]    = "USDC"
-     *   - [PaymentRecord.isOutgoing]   = true (el turista siempre es el pagador)
-     *   - [PaymentRecord.createdAt]    = ISO 8601 del cierre del ledger
+     * IMPORTANTE: [touristAddress] debe ser el address exacto que se pasó como
+     * argumento `tourist` a `pay_merchant` on-chain (el `KeyPair.getAccountId()`
+     * del firmante). Para passkey esto NO es el C... del smart account sino el
+     * G... del demoKeyPair que actualmente firma (TODO passkey pleno).
+     *
+     * @param touristAddress  Dirección G... o C... tal como aparece en el evento.
+     * @return Lista de [PaymentRecord] orden ledger desc (más reciente primero),
+     *   o lista vacía si no hay eventos en la ventana de retención disponible.
      */
     suspend fun tourPaymentEvents(
         touristAddress: String,
     ): RaizResult<List<PaymentRecord>> {
+        Log.i(TAG, "tourPaymentEvents: touristAddress=$touristAddress pool=${deployments.pool}")
         return runCatching {
-            withNetworkRetry {
-                // Reutilizamos el SorobanServer del poolClient cacheado.
-                val server = poolClient().server
+            // SorobanServer del poolClient cacheado — evita un round-trip extra.
+            val server = poolClient().server
+            val latestLedger = server.getLatestLedger().sequence
+            Log.i(TAG, "tourPaymentEvents: latestLedger=$latestLedger LOOKBACK=$EVENTS_LOOKBACK_LEDGERS FALLBACK=$EVENTS_LOOKBACK_FALLBACK")
 
-                // Calculamos la ventana de búsqueda: ledger actual − LOOKBACK.
-                val latestLedger = server.getLatestLedger().sequence
-                val startLedger = (latestLedger - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L)
+            // Intentamos primero con la ventana completa; si el RPC rechaza
+            // startLedger (fuera de retención), reintentamos con ventana corta.
+            val windowCandidates = listOf(
+                (latestLedger - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L),
+                (latestLedger - EVENTS_LOOKBACK_FALLBACK).coerceAtLeast(1L),
+            ).distinct()
 
-                // Filtramos por contractId=Pool, sin filtro de topic (filtramos en memoria).
-                val filter = GetEventsRequest.EventFilter(
-                    type = GetEventsRequest.EventFilterType.CONTRACT,
-                    contractIds = listOf(deployments.pool),
-                    topics = emptyList(), // wildcard: todos los topics del contrato
-                )
-                val request = GetEventsRequest(
-                    startLedger = startLedger,
-                    endLedger = null,           // null = hasta el ledger más reciente
-                    filters = listOf(filter),
-                    pagination = GetEventsRequest.Pagination(
-                        cursor = null,
-                        limit = 100L,           // máximo por página; suficiente para demo
-                    ),
-                )
-
-                val response = server.getEvents(request)
-
-                // Filtramos eventos de tipo "payment" y del turista indicado.
-                response.events
-                    .sortedByDescending { it.ledger }  // más reciente primero
-                    .mapNotNull { event ->
-                        runCatching { parsePaymentEvent(event, touristAddress) }.getOrNull()
-                    }
+            var response: GetEventsResponse? = null
+            for (startLedger in windowCandidates) {
+                Log.i(TAG, "tourPaymentEvents: intentando getEvents startLedger=$startLedger")
+                try {
+                    val filter = GetEventsRequest.EventFilter(
+                        type = GetEventsRequest.EventFilterType.CONTRACT,
+                        contractIds = listOf(deployments.pool),
+                        topics = emptyList(), // wildcard: todos los topics del contrato Pool
+                    )
+                    val request = GetEventsRequest(
+                        startLedger = startLedger,
+                        endLedger = null,   // null = hasta ledger más reciente
+                        filters = listOf(filter),
+                        pagination = GetEventsRequest.Pagination(
+                            cursor = null,
+                            limit = 100L,
+                        ),
+                    )
+                    response = server.getEvents(request)
+                    Log.i(TAG, "tourPaymentEvents: getEvents OK → events=${response.events.size} oldestLedger=${response.oldestLedger} latestLedger=${response.latestLedger}")
+                    break
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (e: Exception) {
+                    val msg = e.message.orEmpty()
+                    // Logueamos SIEMPRE el error real — nunca silenciamos.
+                    Log.w(TAG, "tourPaymentEvents: getEvents(startLedger=$startLedger) FALLÓ: $msg")
+                    val isRetentionError = "startLedger" in msg ||
+                        "start ledger" in msg.lowercase() ||
+                        "event retention" in msg.lowercase() ||
+                        "minimum ledger" in msg.lowercase()
+                    if (!isRetentionError) throw e  // error no relacionado → propagar
+                    // Error de retención → siguiente ventana (si la hay)
+                }
             }
+
+            if (response == null) {
+                Log.w(TAG, "tourPaymentEvents: sin respuesta tras ${windowCandidates.size} intentos → lista vacía")
+                return@runCatching emptyList<PaymentRecord>()
+            }
+
+            // Parsea y filtra: solo eventos "payment" del turista indicado.
+            val records = response.events
+                .sortedByDescending { it.ledger }
+                .mapNotNull { event ->
+                    runCatching { parsePaymentEvent(event, touristAddress) }
+                        .onFailure { Log.w(TAG, "tourPaymentEvents: parsePaymentEvent falló event=${event.id}: ${it.message}") }
+                        .getOrNull()
+                }
+            Log.i(TAG, "tourPaymentEvents: PaymentRecords para $touristAddress → ${records.size} de ${response.events.size} crudos")
+            records
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
-                val msg = e.message.orEmpty()
-                // El RPC rechaza si startLedger está antes de la ventana de retención.
-                // En ese caso no hay historial disponible — devolvemos lista vacía (no error).
-                if ("startLedger" in msg ||
-                    "event retention" in msg.lowercase() ||
-                    "start ledger" in msg.lowercase()
-                ) {
-                    RaizResult.Success(emptyList())
-                } else {
-                    RaizResult.Error(
-                        code = RaizErrorCode.NETWORK_ERROR,
-                        message = "tourPaymentEvents: $msg",
-                    )
-                }
+                Log.w(TAG, "tourPaymentEvents: error final no recuperable: ${e.message}")
+                RaizResult.Error(
+                    code = RaizErrorCode.NETWORK_ERROR,
+                    message = "tourPaymentEvents: ${e.message}",
+                )
             },
         )
     }
 
     /**
-     * Intenta parsear un [GetEventsResponse.EventInfo] del contrato Pool como
-     * [PaymentRecord]. Devuelve null si:
-     *   - topic[0] no es el Symbol "payment" (puede ser "vault_dep" o "vault_red")
-     *   - la data del evento no tiene la estructura esperada Vec[4]
-     *   - el tourist del evento no coincide con [touristAddress]
-     *   - cualquier campo falla al decodificar XDR
+     * Parsea un [GetEventsResponse.EventInfo] del Pool como [PaymentRecord].
+     * Loguea cada paso para facilitar diagnóstico en device.
+     *
+     * Devuelve null si:
+     *   - topic[0] no es Symbol("payment")  (puede ser "vault_dep", "vault_red")
+     *   - value no es Vec[≥4]
+     *   - tourist del evento != touristAddress
+     *   - cualquier decodificación XDR falla
      */
     private fun parsePaymentEvent(
         event: GetEventsResponse.EventInfo,
         touristAddress: String,
     ): PaymentRecord? {
-        // topic[0] debe ser Symbol("payment")
-        val topics = runCatching { event.parseTopic() }.getOrNull() ?: return null
-        if (topics.isEmpty()) return null
-        val topicSymbol = runCatching { Scv.fromSymbol(topics[0]) }.getOrNull()
-        if (topicSymbol != "payment") return null
+        // ── topic[0] debe ser Symbol("payment") ───────────────────────────
+        val topics = runCatching { event.parseTopic() }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: parseTopic() lanzó ${e.message} en event=${event.id}")
+            return null
+        }
+        if (topics.isEmpty()) {
+            Log.w(TAG, "parsePaymentEvent: topics vacíos en event=${event.id}")
+            return null
+        }
+        val topicSymbol = runCatching { Scv.fromSymbol(topics[0]) }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: fromSymbol(topics[0]) lanzó ${e.message} en event=${event.id}")
+            return null
+        }
+        Log.i(TAG, "parsePaymentEvent: event=${event.id} ledger=${event.ledger} topic[0]=$topicSymbol")
+        if (topicSymbol != "payment") return null  // "vault_dep" / "vault_red" → skip silencioso
 
-        // value = Vec([tourist_addr, merchant_addr, amount_i128, tip_i128])
-        // En Soroban una tupla Rust (A, B, C, D) se serializa como SCV_VEC de 4 elementos.
-        val dataVec = runCatching {
-            Scv.fromVec(event.parseValue())
-        }.getOrNull() ?: return null
-        if (dataVec.size < 4) return null
+        // ── value = Vec([tourist_addr, merchant_addr, amount_i128, tip_i128]) ──
+        // Rust tuple (A, B, C, D) → SCV_VEC con 4 elementos en Soroban.
+        val dataVec = runCatching { Scv.fromVec(event.parseValue()) }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: parseValue/fromVec lanzó ${e.message} en event=${event.id}")
+            return null
+        }
+        if (dataVec.size < 4) {
+            Log.w(TAG, "parsePaymentEvent: dataVec.size=${dataVec.size} < 4 en event=${event.id}")
+            return null
+        }
 
-        // [0] tourist  → Address → G...
-        val tourist = runCatching { ScvalParse.asAddressString(dataVec[0]) }.getOrNull()
-            ?: return null
-        if (tourist != touristAddress) return null  // filtro por turista
+        // ── [0] tourist → Address ─────────────────────────────────────────
+        val tourist = runCatching { ScvalParse.asAddressString(dataVec[0]) }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: asAddressString(tourist) lanzó ${e.message} en event=${event.id}")
+            return null
+        }
+        // ── [1] merchant → Address ────────────────────────────────────────
+        val merchant = runCatching { ScvalParse.asAddressString(dataVec[1]) }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: asAddressString(merchant) lanzó ${e.message} en event=${event.id}")
+            return null
+        }
+        Log.i(TAG, "parsePaymentEvent: event=${event.id} tourist=$tourist merchant=$merchant buscando=$touristAddress")
 
-        // [1] merchant → Address → G...
-        val merchant = runCatching { ScvalParse.asAddressString(dataVec[1]) }.getOrNull()
-            ?: return null
+        // Filtro por turista — loguea cuando hay mismatch (útil para passkey C... vs G...)
+        if (tourist != touristAddress) {
+            Log.i(TAG, "parsePaymentEvent: SKIP tourist=$tourist != buscando=$touristAddress")
+            return null
+        }
 
-        // [2] amount   → i128 (stroops) — monto base pagado por el turista al comercio
-        // Nota: total_deducido = amount + tip. El contrato calcula tip = amount * tip_bps / 10_000.
-        val amountStroops = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrNull()
-            ?: return null
+        // ── [2] amount → i128 stroops ─────────────────────────────────────
+        // Nota: el contrato define `amount` = monto base al comercio (NO el total).
+        // total_deducido = amount + tip donde tip = amount * tip_bps / 10_000.
+        val amountStroops = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrElse { e ->
+            Log.w(TAG, "parsePaymentEvent: asLong(amount) lanzó ${e.message} en event=${event.id}")
+            return null
+        }
 
         return PaymentRecord(
             txHash = event.transactionHash,
@@ -1098,7 +1152,7 @@ class SorobanClient @Inject constructor(
             amountStroops = amountStroops,
             assetCode = "USDC",
             createdAt = event.ledgerClosedAt,
-            isOutgoing = true, // el turista siempre es el pagador
+            isOutgoing = true, // el turista siempre es el pagador en pay_merchant
         )
     }
 
@@ -1169,14 +1223,20 @@ class SorobanClient @Inject constructor(
         this[key] ?: error("Campo '$key' no presente en el struct SCVal")
 
     private companion object {
+        const val TAG = "RAIZ"
+
         /**
-         * Ventana de lookback para getEvents: ~24 horas en testnet (ledger ~5 s c/u).
-         * 17 280 ledgers × 5 s = 86 400 s = 24 h.
-         *
-         * Testnet retiene eventos ~1 semana (~120 000 ledgers), así que esta ventana
-         * es conservadora. Si se necesita más historial, subir el valor — pero ojo:
-         * requests con ventanas muy grandes son más lentos y pueden expirar.
+         * Ventana principal de lookback para getEvents: ~24h en testnet (ledger ~5s).
+         * 17 280 × 5s = 86 400s = 24h. Si el RPC rechaza este startLedger por retención,
+         * se reintenta con EVENTS_LOOKBACK_FALLBACK.
          */
         const val EVENTS_LOOKBACK_LEDGERS = 17_280L
+
+        /**
+         * Ventana de fallback: ~3h (600 ledgers × 5s = 3 000s). Se usa solo si el
+         * RPC rechaza la ventana principal por estar fuera de la retención disponible
+         * en testnet. Cubre todos los pagos de la sesión de demostración reciente.
+         */
+        const val EVENTS_LOOKBACK_FALLBACK = 600L
     }
 }

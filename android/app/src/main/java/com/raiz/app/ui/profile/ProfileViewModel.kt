@@ -85,6 +85,13 @@ class ProfileViewModel @Inject constructor(
         _state.update {
             it.copy(appLockEnabled = appLock.enabled, appLockAvailable = appLock.canAuthenticate())
         }
+        // Auto-refresco periódico — un solo loop para no duplicar coroutines.
+        viewModelScope.launch {
+            while (true) {
+                delay(AUTO_REFRESH_INTERVAL_MS)
+                refresh()
+            }
+        }
     }
 
     /** Activa/desactiva el bloqueo biométrico de la app. */
@@ -105,43 +112,44 @@ class ProfileViewModel @Inject constructor(
     }
 
     /**
-     * Bug 1 — Saldo en wallet passkey.
-     *
-     * Las wallets passkey son smart accounts (C...). Horizon NO ve su saldo
-     * porque su USDC vive en el storage del SAC (Stellar Asset Contract), no
-     * en una trustline clásica. Si Horizon reportara 0, el perfil siempre
-     * mostraría saldo cero para estos usuarios.
-     *
-     * Bifurcación:
-     *  - Passkey (C...): lectura puntual via SAC en un loop periódico de
-     *    [BALANCE_POLL_MS] para simular "casi tiempo real" sin SSE.
-     *  - Clásica (G...): flow SSE de Horizon, igual que antes.
+     * Suscribe al balance USDC:
+     *   - Passkey (C...): lectura puntual inicial — las actualizaciones se delegan
+     *     al loop de auto-refresco periódico (un solo loop activo por ViewModel).
+     *   - Clásica (G...): flow SSE de Horizon con actualizaciones en tiempo real.
      */
     private fun observeBalance() {
         viewModelScope.launch {
-            // Usamos currentAccountId() para obtener el address real (C... o G...).
             val accountId = walletManager.currentAccountId()
                 ?: walletManager.mockWallet().publicKey
 
             if (walletManager.isPasskeyWallet()) {
-                // Loop de refresco periódico: no hay SSE para contratos.
-                while (true) {
-                    when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
-                        is RaizResult.Success -> {
-                            Log.i(TAG, "Saldo SAC en perfil: ${r.data} stroops")
-                            _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = r.data)) }
-                        }
-                        is RaizResult.Error ->
-                            Log.w(TAG, "usdcBalanceOfContract (perfil): ${r.message}")
-                    }
-                    delay(BALANCE_POLL_MS)
-                }
-            } else {
-                // Wallet clásica G...: SSE de Horizon como antes.
-                horizonStream.usdcBalanceFlow(accountId).collect { stroops ->
-                    _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = stroops)) }
-                }
+                // Solo lectura inicial — refresh() llama refreshBalanceOnce()
+                // para no tener dos loops infinitos activos.
+                refreshBalanceOnce()
+                return@launch
             }
+
+            // Wallet clásica G...: SSE de Horizon.
+            horizonStream.usdcBalanceFlow(accountId).collect { stroops ->
+                _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = stroops)) }
+            }
+        }
+    }
+
+    /**
+     * Una sola lectura del saldo USDC para wallets passkey (smart accounts C...).
+     * Para wallets clásicas no hace nada — el SSE de Horizon gestiona el saldo.
+     * Se invoca en la carga inicial y en cada ciclo de refresh().
+     */
+    private suspend fun refreshBalanceOnce() {
+        if (!walletManager.isPasskeyWallet()) return
+        val accountId = walletManager.currentAccountId() ?: walletManager.mockWallet().publicKey
+        when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
+            is RaizResult.Success -> {
+                Log.i(TAG, "Saldo SAC (refresco): ${r.data} stroops")
+                _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = r.data)) }
+            }
+            is RaizResult.Error -> Log.w(TAG, "refreshBalanceOnce: ${r.message}")
         }
     }
 
@@ -206,6 +214,16 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Recarga historial, puntos y saldo (one-shot para passkey).
+     * Llamado desde ON_RESUME y desde el loop de auto-refresco periódico.
+     */
+    fun refresh() {
+        loadHistory()
+        loadPoints()
+        viewModelScope.launch { refreshBalanceOnce() }
+    }
+
     private fun resolveRole() {
         viewModelScope.launch {
             val role = roleResolver.resolve(walletManager.mockWallet().publicKey)
@@ -216,8 +234,8 @@ class ProfileViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
-        /** Intervalo de refresco del saldo SAC para smart accounts passkey (30 s). */
-        const val BALANCE_POLL_MS = 30_000L
+        /** Intervalo del loop de auto-refresco periódico (20 s). Mismo valor que WalletViewModel. */
+        const val AUTO_REFRESH_INTERVAL_MS = 20_000L
         /** Pausa entre reintentos de getPoints. */
         const val RETRY_DELAY_MS = 2_000L
         /** Número máximo de intentos para cargar puntos. */

@@ -72,6 +72,13 @@ class WalletViewModel @Inject constructor(
         loadCentroPoolBalance()
         loadPassport()
         refreshSetupStep()
+        // Auto-refresco periódico — un solo loop para no duplicar coroutines.
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(AUTO_REFRESH_INTERVAL_MS)
+                refresh()
+            }
+        }
     }
 
     /**
@@ -368,6 +375,9 @@ class WalletViewModel @Inject constructor(
                     }
                 }
             }
+            // Diagnóstico: dirección del turista y merchants registrados por barrio.
+            Log.i(TAG, "loadPassport: touristAddress=${accountId}")
+            Log.i(TAG, "loadPassport: merchantToBarrio keys=${merchantToBarrio.keys}")
 
             // 3. Pagos a comercios del turista — vía EVENTOS Soroban del Pool.
             //    Horizon NO ve pay_merchant (mueve USDC DENTRO del contrato vía el SAC),
@@ -379,6 +389,8 @@ class WalletViewModel @Inject constructor(
                     emptyList()
                 }
             }
+            // Diagnóstico: merchants que aparecen en los pagos del turista.
+            Log.i(TAG, "loadPassport: merchantPayments=${merchantPayments.size} -> ${merchantPayments.map { it.to }}")
 
             // 4. Stats agregadas.
             //
@@ -397,6 +409,8 @@ class WalletViewModel @Inject constructor(
             val barriosVisitados: Set<String> = merchantPayments
                 .mapNotNull { merchantToBarrio[it.to] }
                 .toSet()
+            // Diagnóstico: IDs de barrios que resultan del cruce merchant→barrio.
+            Log.i(TAG, "loadPassport: barriosVisitados=${barriosVisitados}")
 
             val nivel = PassportLevel.fromPoints(points)
             val passport = PassportData(
@@ -416,13 +430,23 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    /** Refresca todos los datos derivados del passport (puntos + stats). */
+    /**
+     * Recarga todos los datos: passport (puntos + stats), pool del barrio y saldo USDC.
+     * Llamado desde ON_RESUME y desde el loop de auto-refresco periódico.
+     */
     fun refresh() {
         loadPassport()
+        loadCentroPoolBalance()
+        // El saldo SAC de los smart accounts passkey no tiene SSE — se refresca manualmente.
+        if (walletManager.isPasskeyWallet()) {
+            viewModelScope.launch { refreshPasskeyBalance() }
+        }
     }
 
     private companion object {
         const val TAG = "RAIZ"
+        /** Intervalo del loop de auto-refresco periódico (20 s). */
+        const val AUTO_REFRESH_INTERVAL_MS = 20_000L
         /** 20 USDC = 20 * 10_000_000 stroops. Suficiente para varios pagos demo. */
         const val FAUCET_USDC_STROOPS = 200_000_000L
         const val BARRIO_CENTRO_ID = "ce47120000000000000000000000000000000000000000000000000000000001"
