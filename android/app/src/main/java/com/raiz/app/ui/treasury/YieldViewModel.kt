@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -136,15 +137,9 @@ class YieldViewModel @Inject constructor(
             // VaultShares(barrio_id) → i128). Es lectura pura: no llama a ninguna función
             // del vault de DeFindex, así que no puede caer en el gotcha de "write call".
             val barriosYield = DEMO_BARRIOS.map { (barrioId, nombre) ->
-                val sharesResult = sorobanClient.getVaultShares(barrioId)
-                val shares = when (sharesResult) {
-                    is RaizResult.Success -> sharesResult.data
-                    is RaizResult.Error -> {
-                        // Error por barrio: no rompe la pantalla; ese barrio muestra 0.
-                        Log.w(TAG, "getVaultShares($nombre) falló: ${sharesResult.message}")
-                        0L
-                    }
-                }
+                // Reintenta por barrio: el RPC de testnet es flaky en ráfaga y un
+                // fallo transitorio NO debe mostrar 0 USDC del fondo del barrio.
+                val shares = sharesWithRetry(barrioId, nombre)
 
                 // valorActual = shares × pricePerShare / 10^7.
                 // BigInteger para evitar overflow en la multiplicación de dos Long grandes.
@@ -185,6 +180,24 @@ class YieldViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Lee las shares de un barrio reintentando hasta [attempts] veces. El RPC de
+     * testnet falla de forma transitoria en ráfaga; sin retry un barrio con fondo
+     * podría mostrarse en 0 USDC. Solo cae a 0 tras agotar los intentos.
+     */
+    private suspend fun sharesWithRetry(barrioId: String, nombre: String, attempts: Int = 3): Long {
+        repeat(attempts) { i ->
+            when (val r = sorobanClient.getVaultShares(barrioId)) {
+                is RaizResult.Success -> return r.data
+                is RaizResult.Error -> {
+                    Log.w(TAG, "getVaultShares($nombre) intento ${i + 1}/$attempts: ${r.message}")
+                    if (i < attempts - 1) delay(900)
+                }
+            }
+        }
+        return 0L
     }
 
     /** Deposita el monto del input (USDC) en el vault firmando como tesorería admin. */
