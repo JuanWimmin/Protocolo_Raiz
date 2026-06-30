@@ -67,6 +67,8 @@ import com.raiz.app.ui.wallet.WalletScreen
 import com.raiz.app.ui.welcome.ChooseRoleScreen
 import com.raiz.app.ui.welcome.CreatePasskeyWalletScreen
 import com.raiz.app.ui.welcome.CreateWalletScreen
+import com.raiz.app.ui.welcome.CrearCuentaScreen
+import com.raiz.app.ui.welcome.IniciarSesionScreen
 import com.raiz.app.ui.welcome.ImportWalletScreen
 import com.raiz.app.ui.welcome.WelcomeScreen
 import dagger.hilt.android.AndroidEntryPoint
@@ -118,6 +120,8 @@ class MainActivity : FragmentActivity() {
                             },
                             isDemoMode = walletManager.isDemoMode,
                             onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
+                            // Consulta el rol guardado en tiempo de navegación (flujo login).
+                            getPreferredRole = { walletManager.preferredRole() },
                             onLogout = { walletManager.logout() },
                             passkeyEnabled = passkeyManager.isAvailable,
                         )
@@ -193,6 +197,8 @@ private fun RaizApp(
     initialRole: UserRole = UserRole.TOURIST,
     isDemoMode: Boolean = false,
     onSetPreferredRole: (UserRole) -> Unit = {},
+    /** Consulta el rol guardado en WalletManager — usado en el flujo login. */
+    getPreferredRole: () -> UserRole? = { null },
     onLogout: () -> Unit = {},
     passkeyEnabled: Boolean = false,
 ) {
@@ -219,6 +225,28 @@ private fun RaizApp(
         }
     }
 
+    /**
+     * Navega tras un login exitoso (passkey sign-in o importar semilla en flujo login).
+     *
+     * Si el usuario tenía un rol guardado en [WalletManager], entra directamente en
+     * la app con ese rol sin pasar por [ChooseRoleScreen]. Si no hay rol guardado
+     * (primer login tras reinstalar o borrar datos), pasa por [ChooseRoleScreen].
+     */
+    fun navigateAfterLogin() {
+        hasWallet = true
+        val existingRole = getPreferredRole()
+        if (existingRole != null) {
+            currentRole = existingRole
+            nav.navigate(Routes.WALLET) {
+                popUpTo(Routes.WELCOME) { inclusive = true }
+            }
+        } else {
+            nav.navigate(Routes.CHOOSE_ROLE) {
+                popUpTo(Routes.WELCOME) { inclusive = true }
+            }
+        }
+    }
+
     // startDestination FIJO: se computa UNA sola vez desde initiallyHasWallet.
     // Si se recalculara con `hasWallet` (mutable), al crear una wallet el flag
     // pasa a true → el grafo del NavHost se reconstruye con start=WALLET y
@@ -233,10 +261,10 @@ private fun RaizApp(
         composable(Routes.WELCOME) {
             WelcomeScreen(
                 demoEnabled = BuildConfig.DEMO_TOURIST_SECRET.isNotBlank(),
-                onCreateWallet = { nav.navigate(Routes.CREATE_WALLET) },
-                onImportWallet = { nav.navigate(Routes.IMPORT_WALLET) },
+                onSignIn = { nav.navigate(Routes.LOGIN) },
+                onCreateAccount = { nav.navigate(Routes.REGISTER) },
                 onUseDemo = {
-                    // Modo demo entra como turista sin pasar por ChooseRole.
+                    // Modo demo: turista sin guardar wallet ni pasar por ChooseRole.
                     currentRole = UserRole.TOURIST
                     hasWallet = true
                     nav.navigate(Routes.WALLET) {
@@ -244,10 +272,42 @@ private fun RaizApp(
                     }
                 },
                 onSeeDashboard = { nav.navigate(Routes.DASHBOARD) },
-                passkeyEnabled = passkeyEnabled,
-                onCreatePasskeyWallet = { nav.navigate(Routes.CREATE_PASSKEY_WALLET) },
             )
         }
+
+        // ── Flujo REGISTRO (cuenta nueva) ─────────────────────────────────
+
+        composable(Routes.REGISTER) {
+            // Usuario elige entre passkey o frase semilla para crear su cuenta.
+            CrearCuentaScreen(
+                passkeyEnabled = passkeyEnabled,
+                onBack = { nav.popBackStack() },
+                onPasskey = { nav.navigate(Routes.CREATE_PASSKEY_WALLET) },
+                onSeedPhrase = { nav.navigate(Routes.CREATE_WALLET) },
+            )
+        }
+
+        // ── Flujo LOGIN (cuenta existente) ────────────────────────────────
+
+        composable(Routes.LOGIN) {
+            // Usuario ya tiene cuenta: passkey (si disponible) o importar semilla.
+            IniciarSesionScreen(
+                passkeyEnabled = passkeyEnabled,
+                onBack = { nav.popBackStack() },
+                // Login exitoso: respeta el rol guardado, no fuerza ChooseRole.
+                onWalletReady = { navigateAfterLogin() },
+                onImportSeed = { nav.navigate(Routes.IMPORT_WALLET_LOGIN) },
+            )
+        }
+
+        composable(Routes.IMPORT_WALLET_LOGIN) {
+            // Importar semilla en contexto de LOGIN: comportamiento igual que LOGIN passkey.
+            ImportWalletScreen(
+                onBack = { nav.popBackStack() },
+                onWalletReady = { navigateAfterLogin() },
+            )
+        }
+
         composable(Routes.CREATE_PASSKEY_WALLET) {
             CreatePasskeyWalletScreen(
                 onBack = { nav.popBackStack() },
@@ -526,12 +586,20 @@ private fun SplashIntro() {
 
 /** Rutas de navegación de la app. */
 private object Routes {
-    // Welcome flow
+    // Welcome flow — entrada
     const val WELCOME                    = "welcome"
+    // Registro (cuenta nueva): usuario elige método de protección
+    const val REGISTER                   = "welcome/register"
+    // Login (cuenta existente): passkey o importar semilla
+    const val LOGIN                      = "welcome/login"
+    // Sub-rutas de registro
     const val CREATE_WALLET              = "welcome/create"
-    const val IMPORT_WALLET              = "welcome/import"
-    const val CHOOSE_ROLE                = "welcome/role"
     const val CREATE_PASSKEY_WALLET      = "welcome/passkey"
+    // Sub-rutas compartidas
+    const val IMPORT_WALLET              = "welcome/import"
+    // Variante de importar semilla para el flujo login (no fuerza ChooseRole si hay rol guardado)
+    const val IMPORT_WALLET_LOGIN        = "welcome/import/login"
+    const val CHOOSE_ROLE                = "welcome/role"
 
     // App principal
     const val WALLET                     = "wallet"
