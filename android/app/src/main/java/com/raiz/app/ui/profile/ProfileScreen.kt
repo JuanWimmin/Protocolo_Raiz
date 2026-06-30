@@ -23,25 +23,18 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Storefront
-import androidx.compose.material.icons.outlined.ThumbDown
-import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -60,9 +53,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.ButtonDefaults
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.PaymentRecord
-import com.raiz.app.data.model.Proposal
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.QrCard
@@ -74,19 +67,41 @@ import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
 
+/**
+ * Tabs de perfil — post-refactor.
+ *
+ *   HISTORIAL    → pagos del usuario (salientes + entrantes)
+ *   QR           → QR de cobro (también útil para el comerciante)
+ *   CONFIGURACION → seguridad (biométrico), logout,
+ *                  DemoRoleSwitch (solo si isDemoMode)
+ */
 private enum class ProfileTab(val label: String) {
     HISTORIAL("Historial"),
-    ROL("Mi rol"),
     QR("Mi QR"),
+    CONFIGURACION("Configuración"),
 }
 
+/**
+ * Pantalla de Perfil — versión limpia.
+ *
+ * La votación de propuestas se movió a [ProposalsScreen].
+ * Las ventas del comerciante se movieron a [CobrosScreen].
+ *
+ * [currentRole] determina los tabs del bottom nav.
+ * [onDemoRoleChange] se llama cuando el juez cambia el rol en el demo
+ * para que [RaizApp] actualice la nav global sin persistir el cambio.
+ */
 @Composable
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
+    onNavigateProposals: () -> Unit = {},
+    onNavigateCobros: () -> Unit = {},
     onBecomeMerchant: () -> Unit = {},
     onLogout: () -> Unit = {},
+    currentRole: UserRole = UserRole.TOURIST,
+    onDemoRoleChange: (UserRole) -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -97,12 +112,15 @@ fun ProfileScreen(
         bottomBar = {
             RaizBottomNav(
                 selected = selectedNav,
+                role = currentRole,
                 onSelect = { dest ->
                     selectedNav = dest
                     when (dest) {
-                        RaizDestination.Home -> onNavigateHome()
-                        RaizDestination.Rewards -> onNavigateRewards()
-                        RaizDestination.Map -> onNavigateMap()
+                        RaizDestination.Home      -> onNavigateHome()
+                        RaizDestination.Rewards   -> onNavigateRewards()
+                        RaizDestination.Map       -> onNavigateMap()
+                        RaizDestination.Proposals -> onNavigateProposals()
+                        RaizDestination.Cobros    -> onNavigateCobros()
                         else -> Unit
                     }
                 },
@@ -124,18 +142,20 @@ fun ProfileScreen(
 
             when (tab) {
                 ProfileTab.HISTORIAL -> HistoryTab(state = state)
-                ProfileTab.ROL -> RoleTab(
+                ProfileTab.QR -> QrTab(publicKey = state.wallet.publicKey)
+                ProfileTab.CONFIGURACION -> ConfigTab(
                     state = state,
-                    onOverride = viewModel::setRoleOverride,
-                    onVote = viewModel::vote,
-                    onBecomeMerchant = onBecomeMerchant,
-                )
-                ProfileTab.QR -> QrTab(
-                    publicKey = state.wallet.publicKey,
                     appLockEnabled = state.appLockEnabled,
                     appLockAvailable = state.appLockAvailable,
                     onToggleLock = viewModel::setAppLockEnabled,
                     onLogout = onLogout,
+                    onBecomeMerchant = onBecomeMerchant,
+                    onDemoRoleChange = { role: UserRole? ->
+                        // Actualiza el chip del header en ProfileScreen
+                        viewModel.setRoleOverride(role)
+                        // Propaga al nivel de RaizApp para actualizar la nav inferior
+                        onDemoRoleChange(role ?: UserRole.TOURIST)
+                    },
                 )
             }
         }
@@ -143,7 +163,7 @@ fun ProfileScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Header con chip de rol
+// Header
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -161,7 +181,7 @@ private fun Header(publicKey: String, role: UserRole) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = publicKey.first().toString(),
+                    text = publicKey.firstOrNull()?.toString() ?: "?",
                     color = RaizGreen,
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 )
@@ -198,13 +218,15 @@ private fun Header(publicKey: String, role: UserRole) {
 @Composable
 private fun RoleChip(role: UserRole) {
     val color = when (role) {
-        UserRole.TOURIST -> RaizYellow
+        UserRole.TOURIST  -> RaizYellow
         UserRole.RESIDENT -> RaizPurple
         UserRole.MERCHANT -> RaizGreen
     }
     AssistChip(
-        onClick = { /* nada — informativo */ },
-        label = { Text(role.label, color = RaizBlack, style = MaterialTheme.typography.labelLarge) },
+        onClick = { /* informativo */ },
+        label = {
+            Text(role.label, color = RaizBlack, style = MaterialTheme.typography.labelLarge)
+        },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = color.copy(alpha = 0.18f),
             labelColor = RaizBlack,
@@ -231,7 +253,12 @@ private fun BalancesRow(usdcStroops: Long, points: Long) {
 }
 
 @Composable
-private fun BalanceTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+private fun BalanceTile(
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -254,9 +281,6 @@ private fun BalanceTile(label: String, value: String, accent: Color, modifier: M
 
 @Composable
 private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
-    // Usamos el TabRow default — el indicator custom de Material 3 requiere
-    // pasar la lista de TabPositions con tabIndicatorOffset; pisamos los
-    // textos si lo hacemos mal. Mejor el default y solo coloreamos el text.
     TabRow(
         selectedTabIndex = selected.ordinal,
         containerColor = MaterialTheme.colorScheme.background,
@@ -269,10 +293,7 @@ private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
                 selectedContentColor = RaizBlack,
                 unselectedContentColor = RaizBlack.copy(alpha = 0.5f),
                 text = {
-                    Text(
-                        t.label,
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Text(t.label, style = MaterialTheme.typography.labelLarge)
                 },
             )
         }
@@ -299,7 +320,10 @@ private fun HistoryTab(state: ProfileUiState) {
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(state.history, key = { it.txHash + it.from + it.to + it.amountStroops }) { p ->
+            items(
+                state.history,
+                key = { it.txHash + it.from + it.to + it.amountStroops },
+            ) { p ->
                 PaymentRow(payment = p)
             }
         }
@@ -333,10 +357,17 @@ private fun PaymentRow(payment: PaymentRecord) {
         }
         Spacer(modifier = Modifier.size(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("$direction · ${payment.assetCode}", style = MaterialTheme.typography.labelLarge, color = RaizBlack)
+            Text(
+                "$direction · ${payment.assetCode}",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
             Text(
                 "${counterparty.take(8)}…${counterparty.takeLast(6)}",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                ),
                 color = RaizBlack.copy(alpha = 0.5f),
             )
         }
@@ -353,13 +384,7 @@ private fun PaymentRow(payment: PaymentRecord) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun QrTab(
-    publicKey: String,
-    appLockEnabled: Boolean,
-    appLockAvailable: Boolean,
-    onToggleLock: (Boolean) -> Unit,
-    onLogout: () -> Unit,
-) {
+private fun QrTab(publicKey: String) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -378,39 +403,23 @@ private fun QrTab(
             caption = "${publicKey.take(12)}…${publicKey.takeLast(8)}",
             sizeDp = 240,
         )
-
-        // Seguridad — bloqueo biométrico/PIN de la app.
-        SecuritySettingsCard(
-            enabled = appLockEnabled,
-            available = appLockAvailable,
-            onToggle = onToggleLock,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Logout — borra la wallet local y vuelve a Welcome.
-        androidx.compose.material3.OutlinedButton(
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                contentColor = Color(0xFFB00020),
-            ),
-        ) {
-            Text("Cerrar sesión y borrar wallet", style = MaterialTheme.typography.labelLarge)
-        }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab: Mi rol — contenido condicional
+// Tab: Configuración
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun RoleTab(
+private fun ConfigTab(
     state: ProfileUiState,
-    onOverride: (UserRole?) -> Unit,
-    onVote: (Long, Boolean) -> Unit,
+    appLockEnabled: Boolean,
+    appLockAvailable: Boolean,
+    onToggleLock: (Boolean) -> Unit,
+    onLogout: () -> Unit,
     onBecomeMerchant: () -> Unit,
+    /** null = restaurar rol real; UserRole = simular ese rol (solo demo). */
+    onDemoRoleChange: (UserRole?) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -419,15 +428,46 @@ private fun RoleTab(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Demo switch (solo si el rol detectado real es turista)
-        if (state.detectedRole?.role == UserRole.TOURIST) {
-            DemoRoleSwitch(current = state.effectiveRole, onSelect = onOverride)
+
+        // Demo role switch — solo visible cuando no hay wallet real guardada.
+        if (state.isDemoMode) {
+            DemoRoleSwitch(
+                current = state.effectiveRole,
+                onSelect = onDemoRoleChange,
+            )
         }
 
-        when (state.effectiveRole) {
-            UserRole.TOURIST -> TouristSection(onBecomeMerchant = onBecomeMerchant)
-            UserRole.RESIDENT -> ResidentSection(state = state, onVote = onVote)
-            UserRole.MERCHANT -> MerchantSection(state = state)
+        // Cambio a comerciante (turista que quiere registrar su negocio).
+        if (state.effectiveRole == UserRole.TOURIST) {
+            OutlinedButton(
+                onClick = onBecomeMerchant,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = RaizGreen,
+                ),
+            ) {
+                Text("Registrarme como comerciante", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+
+        // Seguridad — bloqueo biométrico.
+        SecuritySettingsCard(
+            enabled = appLockEnabled,
+            available = appLockAvailable,
+            onToggle = onToggleLock,
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Logout.
+        OutlinedButton(
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = Color(0xFFB00020),
+            ),
+        ) {
+            Text("Cerrar sesión y borrar wallet", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -448,14 +488,26 @@ private fun DemoRoleSwitch(current: UserRole, onSelect: (UserRole?) -> Unit) {
             color = RaizBlack,
         )
         Text(
-            text = "Tu address real es turista. Para mostrar las otras vistas en el demo, simula otro rol — las lecturas usan datos reales de los barrios.",
+            text = "Cambia de rol para mostrar las diferentes vistas al jurado — la nav inferior se adapta en tiempo real.",
             style = MaterialTheme.typography.bodyMedium,
             color = RaizBlack.copy(alpha = 0.6f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DemoChip("Turista", current == UserRole.TOURIST) { onSelect(null) }
-            DemoChip("Residente", current == UserRole.RESIDENT) { onSelect(UserRole.RESIDENT) }
-            DemoChip("Comerciante", current == UserRole.MERCHANT) { onSelect(UserRole.MERCHANT) }
+            DemoChip(
+                label = "Turista",
+                selected = current == UserRole.TOURIST,
+                onClick = { onSelect(null) },
+            )
+            DemoChip(
+                label = "Residente",
+                selected = current == UserRole.RESIDENT,
+                onClick = { onSelect(UserRole.RESIDENT) },
+            )
+            DemoChip(
+                label = "Comerciante",
+                selected = current == UserRole.MERCHANT,
+                onClick = { onSelect(UserRole.MERCHANT) },
+            )
         }
     }
 }
@@ -472,331 +524,6 @@ private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
         border = null,
     )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sección: Turista
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TouristSection(onBecomeMerchant: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(RaizWhite)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "Estás pagando como turista",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
-            )
-            Text(
-                text = "Cada pago con Tip Barrio aporta al fondo del comercio que visitas y te da puntos para canjear por artesanías del lugar.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.7f),
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "¿Vives en un barrio RAÍZ? Pide a tu admin local que te mintea el token de residencia — desde ahí podrás proponer y votar en qué se invierte el fondo.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-        }
-
-        // Atajo a registrarse como comerciante. Visible siempre que el rol
-        // efectivo sea turista — es la única forma user-facing de probar el
-        // flow E2E en 2 teléfonos (uno paga, el otro recibe).
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(RaizWhite)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Outlined.Storefront,
-                    contentDescription = null,
-                    tint = RaizGreen,
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = "¿Tienes un negocio?",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = RaizBlack,
-                )
-            }
-            Text(
-                text = "Regístralo en RAÍZ. Aparecerá en el mapa de tu barrio y podrás recibir pagos en USDC con QR.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.7f),
-            )
-            Button(
-                onClick = onBecomeMerchant,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RaizGreen,
-                    contentColor = RaizWhite,
-                ),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text("Registrarme como comerciante", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sección: Residente — propuestas activas + voto
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun ResidentSection(
-    state: ProfileUiState,
-    onVote: (Long, Boolean) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Tu barrio · ${state.activeBarrioName}",
-            style = MaterialTheme.typography.labelLarge,
-            color = RaizBlack,
-        )
-        Text(
-            text = "Como residente puedes proponer cómo se invierte el fondo del barrio y votar en propuestas abiertas.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizBlack.copy(alpha = 0.6f),
-        )
-
-        when {
-            state.proposalsLoading -> CenteredSpinner()
-            state.proposalsError != null -> CenteredText(
-                "No pudimos cargar propuestas.\n${state.proposalsError}",
-            )
-            state.residentProposals.isEmpty() -> Text(
-                text = "No hay propuestas activas en este barrio.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-            else -> state.residentProposals.forEach { p ->
-                ProposalCard(
-                    p = p,
-                    voteStatus = state.voteState[p.id],
-                    onVote = { support -> onVote(p.id, support) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProposalCard(
-    p: Proposal,
-    voteStatus: VoteStatus?,
-    onVote: (Boolean) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(RaizWhite)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(p.description, style = MaterialTheme.typography.labelLarge, color = RaizBlack)
-        Row {
-            Text(
-                "Pide ${p.amountStroops.formatUsdc()}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                "${p.votesFor} a favor · ${p.votesAgainst} en contra",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-        }
-        LinearProgressIndicator(
-            progress = { if (p.totalVotes == 0) 0f else p.votesFor.toFloat() / p.totalVotes },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-            color = RaizGreen,
-            trackColor = RaizBlack.copy(alpha = 0.08f),
-        )
-
-        // Estado del voto en curso / completado / con error
-        when (voteStatus) {
-            VoteStatus.Submitting -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(
-                    color = RaizGreen,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("Enviando voto a la red…", style = MaterialTheme.typography.bodyMedium, color = RaizBlack.copy(alpha = 0.7f))
-            }
-            VoteStatus.Ok -> Text(
-                "✓ Tu voto quedó on-chain",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizGreen,
-            )
-            is VoteStatus.Failed -> Text(
-                voteStatus.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFB00020),
-            )
-            null -> Unit
-        }
-
-        val voting = voteStatus is VoteStatus.Submitting
-        val alreadyOk = voteStatus is VoteStatus.Ok
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { onVote(true) },
-                enabled = !voting && !alreadyOk,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RaizGreen,
-                    contentColor = RaizWhite,
-                    disabledContainerColor = RaizGreen.copy(alpha = 0.5f),
-                ),
-                shape = RoundedCornerShape(10.dp),
-            ) {
-                Icon(Icons.Outlined.ThumbUp, contentDescription = null)
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("A favor", style = MaterialTheme.typography.labelLarge)
-            }
-            Button(
-                onClick = { onVote(false) },
-                enabled = !voting && !alreadyOk,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RaizBlack,
-                    contentColor = RaizWhite,
-                    disabledContainerColor = RaizBlack.copy(alpha = 0.5f),
-                ),
-                shape = RoundedCornerShape(10.dp),
-            ) {
-                Icon(Icons.Outlined.ThumbDown, contentDescription = null)
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("En contra", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sección: Comerciante — ventas recibidas
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun MerchantSection(state: ProfileUiState) {
-    val incoming = state.history.filter { !it.isOutgoing }
-    val incomingTotal = incoming.sumOf { it.amountStroops }
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Tu negocio · ${state.activeBarrioName}",
-            style = MaterialTheme.typography.labelLarge,
-            color = RaizBlack,
-        )
-        Text(
-            text = "Recibes pagos en USDC vía la red Stellar. RAÍZ retiene un 0.5% como fee del protocolo; el 2% del tip va al pool del barrio.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizBlack.copy(alpha = 0.6f),
-        )
-
-        // Resumen ventas
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(RaizWhite)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Storefront, contentDescription = null, tint = RaizGreen)
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = "Ventas recibidas",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = RaizBlack,
-                )
-            }
-            Text(
-                text = incomingTotal.formatUsdc(),
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                color = RaizGreen,
-            )
-            Text(
-                text = "${incoming.size} pagos en total",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-        }
-
-        if (incoming.isEmpty()) {
-            Text(
-                text = "Aún no recibes pagos en esta cuenta. Comparte tu QR (tab Mi QR) para que te paguen.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
-        } else {
-            Text(
-                text = "Últimos cobros",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
-            )
-            incoming.take(5).forEach { p ->
-                PaymentRow(payment = p)
-                HorizontalDivider(color = Color.Transparent, thickness = 4.dp)
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun CenteredSpinner() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(40.dp),
-        contentAlignment = Alignment.Center,
-    ) { CircularProgressIndicator(color = RaizGreen) }
-}
-
-@Composable
-private fun CenteredText(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = RaizBlack.copy(alpha = 0.7f),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Seguridad — bloqueo biométrico de la app
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SecuritySettingsCard(
@@ -838,6 +565,38 @@ private fun SecuritySettingsCard(
                 checkedThumbColor = RaizWhite,
                 checkedTrackColor = RaizGreen,
             ),
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CenteredSpinner() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(color = RaizGreen)
+    }
+}
+
+@Composable
+private fun CenteredText(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            color = RaizBlack.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }

@@ -3,6 +3,7 @@ package com.raiz.app.data.stellar
 import com.raiz.app.BuildConfig
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletAuthMethod
 import com.raiz.app.data.model.WalletState
 import com.soneso.stellar.sdk.KeyPair
@@ -136,6 +137,43 @@ class WalletManager @Inject constructor(
         store.clear()
         cachedDemoKp = null
     }
+
+    // ── Rol preferido del usuario ─────────────────────────────────────────
+
+    /**
+     * Persiste el rol elegido por el usuario (TOURIST / MERCHANT / RESIDENT).
+     * La UI llama esto después de que el usuario pulsa "Soy turista", "Soy
+     * comerciante" o "Soy residente" en el onboarding o en el perfil.
+     * Delega en [SecureWalletStore.savePreferredRole].
+     */
+    fun setPreferredRole(role: UserRole) {
+        store.savePreferredRole(role.name)
+    }
+
+    /**
+     * Rol guardado, o null si el usuario no lo ha elegido todavía o se
+     * hizo logout. Parsing null-safe: si el nombre guardado no coincide
+     * con ningún enum (ej. migración de valores viejos), retorna null en
+     * lugar de lanzar [IllegalArgumentException].
+     */
+    fun preferredRole(): UserRole? {
+        val name = store.preferredRole() ?: return null
+        return runCatching { UserRole.valueOf(name) }.getOrNull()
+    }
+
+    /**
+     * true si no hay ninguna wallet real guardada en el dispositivo (ni
+     * seed BIP-39 ni passkey) Y existe un DEMO_TOURIST_SECRET configurado
+     * en local.properties. Indica que el usuario entró por el atajo "demo"
+     * en el Welcome sin registrarse.
+     *
+     * La UI puede usar este flag para mostrar un banner persistente
+     * "Modo demo — crea tu wallet para guardar tus puntos".
+     */
+    val isDemoMode: Boolean
+        get() = !store.hasStoredWallet() &&
+                !store.hasStoredPasskeyWallet() &&
+                BuildConfig.DEMO_TOURIST_SECRET.isNotBlank()
 
     // ── Passkey ───────────────────────────────────────────────────────────
     //

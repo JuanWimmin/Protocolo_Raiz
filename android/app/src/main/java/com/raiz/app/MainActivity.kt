@@ -19,12 +19,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import android.os.Build
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
+import com.raiz.app.ui.cobros.CobrosScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
+import com.raiz.app.ui.governance.CreateProposalScreen
+import com.raiz.app.ui.governance.ProposalsScreen
 import com.raiz.app.ui.map.BarrioMapScreen
 import com.raiz.app.ui.pay.PayScreen
 import com.raiz.app.ui.profile.ProfileScreen
@@ -42,16 +45,14 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 /**
- * Entry point.
+ * Única Activity de RAÍZ.
  *
- * Si el usuario tiene wallet guardada (SecureWalletStore) o hay demo
- * configurado → arranca en `wallet`. Sino arranca en `welcome` con las
- * opciones de crear / importar / demo.
- *
- * **Bloqueo de la app:** si está activado (Perfil → Mi QR → seguridad) y hay
- * wallet, se exige autenticación biométrica/PIN del dispositivo antes de
- * mostrar la app, y se re-bloquea al volver de segundo plano. Usa el
- * subsistema del SO vía `BiometricPrompt` (no guardamos PIN propio).
+ * Responsabilidades:
+ *   - Inicializar el estado de bloqueo biométrico (AppLock).
+ *   - Resolver el rol preferido persistido en WalletManager para arrancar
+ *     con la nav correcta en reaperturas.
+ *   - Pasar lambdas de WalletManager a RaizApp (setPreferredRole, isDemoMode)
+ *     sin exponer el objeto completo al composable.
  */
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
@@ -75,6 +76,14 @@ class MainActivity : FragmentActivity() {
                 } else {
                     RaizApp(
                         initiallyHasWallet = walletManager.hasUsableWallet(),
+                        // Rol persistido en reaperturas (null → default TOURIST).
+                        initialRole = if (walletManager.hasUsableWallet()) {
+                            walletManager.preferredRole() ?: UserRole.TOURIST
+                        } else {
+                            UserRole.TOURIST
+                        },
+                        isDemoMode = walletManager.isDemoMode,
+                        onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
                         onLogout = { walletManager.logout() },
                         passkeyEnabled = passkeyManager.isAvailable,
                     )
@@ -85,7 +94,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Re-bloquea al ir a segundo plano (si el bloqueo aplica).
+        // Re-bloquea al ir a segundo plano si el bloqueo aplica.
         if (appLock.isActive() && walletManager.hasUsableWallet()) {
             locked = true
         }
@@ -112,18 +121,41 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+/**
+ * Composable raíz de la app.
+ *
+ * Mantiene el [currentRole] como MutableState para que todos los screens del
+ * NavHost compartan la misma referencia — cambios (demo switch, registro como
+ * comerciante) se propagan automáticamente a toda la nav inferior.
+ *
+ * @param initialRole Rol persistido leído en MainActivity al arrancar.
+ * @param isDemoMode  Modo demo (no hay wallet real; el juez explora 3 roles).
+ * @param onSetPreferredRole Lambda que persiste el rol elegido en WalletManager.
+ */
 @Composable
 private fun RaizApp(
     initiallyHasWallet: Boolean,
-    onLogout: () -> Unit,
+    initialRole: UserRole = UserRole.TOURIST,
+    isDemoMode: Boolean = false,
+    onSetPreferredRole: (UserRole) -> Unit = {},
+    onLogout: () -> Unit = {},
     passkeyEnabled: Boolean = false,
 ) {
     val nav = rememberNavController()
-    // Sigue el flag por si el usuario hace logout durante la sesión.
+
+    /** Si hay wallet guardada o demo activo, la app arranca en la home. */
     var hasWallet by remember { mutableStateOf(initiallyHasWallet) }
 
-    LaunchedEffect(Unit) { /* placeholder por si queremos splash más adelante */ }
+    /**
+     * Rol "activo" que controla qué tabs muestra el bottom nav en TODAS las
+     * pantallas. Se actualiza en 3 casos:
+     *   1. Onboarding → ChooseRoleScreen (turista/residente/comerciante).
+     *   2. Registro exitoso en BecomeMerchantScreen (onboarding).
+     *   3. DemoRoleSwitch en Perfil (solo isDemoMode, sin persistir).
+     */
+    var currentRole by remember { mutableStateOf(initialRole) }
 
+    /** Navega a un destino de la app reemplazando el top del backstack. */
     fun goTo(route: String) {
         nav.navigate(route) {
             popUpTo(Routes.WALLET) { saveState = true }
@@ -135,20 +167,23 @@ private fun RaizApp(
     val start = if (hasWallet) Routes.WALLET else Routes.WELCOME
 
     NavHost(navController = nav, startDestination = start) {
-        // ── Welcome flow ─────────────────────────────────────────────────
+
+        // ── Welcome flow ──────────────────────────────────────────────────
+
         composable(Routes.WELCOME) {
             WelcomeScreen(
                 demoEnabled = BuildConfig.DEMO_TOURIST_SECRET.isNotBlank(),
                 onCreateWallet = { nav.navigate(Routes.CREATE_WALLET) },
                 onImportWallet = { nav.navigate(Routes.IMPORT_WALLET) },
                 onUseDemo = {
+                    // Modo demo entra como turista sin pasar por ChooseRole.
+                    currentRole = UserRole.TOURIST
                     hasWallet = true
                     nav.navigate(Routes.WALLET) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
                 },
                 onSeeDashboard = { nav.navigate(Routes.DASHBOARD) },
-                // Passkey: solo accesible si el rpId está configurado y API >= 28.
                 passkeyEnabled = passkeyEnabled,
                 onCreatePasskeyWallet = { nav.navigate(Routes.CREATE_PASSKEY_WALLET) },
             )
@@ -186,31 +221,56 @@ private fun RaizApp(
                 },
             )
         }
+
+        /**
+         * Selección de rol en el onboarding.
+         *
+         *   Turista   → persiste TOURIST → entra directo en la app.
+         *   Residente → persiste RESIDENT → entra (el admin del barrio mintea
+         *               el token; el residente ya puede ir a Propuestas aunque
+         *               aún no tenga token, la pantalla le explica qué hacer).
+         *   Comerciante → navega a BECOME_MERCHANT_ONBOARDING; la app SOLO
+         *                 persiste MERCHANT y entra si el registro on-chain
+         *                 termina con éxito. Si el usuario cancela vuelve aquí.
+         */
         composable(Routes.CHOOSE_ROLE) {
             ChooseRoleScreen(
                 onTourist = {
-                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
+                    onSetPreferredRole(UserRole.TOURIST)
+                    currentRole = UserRole.TOURIST
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.CHOOSE_ROLE) { inclusive = true }
+                    }
                 },
                 onMerchant = {
-                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
-                    nav.navigate(Routes.BECOME_MERCHANT)
+                    // Navega a BecomeMerchant sin sacar ChooseRole del backstack —
+                    // si el usuario cancela/retrocede, vuelve aquí.
+                    nav.navigate(Routes.BECOME_MERCHANT_ONBOARDING)
                 },
                 onResident = {
-                    nav.navigate(Routes.WALLET) { popUpTo(Routes.CHOOSE_ROLE) { inclusive = true } }
+                    onSetPreferredRole(UserRole.RESIDENT)
+                    currentRole = UserRole.RESIDENT
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.CHOOSE_ROLE) { inclusive = true }
+                    }
                 },
             )
         }
 
-        // ── App principal ────────────────────────────────────────────────
+        // ── App principal ─────────────────────────────────────────────────
+
         composable(Routes.WALLET) {
             WalletScreen(
                 onPayMerchant = { merchantAddress ->
                     nav.navigate("${Routes.PAY_PREFIX}/$merchantAddress")
                 },
-                onNavigateProfile = { goTo(Routes.PROFILE) },
-                onNavigateRewards = { goTo(Routes.REWARDS) },
-                onNavigateMap = { goTo(Routes.MAP) },
+                onNavigateProfile   = { goTo(Routes.PROFILE) },
+                onNavigateRewards   = { goTo(Routes.REWARDS) },
+                onNavigateMap       = { goTo(Routes.MAP) },
                 onNavigateDashboard = { nav.navigate(Routes.DASHBOARD) },
+                onNavigateProposals = { goTo(Routes.PROPOSALS) },
+                onNavigateCobros    = { goTo(Routes.COBROS) },
+                currentRole = currentRole,
             )
         }
         composable(
@@ -221,33 +281,66 @@ private fun RaizApp(
         }
         composable(Routes.PROFILE) {
             ProfileScreen(
-                onNavigateHome = { goTo(Routes.WALLET) },
-                onNavigateRewards = { goTo(Routes.REWARDS) },
-                onNavigateMap = { goTo(Routes.MAP) },
-                onBecomeMerchant = { nav.navigate(Routes.BECOME_MERCHANT) },
+                onNavigateHome      = { goTo(Routes.WALLET) },
+                onNavigateRewards   = { goTo(Routes.REWARDS) },
+                onNavigateMap       = { goTo(Routes.MAP) },
+                onNavigateProposals = { goTo(Routes.PROPOSALS) },
+                onNavigateCobros    = { goTo(Routes.COBROS) },
+                onBecomeMerchant    = { nav.navigate(Routes.BECOME_MERCHANT) },
                 onLogout = {
                     onLogout()
                     hasWallet = false
+                    currentRole = UserRole.TOURIST
                     nav.navigate(Routes.WELCOME) {
                         popUpTo(Routes.WALLET) { inclusive = true }
                     }
                 },
+                currentRole = currentRole,
+                onDemoRoleChange = { role ->
+                    // En modo demo: cambia la nav global SIN persistir.
+                    // El juez puede mostrar los 3 flows en tiempo real.
+                    currentRole = role
+                },
             )
         }
+
+        // BecomeMerchant desde Perfil (mid-session).
+        // onSuccess solo actualiza el rol; no navega fuera de Perfil.
         composable(Routes.BECOME_MERCHANT) {
             BecomeMerchantScreen(
                 onBack = { nav.popBackStack() },
                 onSuccess = {
-                    // Vuelve a la pantalla anterior (Perfil o Inicio según el origen).
+                    onSetPreferredRole(UserRole.MERCHANT)
+                    currentRole = UserRole.MERCHANT
                     nav.popBackStack()
                 },
             )
         }
+
+        // BecomeMerchant desde el onboarding (ChooseRole).
+        // onSuccess persiste el rol y lleva directo a la app.
+        // onBack vuelve a ChooseRole (ChooseRole sigue en el backstack).
+        composable(Routes.BECOME_MERCHANT_ONBOARDING) {
+            BecomeMerchantScreen(
+                onBack = { nav.popBackStack() },
+                onSuccess = {
+                    onSetPreferredRole(UserRole.MERCHANT)
+                    currentRole = UserRole.MERCHANT
+                    nav.navigate(Routes.WALLET) {
+                        popUpTo(Routes.CHOOSE_ROLE) { inclusive = true }
+                    }
+                },
+            )
+        }
+
         composable(Routes.REWARDS) {
             RewardsScreen(
-                onNavigateHome = { goTo(Routes.WALLET) },
-                onNavigateProfile = { goTo(Routes.PROFILE) },
-                onNavigateMap = { goTo(Routes.MAP) },
+                onNavigateHome      = { goTo(Routes.WALLET) },
+                onNavigateProfile   = { goTo(Routes.PROFILE) },
+                onNavigateMap       = { goTo(Routes.MAP) },
+                onNavigateProposals = { goTo(Routes.PROPOSALS) },
+                onNavigateCobros    = { goTo(Routes.COBROS) },
+                currentRole = currentRole,
             )
         }
         composable(Routes.MAP) {
@@ -255,15 +348,50 @@ private fun RaizApp(
                 onPayMerchant = { merchantAddress ->
                     nav.navigate("${Routes.PAY_PREFIX}/$merchantAddress")
                 },
-                onNavigateHome = { goTo(Routes.WALLET) },
-                onNavigateProfile = { goTo(Routes.PROFILE) },
-                onNavigateRewards = { goTo(Routes.REWARDS) },
+                onNavigateHome      = { goTo(Routes.WALLET) },
+                onNavigateProfile   = { goTo(Routes.PROFILE) },
+                onNavigateRewards   = { goTo(Routes.REWARDS) },
+                onNavigateProposals = { goTo(Routes.PROPOSALS) },
+                onNavigateCobros    = { goTo(Routes.COBROS) },
+                currentRole = currentRole,
             )
         }
+
+        // Propuestas — rol RESIDENT
+        composable(Routes.PROPOSALS) {
+            ProposalsScreen(
+                onNavigateHome    = { goTo(Routes.WALLET) },
+                onNavigateMap     = { goTo(Routes.MAP) },
+                onNavigateProfile = { goTo(Routes.PROFILE) },
+                onCreateProposal  = { nav.navigate(Routes.CREATE_PROPOSAL) },
+                currentRole = currentRole,
+            )
+        }
+        composable(Routes.CREATE_PROPOSAL) {
+            CreateProposalScreen(
+                onBack    = { nav.popBackStack() },
+                onSuccess = {
+                    // Vuelve a la lista de propuestas.
+                    nav.popBackStack()
+                },
+            )
+        }
+
+        // Cobros — rol MERCHANT
+        composable(Routes.COBROS) {
+            CobrosScreen(
+                onNavigateHome    = { goTo(Routes.WALLET) },
+                onNavigateMap     = { goTo(Routes.MAP) },
+                onNavigateProfile = { goTo(Routes.PROFILE) },
+                currentRole = currentRole,
+            )
+        }
+
+        // Dashboard de transparencia — accesible sin login
         composable(Routes.DASHBOARD) {
             DashboardScreen(
-                onBack = { nav.popBackStack() },
-                onOpenYield = { nav.navigate(Routes.YIELD) },
+                onBack       = { nav.popBackStack() },
+                onOpenYield  = { nav.navigate(Routes.YIELD) },
             )
         }
         composable(Routes.YIELD) {
@@ -272,19 +400,30 @@ private fun RaizApp(
     }
 }
 
+/** Rutas de navegación de la app. */
 private object Routes {
-    const val WELCOME = "welcome"
-    const val CREATE_WALLET = "welcome/create"
-    const val IMPORT_WALLET = "welcome/import"
-    const val CHOOSE_ROLE = "welcome/role"
-    const val CREATE_PASSKEY_WALLET = "welcome/passkey"
+    // Welcome flow
+    const val WELCOME                    = "welcome"
+    const val CREATE_WALLET              = "welcome/create"
+    const val IMPORT_WALLET              = "welcome/import"
+    const val CHOOSE_ROLE                = "welcome/role"
+    const val CREATE_PASSKEY_WALLET      = "welcome/passkey"
 
-    const val WALLET = "wallet"
-    const val PAY_PREFIX = "pay"
-    const val PROFILE = "profile"
-    const val REWARDS = "rewards"
-    const val MAP = "map"
-    const val DASHBOARD = "dashboard"
-    const val BECOME_MERCHANT = "become_merchant"
-    const val YIELD = "yield"
+    // App principal
+    const val WALLET                     = "wallet"
+    const val PAY_PREFIX                 = "pay"
+    const val PROFILE                    = "profile"
+    const val REWARDS                    = "rewards"
+    const val MAP                        = "map"
+    const val DASHBOARD                  = "dashboard"
+    const val YIELD                      = "yield"
+
+    // Registrar comerciante — dos rutas por contexto de origen
+    const val BECOME_MERCHANT            = "become_merchant"
+    const val BECOME_MERCHANT_ONBOARDING = "become_merchant_onboarding"
+
+    // Pantallas de rol
+    const val PROPOSALS                  = "proposals"
+    const val CREATE_PROPOSAL            = "proposals/create"
+    const val COBROS                     = "cobros"
 }

@@ -44,6 +44,7 @@ import com.mapbox.maps.extension.compose.MapboxMap
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
 import com.mapbox.maps.extension.compose.annotation.generated.CircleAnnotation
 import com.raiz.app.data.model.Merchant
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.ui.components.RaizBottomNav
 import com.raiz.app.ui.components.RaizDestination
 import com.raiz.app.ui.theme.RaizBlack
@@ -68,6 +69,9 @@ fun BarrioMapScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateProfile: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
+    onNavigateProposals: () -> Unit = {},
+    onNavigateCobros: () -> Unit = {},
+    currentRole: UserRole = UserRole.TOURIST,
     viewModel: BarrioMapViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -88,12 +92,15 @@ fun BarrioMapScreen(
         bottomBar = {
             RaizBottomNav(
                 selected = selectedNav,
+                role = currentRole,
                 onSelect = { dest ->
                     selectedNav = dest
                     when (dest) {
-                        RaizDestination.Home -> onNavigateHome()
-                        RaizDestination.Rewards -> onNavigateRewards()
-                        RaizDestination.Profile -> onNavigateProfile()
+                        RaizDestination.Home      -> onNavigateHome()
+                        RaizDestination.Rewards   -> onNavigateRewards()
+                        RaizDestination.Profile   -> onNavigateProfile()
+                        RaizDestination.Proposals -> onNavigateProposals()
+                        RaizDestination.Cobros    -> onNavigateCobros()
                         else -> Unit
                     }
                 },

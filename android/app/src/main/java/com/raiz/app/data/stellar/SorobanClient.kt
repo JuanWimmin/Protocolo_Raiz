@@ -515,6 +515,70 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Governance: create_proposal (ESCRITURA firmada) ──────────────────
+
+    /**
+     * Crea una propuesta de gasto del fondo comunitario.
+     *
+     * El proposer debe ser residente verificado del barrio indicado; el
+     * contrato valida esto on-chain y rechaza con NotAResident si no lo es.
+     * El contrato también valida amount > 0 y duration_days en [3, 14].
+     *
+     * Retorna el id (u64) de la propuesta recién creada, que la UI puede
+     * usar para navegar directamente a la pantalla de detalle.
+     *
+     * Errores mapeados:
+     *   - NotAResident (#6)    → NOT_A_RESIDENT  — "Debes ser residente de este barrio"
+     *   - InvalidAmount (#9)   → PARSE_ERROR      — "El monto debe ser mayor que cero"
+     *   - InvalidDuration (#8) → PARSE_ERROR      — "La duración debe ser 3-14 días"
+     */
+    suspend fun createProposal(
+        proposer: KeyPair,
+        barrioId: String,
+        description: String,
+        amountStroops: Long,
+        recipient: String,
+        durationDays: Int,
+    ): RaizResult<Long> {
+        val barrioBytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+
+        return runCatching {
+            governanceClient().invoke<Long>(
+                functionName = "create_proposal",
+                arguments = mapOf(
+                    "proposer" to proposer.getAccountId(),
+                    "barrio_id" to barrioBytes,
+                    "description" to description,
+                    "amount" to amountStroops,
+                    "recipient" to recipient,
+                    "duration_days" to durationDays.toUInt(),
+                ),
+                source = proposer.getAccountId(),
+                signer = proposer,
+                parseResultXdrFn = { ScvalParse.asULongAsLong(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                val (code, text) = when {
+                    "NotAResident" in msg ||
+                        "Error(Contract, #6)" in msg ->
+                        RaizErrorCode.NOT_A_RESIDENT to "Debes ser residente de este barrio"
+                    "InvalidAmount" in msg ||
+                        "Error(Contract, #9)" in msg ->
+                        RaizErrorCode.PARSE_ERROR to "El monto debe ser mayor que cero"
+                    "InvalidDuration" in msg ||
+                        "Error(Contract, #8)" in msg ->
+                        RaizErrorCode.PARSE_ERROR to "La duración debe ser 3-14 días"
+                    else -> RaizErrorCode.NETWORK_ERROR to "createProposal: ${e.message}"
+                }
+                RaizResult.Error(code, text)
+            },
+        )
+    }
+
     // ── Rewards: get_points / list_rewards / redeem ──────────────────────
 
     suspend fun getPoints(tourist: String): RaizResult<Long> {

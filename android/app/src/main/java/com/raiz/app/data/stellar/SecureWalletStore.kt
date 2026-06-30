@@ -112,9 +112,31 @@ class SecureWalletStore @Inject constructor(
         Log.i(TAG, "Smart wallet passkey borrada")
     }
 
+    // ── Rol preferido del usuario ─────────────────────────────────────────
+
+    /**
+     * Persiste el nombre del rol preferido (valor de [UserRole.name]:
+     * "TOURIST", "MERCHANT" o "RESIDENT"). No es información sensible,
+     * pero se limpia al hacer logout via [clear] para no contaminar la
+     * sesión de otro usuario en el mismo dispositivo.
+     */
+    fun savePreferredRole(role: String) {
+        prefs.edit().putString(KEY_PREFERRED_ROLE, role).apply()
+    }
+
+    /**
+     * Nombre del rol guardado, o null si el usuario no lo ha elegido
+     * todavía o si se llamó [clear] (logout).
+     */
+    fun preferredRole(): String? = prefs.getString(KEY_PREFERRED_ROLE, null)
+
     // ── General ───────────────────────────────────────────────────────────
 
-    /** Borra TODA la wallet (seed + passkey) — usado al hacer logout. */
+    /**
+     * Borra TODA la wallet (seed + passkey) — usado al hacer logout.
+     * La llamada a `.clear()` elimina todas las claves del store, incluida
+     * [KEY_PREFERRED_ROLE], de modo que el rol preferido también se descarta.
+     */
     fun clear() {
         prefs.edit().clear().apply()
         Log.i(TAG, "Wallet borrada del dispositivo")
@@ -128,6 +150,8 @@ class SecureWalletStore @Inject constructor(
         // Passkey / smart account
         const val KEY_PASSKEY_CREDENTIAL_ID = "passkey_credential_id"
         const val KEY_PASSKEY_CONTRACT_ID = "passkey_contract_id"
+        // Rol preferido (no sensible — se limpia con .clear() en logout)
+        const val KEY_PREFERRED_ROLE = "preferred_role"
         const val TAG = "RAIZ"
     }
 }

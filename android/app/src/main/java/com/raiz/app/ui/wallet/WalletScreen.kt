@@ -42,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.raiz.app.data.model.PassportData
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.components.BalanceCard
@@ -68,6 +69,14 @@ import com.raiz.app.ui.theme.RaizYellow
  * Por ahora todos los callbacks (escanear, navegar a mapa, etc.) son no-ops:
  * cuando integremos navegación con NavHost se cablean a las pantallas reales.
  */
+/**
+ * Pantalla Home / Wallet.
+ *
+ * [currentRole] controla qué tabs aparecen en la barra inferior:
+ *   - TOURIST  → Inicio · Premios · Mapa · Perfil
+ *   - MERCHANT → Inicio · Cobros  · Mapa · Perfil
+ *   - RESIDENT → Inicio · Propuestas · Mapa · Perfil
+ */
 @Composable
 fun WalletScreen(
     onPayMerchant: (merchantAddress: String) -> Unit = {},
@@ -75,6 +84,9 @@ fun WalletScreen(
     onNavigateRewards: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
     onNavigateDashboard: () -> Unit = {},
+    onNavigateProposals: () -> Unit = {},
+    onNavigateCobros: () -> Unit = {},
+    currentRole: UserRole = UserRole.TOURIST,
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -103,12 +115,15 @@ fun WalletScreen(
         bottomBar = {
             RaizBottomNav(
                 selected = selectedTab,
+                role = currentRole,
                 onSelect = { dest ->
                     selectedTab = dest
                     when (dest) {
-                        RaizDestination.Profile -> onNavigateProfile()
-                        RaizDestination.Rewards -> onNavigateRewards()
-                        RaizDestination.Map -> onNavigateMap()
+                        RaizDestination.Profile   -> onNavigateProfile()
+                        RaizDestination.Rewards   -> onNavigateRewards()
+                        RaizDestination.Map       -> onNavigateMap()
+                        RaizDestination.Proposals -> onNavigateProposals()
+                        RaizDestination.Cobros    -> onNavigateCobros()
                         else -> Unit
                     }
                 },

@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.Reward
+import com.raiz.app.data.model.UserRole
 import com.raiz.app.ui.components.RaizBottomNav
 import com.raiz.app.ui.components.RaizDestination
 import com.raiz.app.ui.theme.RaizBlack
@@ -76,6 +77,9 @@ fun RewardsScreen(
     onNavigateHome: () -> Unit = {},
     onNavigateProfile: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
+    onNavigateProposals: () -> Unit = {},
+    onNavigateCobros: () -> Unit = {},
+    currentRole: UserRole = UserRole.TOURIST,
     viewModel: RewardsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -85,12 +89,15 @@ fun RewardsScreen(
         bottomBar = {
             RaizBottomNav(
                 selected = selectedNav,
+                role = currentRole,
                 onSelect = { dest ->
                     selectedNav = dest
                     when (dest) {
-                        RaizDestination.Home -> onNavigateHome()
-                        RaizDestination.Profile -> onNavigateProfile()
-                        RaizDestination.Map -> onNavigateMap()
+                        RaizDestination.Home      -> onNavigateHome()
+                        RaizDestination.Profile   -> onNavigateProfile()
+                        RaizDestination.Map       -> onNavigateMap()
+                        RaizDestination.Proposals -> onNavigateProposals()
+                        RaizDestination.Cobros    -> onNavigateCobros()
                         else -> Unit
                     }
                 },
