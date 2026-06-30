@@ -6,6 +6,7 @@ import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Execution
 import com.raiz.app.data.model.Merchant
 import com.raiz.app.data.model.MerchantCategory
+import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.Proposal
 import com.raiz.app.data.model.ProposalStatus
 import com.raiz.app.data.model.RaizConstants
@@ -20,6 +21,8 @@ import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.contract.ContractClient
+import com.soneso.stellar.sdk.rpc.requests.GetEventsRequest
+import com.soneso.stellar.sdk.rpc.responses.GetEventsResponse
 import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
 import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
 import com.soneso.stellar.sdk.scval.Scv
@@ -407,18 +410,23 @@ class SorobanClient @Inject constructor(
         tipBps: Int,
     ): RaizResult<Unit> {
         return runCatching {
-            poolClient().invoke<Unit>(
-                functionName = "pay_merchant",
-                arguments = mapOf(
-                    "tourist" to tourist.getAccountId(),
-                    "merchant" to merchantAddress,
-                    "amount" to amountStroops,
-                    "tip_bps" to tipBps.toUInt(),
-                ),
-                source = tourist.getAccountId(),
-                signer = tourist,
-                parseResultXdrFn = { /* void */ },
-            )
+            // Reintento ante errores DNS/conexión transitorios (e.g. "Unable to resolve host
+            // 'soroban-testnet.stellar.org': No address associated with hostname").
+            // Los errores de contrato (InsufficientBalance, MerchantNotFound) no se reintentan.
+            withNetworkRetry {
+                poolClient().invoke<Unit>(
+                    functionName = "pay_merchant",
+                    arguments = mapOf(
+                        "tourist" to tourist.getAccountId(),
+                        "merchant" to merchantAddress,
+                        "amount" to amountStroops,
+                        "tip_bps" to tipBps.toUInt(),
+                    ),
+                    source = tourist.getAccountId(),
+                    signer = tourist,
+                    parseResultXdrFn = { /* void */ },
+                )
+            }
         }.fold(
             onSuccess = { RaizResult.Success(Unit) },
             onFailure = { e ->
@@ -954,11 +962,196 @@ class SorobanClient @Inject constructor(
         }
     }
 
+    // ── Pool: eventos de pago vía Soroban RPC getEvents ─────────────────
+    //
+    // Los pagos `pay_merchant` se realizan DENTRO del contrato Pool (no son
+    // operaciones clásicas de Stellar), por lo que Horizon `/payments` NO los
+    // registra. En su lugar el contrato emite un evento en cada pago con:
+    //   topic[0] = Symbol("payment")
+    //   topic[1] = BytesN<32>(barrio_id)
+    //   value    = Vec([tourist_addr, merchant_addr, amount_i128, tip_i128])
+    //
+    // getEvents filtra por contractId (Pool) y topic[0]=Symbol("payment") se
+    // verifica en memoria. La ventana de lookback (~24h) cubre la retención
+    // típica de testnet; si el RPC rechaza por startLedger fuera de ventana,
+    // se devuelve lista vacía con éxito en lugar de error.
+    //
+    // LÍMITE CONOCIDO: testnet RPC retiene ~17 000 ledgers (~24h). El historial
+    // de pagos más antiguo no está disponible vía eventos. En mainnet la
+    // retención es configurable; aquí se asume testnet.
+
+    /**
+     * Historial de pagos on-chain del turista, leído desde los eventos Soroban
+     * del contrato Pool. Complementa a [HorizonStream.paymentHistory] que solo
+     * captura pagos clásicos (y no ve las invocaciones Soroban).
+     *
+     * @param touristAddress  Dirección G... del turista cuyo historial se consulta.
+     * @return Lista de [PaymentRecord] en orden de ledger descendente (más reciente primero).
+     *   - [PaymentRecord.from]         = dirección del turista
+     *   - [PaymentRecord.to]           = dirección del comercio
+     *   - [PaymentRecord.amountStroops]= monto base pagado por el turista (sin contar fee)
+     *   - [PaymentRecord.assetCode]    = "USDC"
+     *   - [PaymentRecord.isOutgoing]   = true (el turista siempre es el pagador)
+     *   - [PaymentRecord.createdAt]    = ISO 8601 del cierre del ledger
+     */
+    suspend fun tourPaymentEvents(
+        touristAddress: String,
+    ): RaizResult<List<PaymentRecord>> {
+        return runCatching {
+            withNetworkRetry {
+                // Reutilizamos el SorobanServer del poolClient cacheado.
+                val server = poolClient().server
+
+                // Calculamos la ventana de búsqueda: ledger actual − LOOKBACK.
+                val latestLedger = server.getLatestLedger().sequence
+                val startLedger = (latestLedger - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L)
+
+                // Filtramos por contractId=Pool, sin filtro de topic (filtramos en memoria).
+                val filter = GetEventsRequest.EventFilter(
+                    type = GetEventsRequest.EventFilterType.CONTRACT,
+                    contractIds = listOf(deployments.pool),
+                    topics = emptyList(), // wildcard: todos los topics del contrato
+                )
+                val request = GetEventsRequest(
+                    startLedger = startLedger,
+                    endLedger = null,           // null = hasta el ledger más reciente
+                    filters = listOf(filter),
+                    pagination = GetEventsRequest.Pagination(
+                        cursor = null,
+                        limit = 100L,           // máximo por página; suficiente para demo
+                    ),
+                )
+
+                val response = server.getEvents(request)
+
+                // Filtramos eventos de tipo "payment" y del turista indicado.
+                response.events
+                    .sortedByDescending { it.ledger }  // más reciente primero
+                    .mapNotNull { event ->
+                        runCatching { parsePaymentEvent(event, touristAddress) }.getOrNull()
+                    }
+            }
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                // El RPC rechaza si startLedger está antes de la ventana de retención.
+                // En ese caso no hay historial disponible — devolvemos lista vacía (no error).
+                if ("startLedger" in msg ||
+                    "event retention" in msg.lowercase() ||
+                    "start ledger" in msg.lowercase()
+                ) {
+                    RaizResult.Success(emptyList())
+                } else {
+                    RaizResult.Error(
+                        code = RaizErrorCode.NETWORK_ERROR,
+                        message = "tourPaymentEvents: $msg",
+                    )
+                }
+            },
+        )
+    }
+
+    /**
+     * Intenta parsear un [GetEventsResponse.EventInfo] del contrato Pool como
+     * [PaymentRecord]. Devuelve null si:
+     *   - topic[0] no es el Symbol "payment" (puede ser "vault_dep" o "vault_red")
+     *   - la data del evento no tiene la estructura esperada Vec[4]
+     *   - el tourist del evento no coincide con [touristAddress]
+     *   - cualquier campo falla al decodificar XDR
+     */
+    private fun parsePaymentEvent(
+        event: GetEventsResponse.EventInfo,
+        touristAddress: String,
+    ): PaymentRecord? {
+        // topic[0] debe ser Symbol("payment")
+        val topics = runCatching { event.parseTopic() }.getOrNull() ?: return null
+        if (topics.isEmpty()) return null
+        val topicSymbol = runCatching { Scv.fromSymbol(topics[0]) }.getOrNull()
+        if (topicSymbol != "payment") return null
+
+        // value = Vec([tourist_addr, merchant_addr, amount_i128, tip_i128])
+        // En Soroban una tupla Rust (A, B, C, D) se serializa como SCV_VEC de 4 elementos.
+        val dataVec = runCatching {
+            Scv.fromVec(event.parseValue())
+        }.getOrNull() ?: return null
+        if (dataVec.size < 4) return null
+
+        // [0] tourist  → Address → G...
+        val tourist = runCatching { ScvalParse.asAddressString(dataVec[0]) }.getOrNull()
+            ?: return null
+        if (tourist != touristAddress) return null  // filtro por turista
+
+        // [1] merchant → Address → G...
+        val merchant = runCatching { ScvalParse.asAddressString(dataVec[1]) }.getOrNull()
+            ?: return null
+
+        // [2] amount   → i128 (stroops) — monto base pagado por el turista al comercio
+        // Nota: total_deducido = amount + tip. El contrato calcula tip = amount * tip_bps / 10_000.
+        val amountStroops = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrNull()
+            ?: return null
+
+        return PaymentRecord(
+            txHash = event.transactionHash,
+            from = tourist,
+            to = merchant,
+            amountStroops = amountStroops,
+            assetCode = "USDC",
+            createdAt = event.ledgerClosedAt,
+            isOutgoing = true, // el turista siempre es el pagador
+        )
+    }
+
     // ── Diagnóstico ──────────────────────────────────────────────────────
 
     fun debugDeployments(): Deployments = deployments
 
     // ── Helpers privados ──────────────────────────────────────────────────
+
+    /**
+     * Reintento con backoff exponencial para errores de red transitorios.
+     *
+     * SOLO reintenta si el mensaje de error es característico de un fallo DNS
+     * o de conexión (e.g. "Unable to resolve host 'soroban-testnet.stellar.org':
+     * No address associated with hostname"). Los errores de contrato Soroban
+     * (InsufficientBalance, MerchantNotFound…) se propagan inmediatamente sin
+     * reintentar.
+     *
+     * Backoff: 1s → 2s (maxAttempts=3 → 2 esperas antes del fallo definitivo).
+     */
+    private suspend fun <T> withNetworkRetry(
+        maxAttempts: Int = 3,
+        block: suspend () -> T,
+    ): T {
+        var lastEx: Exception? = null
+        repeat(maxAttempts) { attempt ->
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val msg = e.message.orEmpty().lowercase()
+                val cause = e.cause
+                val isTransient = "unable to resolve" in msg ||
+                    "no address associated" in msg ||
+                    "failed to connect" in msg ||
+                    "connection reset" in msg ||
+                    "eof" in msg ||
+                    "connect timed out" in msg ||
+                    e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException ||
+                    e is java.net.SocketTimeoutException ||
+                    cause is java.net.UnknownHostException ||
+                    cause is java.net.ConnectException
+                // Errores de contrato: nunca reintentar (llevan "Error(Contract, #N)")
+                val isContractError = "error(contract" in msg || "error(wasm" in msg
+                if (!isTransient || isContractError || attempt == maxAttempts - 1) throw e
+                lastEx = e
+                delay(1_000L shl attempt) // intento 0→1s, intento 1→2s
+            }
+        }
+        throw lastEx ?: error("withNetworkRetry: sin excepción tras $maxAttempts intentos")
+    }
 
     /** Convierte hex (64 chars) a ByteArray (32 bytes). null si inválido. */
     private fun String.hexToBytes(): ByteArray? {
@@ -974,4 +1167,16 @@ class SorobanClient @Inject constructor(
     /** Acceso a campo de struct con error claro si falta. */
     private fun <V> Map<String, V>.req(key: String): V =
         this[key] ?: error("Campo '$key' no presente en el struct SCVal")
+
+    private companion object {
+        /**
+         * Ventana de lookback para getEvents: ~24 horas en testnet (ledger ~5 s c/u).
+         * 17 280 ledgers × 5 s = 86 400 s = 24 h.
+         *
+         * Testnet retiene eventos ~1 semana (~120 000 ledgers), así que esta ventana
+         * es conservadora. Si se necesita más historial, subir el valor — pero ojo:
+         * requests con ventanas muy grandes son más lentos y pueden expirar.
+         */
+        const val EVENTS_LOOKBACK_LEDGERS = 17_280L
+    }
 }

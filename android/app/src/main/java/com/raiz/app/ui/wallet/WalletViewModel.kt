@@ -214,9 +214,14 @@ class WalletViewModel @Inject constructor(
                         current.copy(setupInProgress = false, setupError = null)
                     else current
                 }
-                // Pequeña espera para que Horizon procese antes del re-check.
+                // Pequeña espera para que Horizon/Soroban procese antes del re-check.
                 viewModelScope.launch {
                     kotlinx.coroutines.delay(1500L)
+                    // Bug 3: para passkey, el saldo vive en el SAC — no hay SSE,
+                    // por lo que observeUsdcBalance() no se auto-actualiza. Releemos
+                    // explícitamente para que el BalanceCard refleje el nuevo saldo
+                    // sin requerir reiniciar la app.
+                    if (walletManager.isPasskeyWallet()) refreshPasskeyBalance()
                     refreshSetupStep()
                 }
             }
@@ -225,6 +230,30 @@ class WalletViewModel @Inject constructor(
                     current.copy(setupInProgress = false, setupError = result.message)
                 else current
             }
+        }
+    }
+
+    /**
+     * Bug 3 — Re-lectura del saldo USDC del smart account (C...) vía SAC.
+     *
+     * Solo tiene efecto en wallets passkey. Los smart accounts no tienen
+     * trustline clásica ni aparecen en Horizon accounts API, así que Horizon
+     * SSE nunca los actualiza. Tras el faucet leemos el saldo directamente del
+     * Stellar Asset Contract y lo propagamos al WalletState.
+     */
+    private suspend fun refreshPasskeyBalance() {
+        val accountId = walletManager.currentAccountId() ?: return
+        when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
+            is RaizResult.Success -> {
+                Log.i(TAG, "Saldo SAC post-faucet: ${r.data} stroops (${r.data.formatUsdc()})")
+                _state.update { current ->
+                    if (current is WalletUiState.Ready)
+                        current.copy(wallet = current.wallet.copy(usdcBalanceStroops = r.data))
+                    else current
+                }
+            }
+            is RaizResult.Error ->
+                Log.w(TAG, "refreshPasskeyBalance: ${r.message}")
         }
     }
 
@@ -340,28 +369,32 @@ class WalletViewModel @Inject constructor(
                 }
             }
 
-            // 3. History del turista.
-            val history = when (val r = horizonStream.paymentHistory(accountId, limit = 50)) {
+            // 3. Pagos a comercios del turista — vía EVENTOS Soroban del Pool.
+            //    Horizon NO ve pay_merchant (mueve USDC DENTRO del contrato vía el SAC),
+            //    así que los pagos a comercios salen de los eventos `payment` del Pool.
+            val merchantPayments = when (val r = sorobanClient.tourPaymentEvents(accountId)) {
                 is RaizResult.Success -> r.data
                 is RaizResult.Error -> {
-                    Log.w(TAG, "paymentHistory en passport: ${r.message}")
+                    Log.w(TAG, "tourPaymentEvents en passport: ${r.message}")
                     emptyList()
                 }
             }
 
             // 4. Stats agregadas.
-            val poolAddr = deployments.pool
-            val aportadoStroops = history
-                .filter { it.isOutgoing && it.to == poolAddr }
-                .sumOf { it.amountStroops }
+            //
+            // Aporte al barrio: derivado de los puntos (proxy exacto del tip acumulado).
+            //   1 punto = 0.01 USDC de tip = 100_000 stroops (POINTS_PER_STROOP_DIVISOR).
+            // Coherente porque los puntos se acreditan en el mismo Pool que emite el tip.
+            val aportadoStroops = points * com.raiz.app.data.model.RaizConstants.POINTS_PER_STROOP_DIVISOR
 
-            val txsLocales: Set<String> = history
-                .filter { it.isOutgoing && merchantToBarrio.containsKey(it.to) }
+            // Transacciones locales y barrios visitados: de los eventos de pago a comercios
+            // (cada evento ya viene filtrado por este turista). Esto desbloquea los sellos.
+            val txsLocales: Set<String> = merchantPayments
+                .filter { merchantToBarrio.containsKey(it.to) }
                 .map { it.txHash }
                 .toSet()
 
-            val barriosVisitados: Set<String> = history
-                .filter { it.isOutgoing }
+            val barriosVisitados: Set<String> = merchantPayments
                 .mapNotNull { merchantToBarrio[it.to] }
                 .toSet()
 

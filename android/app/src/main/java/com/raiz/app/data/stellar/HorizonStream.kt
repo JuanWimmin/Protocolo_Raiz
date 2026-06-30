@@ -13,6 +13,7 @@ import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.PaymentOperation
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +35,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Stream del balance USDC de una cuenta Stellar.
+ * Stream del balance USDC de una cuenta Stellar y operaciones Horizon auxiliares.
  *
  * El SDK Soneso NO expone SSE (Horizon `stream`) en `PaymentsRequestBuilder`,
  * así que usamos polling cada `intervalMs` con `accounts().account(id)`.
@@ -43,6 +44,15 @@ import javax.inject.Singleton
  *
  * Devuelve `0L` ante cualquier error de red (no rompe el flow — el VM puede
  * mostrar "sin red" si necesita).
+ *
+ * ── NOTA DNS (TAREA 2) ──────────────────────────────────────────────────────
+ * En Android se pueden ver errores transitorios del tipo:
+ *   "Unable to resolve host 'horizon-testnet.stellar.org': No address associated
+ *    with hostname"
+ * causados por breves pérdidas de conectividad (cambio WiFi→datos, VPN, etc.)
+ * El polling [usdcBalanceFlow] los absorbe (devuelve 0L y reintenta en el
+ * próximo tick). Las operaciones de escritura ([enableUsdcTrustline],
+ * [sendUsdcFromAdmin]) usan [withRetryOnDns] con backoff 1s/2s.
  */
 @Singleton
 class HorizonStream @Inject constructor(
@@ -258,22 +268,26 @@ class HorizonStream @Inject constructor(
      *  - InsufficientBalance: la cuenta debe tener al menos ~1 XLM de reserve.
      *    (Cuentas creadas con friendbot vienen con 10000 XLM, no es problema.)
      *  - El sequence number lo lee Horizon en loadAccount; refrescar si falla.
+     *
+     * Reintenta hasta 3 veces ante errores DNS transitorios (backoff 1s/2s).
      */
     suspend fun enableUsdcTrustline(signer: KeyPair): RaizResult<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val accountId = signer.getAccountId()
-            val source = horizonServer.loadAccount(accountId)
-            val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
-            val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
-            val tx = TransactionBuilder(source, Network.TESTNET)
-                .setBaseFee(100L)
-                .addOperation(op)
-                .setTimeout(60L)
-                .build()
-            tx.sign(signer)
-            // submitTransaction de Horizon espera el XDR envelope base64.
-            horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
-            Log.i(TAG, "Trustline USDC activado para $accountId")
+            withRetryOnDns {
+                val accountId = signer.getAccountId()
+                val source = horizonServer.loadAccount(accountId)
+                val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
+                val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
+                val tx = TransactionBuilder(source, Network.TESTNET)
+                    .setBaseFee(100L)
+                    .addOperation(op)
+                    .setTimeout(60L)
+                    .build()
+                tx.sign(signer)
+                // submitTransaction de Horizon espera el XDR envelope base64.
+                horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
+                Log.i(TAG, "Trustline USDC activado para $accountId")
+            }
         }.fold(
             onSuccess = { RaizResult.Success(Unit) },
             onFailure = { e ->
@@ -342,6 +356,8 @@ class HorizonStream @Inject constructor(
      * Usado SOLO como faucet demo: cuando un usuario nuevo necesita USDC para
      * probar el flow de pago. En producción no existe — los anchors (SEP-24)
      * harían el on-ramp desde fiat.
+     *
+     * Reintenta hasta 3 veces ante errores DNS transitorios (backoff 1s/2s).
      */
     suspend fun sendUsdcFromAdmin(
         adminSigner: KeyPair,
@@ -349,18 +365,20 @@ class HorizonStream @Inject constructor(
         amountStroops: Long,
     ): RaizResult<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val source = horizonServer.loadAccount(adminSigner.getAccountId())
-            val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
-            val amount = amountStroops.toUsdcDecimal()
-            val op = PaymentOperation(destination, asset, amount)
-            val tx = TransactionBuilder(source, Network.TESTNET)
-                .setBaseFee(100L)
-                .addOperation(op)
-                .setTimeout(60L)
-                .build()
-            tx.sign(adminSigner)
-            horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
-            Log.i(TAG, "Admin envió $amount USDC a $destination")
+            withRetryOnDns {
+                val source = horizonServer.loadAccount(adminSigner.getAccountId())
+                val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
+                val amount = amountStroops.toUsdcDecimal()
+                val op = PaymentOperation(destination, asset, amount)
+                val tx = TransactionBuilder(source, Network.TESTNET)
+                    .setBaseFee(100L)
+                    .addOperation(op)
+                    .setTimeout(60L)
+                    .build()
+                tx.sign(adminSigner)
+                horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
+                Log.i(TAG, "Admin envió $amount USDC a $destination")
+            }
         }.fold(
             onSuccess = { RaizResult.Success(Unit) },
             onFailure = { e ->
@@ -368,6 +386,55 @@ class HorizonStream @Inject constructor(
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
             },
         )
+    }
+
+    /**
+     * Reintento con backoff exponencial para errores DNS/conexión transitorios
+     * en llamadas a Horizon.
+     *
+     * Errores que se reintentan:
+     *   - UnknownHostException ("Unable to resolve host '...'")
+     *   - ConnectException ("Failed to connect to ...")
+     *   - SocketTimeoutException
+     *   - Mensajes con "connection reset", "eof", "connect timed out"
+     *
+     * Errores que se propagan inmediatamente (no reintentar):
+     *   - Errores de protocolo Horizon (HTTP 4xx/5xx ya parseados)
+     *   - CancellationException (scope cancelado)
+     *
+     * Backoff: 1s tras el intento 1, 2s tras el intento 2. Total: 3 intentos.
+     */
+    private suspend fun <T> withRetryOnDns(
+        maxAttempts: Int = 3,
+        block: suspend () -> T,
+    ): T {
+        var lastEx: Exception? = null
+        repeat(maxAttempts) { attempt ->
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val msg = e.message.orEmpty().lowercase()
+                val cause = e.cause
+                val isTransient = "unable to resolve" in msg ||
+                    "no address associated" in msg ||
+                    "failed to connect" in msg ||
+                    "connection reset" in msg ||
+                    "eof" in msg ||
+                    "connect timed out" in msg ||
+                    e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException ||
+                    e is java.net.SocketTimeoutException ||
+                    cause is java.net.UnknownHostException ||
+                    cause is java.net.ConnectException
+                if (!isTransient || attempt == maxAttempts - 1) throw e
+                lastEx = e
+                Log.w(TAG, "Horizon transitorio (intento ${attempt + 1}/$maxAttempts): ${e.message}")
+                delay(1_000L shl attempt) // intento 0→1s, intento 1→2s
+            }
+        }
+        throw lastEx ?: error("withRetryOnDns: sin excepción tras $maxAttempts intentos")
     }
 
     /** Long stroops → "10.0000000" (7 decimales fijos) que Stellar exige. */

@@ -11,8 +11,10 @@ import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.RoleResolver
+import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +64,7 @@ data class ProfileUiState(
 class ProfileViewModel @Inject constructor(
     private val walletManager: WalletManager,
     private val horizonStream: HorizonStream,
+    private val sorobanClient: SorobanClient,   // Bug 1 & 2: saldo SAC + puntos
     private val roleResolver: RoleResolver,
     private val appLock: AppLock,
 ) : ViewModel() {
@@ -76,6 +79,7 @@ class ProfileViewModel @Inject constructor(
 
     init {
         observeBalance()
+        loadPoints()           // Bug 2: cargar puntos del contrato Rewards
         loadHistory()
         resolveRole()
         _state.update {
@@ -100,24 +104,104 @@ class ProfileViewModel @Inject constructor(
         _state.update { it.copy(roleOverride = role) }
     }
 
+    /**
+     * Bug 1 — Saldo en wallet passkey.
+     *
+     * Las wallets passkey son smart accounts (C...). Horizon NO ve su saldo
+     * porque su USDC vive en el storage del SAC (Stellar Asset Contract), no
+     * en una trustline clásica. Si Horizon reportara 0, el perfil siempre
+     * mostraría saldo cero para estos usuarios.
+     *
+     * Bifurcación:
+     *  - Passkey (C...): lectura puntual via SAC en un loop periódico de
+     *    [BALANCE_POLL_MS] para simular "casi tiempo real" sin SSE.
+     *  - Clásica (G...): flow SSE de Horizon, igual que antes.
+     */
     private fun observeBalance() {
         viewModelScope.launch {
-            horizonStream.usdcBalanceFlow(walletManager.mockWallet().publicKey).collect { stroops ->
-                _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = stroops)) }
+            // Usamos currentAccountId() para obtener el address real (C... o G...).
+            val accountId = walletManager.currentAccountId()
+                ?: walletManager.mockWallet().publicKey
+
+            if (walletManager.isPasskeyWallet()) {
+                // Loop de refresco periódico: no hay SSE para contratos.
+                while (true) {
+                    when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
+                        is RaizResult.Success -> {
+                            Log.i(TAG, "Saldo SAC en perfil: ${r.data} stroops")
+                            _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = r.data)) }
+                        }
+                        is RaizResult.Error ->
+                            Log.w(TAG, "usdcBalanceOfContract (perfil): ${r.message}")
+                    }
+                    delay(BALANCE_POLL_MS)
+                }
+            } else {
+                // Wallet clásica G...: SSE de Horizon como antes.
+                horizonStream.usdcBalanceFlow(accountId).collect { stroops ->
+                    _state.update { it.copy(wallet = it.wallet.copy(usdcBalanceStroops = stroops)) }
+                }
             }
         }
     }
 
+    /**
+     * Bug 2 — Puntos en perfil.
+     *
+     * ProfileViewModel nunca llamaba getPoints, por lo que wallet.points
+     * permanecía en 0 aunque WalletScreen y RewardsScreen los mostraran bien.
+     *
+     * Hasta 3 reintentos con delay porque el RPC de Soroban a veces tarda en
+     * propagar ledgers recientes. Al actualizar wallet.points, BalancesRow
+     * en ProfileScreen lo renderiza automáticamente (ya tenía el tile de puntos).
+     */
+    private fun loadPoints() {
+        viewModelScope.launch {
+            val accountId = walletManager.currentAccountId()
+                ?: walletManager.mockWallet().publicKey
+            repeat(MAX_POINTS_RETRIES) { intento ->
+                when (val r = sorobanClient.getPoints(accountId)) {
+                    is RaizResult.Success -> {
+                        Log.i(TAG, "Puntos en perfil: ${r.data} pts")
+                        _state.update { it.copy(wallet = it.wallet.copy(points = r.data)) }
+                        return@launch   // éxito — no seguir reintentando
+                    }
+                    is RaizResult.Error -> {
+                        Log.w(TAG, "getPoints intento ${intento + 1}/$MAX_POINTS_RETRIES: ${r.message}")
+                        if (intento < MAX_POINTS_RETRIES - 1) delay(RETRY_DELAY_MS)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Historial fusionado de DOS fuentes:
+     *  1. Eventos Soroban `payment` del Pool ([SorobanClient.tourPaymentEvents]) —
+     *     los pagos a comercios, que Horizon NO ve porque mueven USDC dentro del
+     *     contrato vía el SAC (no son pagos clásicos).
+     *  2. Pagos clásicos de Horizon ([HorizonStream.paymentHistory]) — p.ej. el
+     *     faucet entrante de la wallet seed. Para passkey (C...) Horizon devuelve
+     *     vacío (no es cuenta clásica).
+     * Se mezclan y ordenan por fecha (createdAt ISO 8601, orden lexicográfico = cronológico).
+     */
     fun loadHistory() {
         viewModelScope.launch {
             _state.update { it.copy(historyLoading = true, historyError = null) }
-            when (val r = horizonStream.paymentHistory(walletManager.mockWallet().publicKey, limit = 30)) {
-                is RaizResult.Success -> _state.update {
-                    it.copy(history = r.data, historyLoading = false, historyError = null)
-                }
-                is RaizResult.Error -> _state.update {
-                    it.copy(historyLoading = false, historyError = r.message)
-                }
+            val accountId = walletManager.currentAccountId() ?: walletManager.mockWallet().publicKey
+
+            val merchantPayments = (sorobanClient.tourPaymentEvents(accountId) as? RaizResult.Success)?.data
+                ?: emptyList()
+
+            val classicResult = horizonStream.paymentHistory(accountId, limit = 30)
+            val classic = (classicResult as? RaizResult.Success)?.data ?: emptyList()
+
+            val merged = (merchantPayments + classic).sortedByDescending { it.createdAt }
+            // Solo mostramos error si NO hay nada que enseñar y Horizon falló.
+            val error = if (merged.isEmpty() && classicResult is RaizResult.Error) classicResult.message else null
+
+            _state.update {
+                it.copy(history = merged, historyLoading = false, historyError = error)
             }
         }
     }
@@ -132,5 +216,11 @@ class ProfileViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
+        /** Intervalo de refresco del saldo SAC para smart accounts passkey (30 s). */
+        const val BALANCE_POLL_MS = 30_000L
+        /** Pausa entre reintentos de getPoints. */
+        const val RETRY_DELAY_MS = 2_000L
+        /** Número máximo de intentos para cargar puntos. */
+        const val MAX_POINTS_RETRIES = 3
     }
 }
