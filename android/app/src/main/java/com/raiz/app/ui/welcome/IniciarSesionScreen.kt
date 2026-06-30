@@ -52,6 +52,7 @@ import com.raiz.app.ui.theme.RaizError
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
+import com.raiz.app.ui.theme.RaizYellow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,14 +86,18 @@ private suspend fun PasskeyWalletManager.signInWithPasskey(
 /**
  * Estado de la pantalla de inicio de sesión.
  *
- * @param loading  true mientras se autentica la passkey (bloquea interacción).
- * @param success  true cuando el sign-in fue exitoso → la pantalla navega a la app.
- * @param error    Mensaje de error para el usuario; null si no hay error activo.
+ * @param loading        true mientras se autentica la passkey (bloquea interacción).
+ * @param success        true cuando el sign-in fue exitoso → la pantalla navega a la app.
+ * @param error          Mensaje de error para el usuario; null si no hay error activo.
+ * @param noAccountFound true cuando el indexer de Soneso no encontró smart account
+ *                       para la passkey presentada (código NOT_FOUND). Se muestra
+ *                       una sección con CTA "Crear cuenta" en lugar del banner de error.
  */
 data class SignInUiState(
     val loading: Boolean = false,
     val success: Boolean = false,
     val error: String? = null,
+    val noAccountFound: Boolean = false,
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -122,11 +127,10 @@ class SignInViewModel @Inject constructor(
      */
     fun signIn(activity: Activity) {
         if (_state.value.loading) return
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, noAccountFound = false) }
         viewModelScope.launch {
-            // Nota: llama la extensión-stub hasta que exista el método real.
-            // Cuando PasskeyWalletManager.signInWithPasskey(Activity) sea un miembro,
-            // Kotlin usará ese automáticamente y este comentario se puede borrar.
+            // La extensión-stub queda ignorada automáticamente ahora que
+            // PasskeyWalletManager.signInWithPasskey(Activity) es un método MIEMBRO real.
             when (val r = passkeyManager.signInWithPasskey(activity)) {
                 is RaizResult.Success -> {
                     Log.i(TAG, "Sign-in passkey exitoso: ${r.data.publicKey}")
@@ -134,8 +138,15 @@ class SignInViewModel @Inject constructor(
                 }
                 is RaizResult.Error -> {
                     Log.e(TAG, "signIn falló: ${r.code} — ${r.message}")
-                    _state.update {
-                        it.copy(loading = false, error = mensajeError(r.code, r.message))
+                    // NOT_FOUND significa que el indexer de Soneso no encontró un smart
+                    // account para esta passkey → mostrar CTA "Crear cuenta" en lugar
+                    // del banner de error genérico.
+                    if (r.code == RaizErrorCode.NOT_FOUND) {
+                        _state.update { it.copy(loading = false, noAccountFound = true) }
+                    } else {
+                        _state.update {
+                            it.copy(loading = false, error = mensajeError(r.code, r.message))
+                        }
                     }
                 }
             }
@@ -145,8 +156,13 @@ class SignInViewModel @Inject constructor(
     /** Descarta el error mostrado al usuario. */
     fun dismissError() = _state.update { it.copy(error = null) }
 
+    /** Descarta el banner "no encontramos cuenta" (el usuario decidió cancelar o reintentar). */
+    fun dismissNoAccount() = _state.update { it.copy(noAccountFound = false) }
+
     private fun mensajeError(code: RaizErrorCode, msg: String): String = when (code) {
         RaizErrorCode.NETWORK_ERROR -> "Error de red. Revisa tu conexión e inténtalo de nuevo."
+        RaizErrorCode.NOT_FOUND ->
+            "No encontramos una cuenta con esta passkey."
         else -> msg
     }
 
@@ -168,12 +184,16 @@ class SignInViewModel @Inject constructor(
  *   - Tap "Con passkey" → [SignInViewModel.signIn] → sistema operativo muestra
  *     el selector de passkeys → éxito → [onWalletReady] → app principal.
  *   - Error → mensaje inline; el usuario puede reintentar o elegir semilla.
+ *   - Passkey no registrada en RAÍZ (NOT_FOUND) → [NoAccountBanner] con botón
+ *     "Crear cuenta" que llama [onNoAccount].
  *
  * @param passkeyEnabled  true si passkey está disponible en este dispositivo/build.
  * @param onBack          Vuelve a [WelcomeScreen].
  * @param onWalletReady   Llamado cuando el sign-in con passkey tiene éxito.
- *                        MainActivity navega respetando el rol previo del usuario.
+ *                        MainActivity resuelve el rol on-chain y navega a WALLET.
  * @param onImportSeed    Navega a [ImportWalletScreen] (variante login).
+ * @param onNoAccount     Llamado cuando el indexer no encontró cuenta para la passkey.
+ *                        MainActivity navega al flujo de REGISTRO (cuenta nueva).
  */
 @Composable
 fun IniciarSesionScreen(
@@ -181,6 +201,7 @@ fun IniciarSesionScreen(
     onBack: () -> Unit,
     onWalletReady: () -> Unit,
     onImportSeed: () -> Unit,
+    onNoAccount: () -> Unit = {},
 ) {
     val vm: SignInViewModel = hiltViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -247,12 +268,25 @@ fun IniciarSesionScreen(
                     },
                 )
 
-                // Mensaje de error inline (solo aplica al flujo passkey)
+                // Mensaje de error inline (red caída, cancelación, etc.)
                 if (state.error != null) {
                     Spacer(modifier = Modifier.size(8.dp))
                     ErrorBanner(
                         message = state.error!!,
                         onDismiss = { vm.dismissError() },
+                    )
+                }
+
+                // Banner especial: passkey presentada pero no registrada en RAÍZ.
+                // Muestra un CTA claro para que el usuario cree su cuenta.
+                if (state.noAccountFound) {
+                    Spacer(modifier = Modifier.size(8.dp))
+                    NoAccountBanner(
+                        onCreateAccount = {
+                            vm.dismissNoAccount()
+                            onNoAccount()
+                        },
+                        onDismiss = { vm.dismissNoAccount() },
                     )
                 }
 
@@ -372,7 +406,7 @@ private fun SignInCard(
 /**
  * Banner de error inline que el usuario puede descartar al tocarlo.
  *
- * @param message  Texto del error a mostrar.
+ * @param message   Texto del error a mostrar.
  * @param onDismiss Llamado cuando el usuario toca el banner para cerrarlo.
  */
 @Composable
@@ -390,5 +424,75 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = RaizError,
         )
+    }
+}
+
+/**
+ * Banner que aparece cuando el indexer de Soneso no encontró un smart account
+ * para la passkey presentada (código NOT_FOUND).
+ *
+ * Distingue claramente "passkey existe en el dispositivo pero no en RAÍZ" de
+ * un error de red o cancelación, para guiar al usuario a crear una cuenta nueva
+ * en lugar de reintentar indefinidamente.
+ *
+ * @param onCreateAccount Llamado al pulsar "Crear cuenta" → flujo de registro.
+ * @param onDismiss       Llamado al tocar el área de "cerrar" → descarta el banner.
+ */
+@Composable
+private fun NoAccountBanner(
+    onCreateAccount: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizYellow.copy(alpha = 0.12f))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "No encontramos una cuenta con esta passkey",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = RaizBlack,
+        )
+        Text(
+            text = "Puede que hayas creado la cuenta en otro dispositivo, " +
+                "o que esta passkey no este registrada en RAIZ aun.",
+            style = MaterialTheme.typography.bodySmall,
+            color = RaizBlack.copy(alpha = 0.7f),
+        )
+
+        // Botón "Crear cuenta" — navega al flujo de REGISTRO
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(RaizYellow)
+                .pointerInput(Unit) { detectTapGestures(onTap = { onCreateAccount() }) }
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Crear cuenta",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = RaizBlack,
+            )
+        }
+
+        // Enlace secundario para descartar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) }
+                .padding(vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Reintentar con otra passkey",
+                style = MaterialTheme.typography.bodySmall,
+                color = RaizBlack.copy(alpha = 0.5f),
+            )
+        }
     }
 }

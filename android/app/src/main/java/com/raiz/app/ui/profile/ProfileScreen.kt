@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +39,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +71,7 @@ import com.raiz.app.ui.components.QrCard
 import com.raiz.app.ui.components.RaizBottomNav
 import com.raiz.app.ui.components.RaizDestination
 import com.raiz.app.ui.theme.RaizBlack
+import com.raiz.app.ui.theme.RaizError
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
@@ -464,6 +467,9 @@ private fun ConfigTab(
     /** null = restaurar rol real; UserRole = simular ese rol (solo demo). */
     onDemoRoleChange: (UserRole?) -> Unit,
 ) {
+    // Estado local para el diálogo de confirmación de "Eliminar cuenta".
+    var mostrarDialogoEliminar by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -502,16 +508,73 @@ private fun ConfigTab(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Logout.
+        // Cerrar sesión — limpia el acceso local sin mostrar advertencias adicionales.
+        // La passkey queda sincronizada en Google Password Manager y la semilla BIP-39
+        // sigue siendo recuperable. El usuario puede volver a entrar cuando quiera.
         OutlinedButton(
             onClick = onLogout,
             modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Cerrar sesión y salir", style = MaterialTheme.typography.labelLarge)
+        }
+
+        // Eliminar cuenta — muestra un diálogo de advertencia antes de actuar.
+        // A nivel on-chain la cuenta no se borra; solo se borra el acceso del dispositivo.
+        OutlinedButton(
+            onClick = { mostrarDialogoEliminar = true },
+            modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = Color(0xFFB00020),
+                contentColor = RaizError,
             ),
         ) {
-            Text("Cerrar sesión y borrar wallet", style = MaterialTheme.typography.labelLarge)
+            Text("Eliminar cuenta", style = MaterialTheme.typography.labelLarge)
         }
+    }
+
+    // Diálogo de advertencia antes de "eliminar" la cuenta del dispositivo.
+    if (mostrarDialogoEliminar) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoEliminar = false },
+            title = {
+                Text(
+                    text = "Borrar acceso en este dispositivo",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            },
+            text = {
+                Text(
+                    text = "Tu cuenta vive en la blockchain y NO se borra; esto solo borra " +
+                        "el acceso desde este dispositivo.\n\n" +
+                        "Para recuperarla necesitarás tu passkey (sincronizada en Google " +
+                        "Password Manager) o tu frase semilla BIP-39.\n\n" +
+                        "Si usas passkey, elimínala también desde la configuracion de " +
+                        "contrasenas de Google si no quieres que aparezca en otros dispositivos.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogoEliminar = false
+                        onLogout()
+                    },
+                ) {
+                    Text(
+                        text = "Eliminar acceso",
+                        color = RaizError,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { mostrarDialogoEliminar = false }) {
+                    Text(
+                        text = "Cancelar",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            },
+        )
     }
 }
 

@@ -25,11 +25,13 @@ import androidx.compose.material.icons.outlined.Eco
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +73,10 @@ import com.raiz.app.ui.welcome.CrearCuentaScreen
 import com.raiz.app.ui.welcome.IniciarSesionScreen
 import com.raiz.app.ui.welcome.ImportWalletScreen
 import com.raiz.app.ui.welcome.WelcomeScreen
+import com.raiz.app.data.model.RoleContext
+import com.raiz.app.data.stellar.RoleResolver
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -90,6 +95,7 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var walletManager: WalletManager
     @Inject lateinit var passkeyManager: PasskeyWalletManager
     @Inject lateinit var appLock: AppLock
+    @Inject lateinit var roleResolver: RoleResolver
 
     /** true = la app está bloqueada y requiere desbloqueo ahora. */
     private var locked by mutableStateOf(false)
@@ -120,8 +126,10 @@ class MainActivity : FragmentActivity() {
                             },
                             isDemoMode = walletManager.isDemoMode,
                             onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
-                            // Consulta el rol guardado en tiempo de navegación (flujo login).
-                            getPreferredRole = { walletManager.preferredRole() },
+                            // Address del wallet activo para resolver el rol on-chain tras login.
+                            getAccountId = { walletManager.currentAccountId() },
+                            // Resolución on-chain: delega en RoleResolver (Hilt singleton).
+                            resolveRole = { address -> roleResolver.resolve(address) },
                             onLogout = { walletManager.logout() },
                             passkeyEnabled = passkeyManager.isAvailable,
                         )
@@ -197,12 +205,15 @@ private fun RaizApp(
     initialRole: UserRole = UserRole.TOURIST,
     isDemoMode: Boolean = false,
     onSetPreferredRole: (UserRole) -> Unit = {},
-    /** Consulta el rol guardado en WalletManager — usado en el flujo login. */
-    getPreferredRole: () -> UserRole? = { null },
+    /** Address del wallet activo (para resolver el rol on-chain tras login). */
+    getAccountId: () -> String? = { null },
+    /** Suspend lambda que consulta el rol on-chain a partir del address. */
+    resolveRole: suspend (String) -> RoleContext = { RoleContext(role = UserRole.TOURIST) },
     onLogout: () -> Unit = {},
     passkeyEnabled: Boolean = false,
 ) {
     val nav = rememberNavController()
+    val scope = rememberCoroutineScope()
 
     /** Si hay wallet guardada o demo activo, la app arranca en la home. */
     var hasWallet by remember { mutableStateOf(initiallyHasWallet) }
@@ -210,11 +221,17 @@ private fun RaizApp(
     /**
      * Rol "activo" que controla qué tabs muestra el bottom nav en TODAS las
      * pantallas. Se actualiza en 3 casos:
-     *   1. Onboarding → ChooseRoleScreen (turista/residente/comerciante).
+     *   1. Login → resolución on-chain (navigateAfterLogin).
      *   2. Registro exitoso en BecomeMerchantScreen (onboarding).
      *   3. DemoRoleSwitch en Perfil (solo isDemoMode, sin persistir).
      */
     var currentRole by remember { mutableStateOf(initialRole) }
+
+    /**
+     * true mientras navigateAfterLogin está consultando el rol on-chain.
+     * Un overlay de loading cubre la pantalla en ese intervalo (~1-3 s).
+     */
+    var resolvingRoleAfterLogin by remember { mutableStateOf(false) }
 
     /** Navega a un destino de la app reemplazando el top del backstack. */
     fun goTo(route: String) {
@@ -226,24 +243,38 @@ private fun RaizApp(
     }
 
     /**
-     * Navega tras un login exitoso (passkey sign-in o importar semilla en flujo login).
+     * Navega tras un login exitoso (passkey sign-in o importar semilla).
      *
-     * Si el usuario tenía un rol guardado en [WalletManager], entra directamente en
-     * la app con ese rol sin pasar por [ChooseRoleScreen]. Si no hay rol guardado
-     * (primer login tras reinstalar o borrar datos), pasa por [ChooseRoleScreen].
+     * Resuelve el rol del usuario CONSULTANDO LA BLOCKCHAIN con [RoleResolver]:
+     *   - Residente si tiene ResidentToken en Governance.
+     *   - Comerciante si está registrado en Pool.
+     *   - Turista por defecto.
+     *
+     * Siempre navega a [Routes.WALLET] — NUNCA a [Routes.CHOOSE_ROLE].
+     * CHOOSE_ROLE queda exclusivamente para el REGISTRO de cuenta nueva
+     * (flujos CREATE_WALLET / CREATE_PASSKEY_WALLET / IMPORT_WALLET).
      */
     fun navigateAfterLogin() {
         hasWallet = true
-        val existingRole = getPreferredRole()
-        if (existingRole != null) {
-            currentRole = existingRole
+        resolvingRoleAfterLogin = true
+        scope.launch {
+            val address = getAccountId() ?: ""
+            val resolved = if (address.isNotBlank()) {
+                try {
+                    resolveRole(address)
+                } catch (e: Exception) {
+                    // Red caída u otro fallo → default TOURIST para no bloquear al usuario.
+                    RoleContext(role = UserRole.TOURIST)
+                }
+            } else {
+                RoleContext(role = UserRole.TOURIST)
+            }
+            currentRole = resolved.role
+            onSetPreferredRole(resolved.role)
             nav.navigate(Routes.WALLET) {
                 popUpTo(Routes.WELCOME) { inclusive = true }
             }
-        } else {
-            nav.navigate(Routes.CHOOSE_ROLE) {
-                popUpTo(Routes.WELCOME) { inclusive = true }
-            }
+            resolvingRoleAfterLogin = false
         }
     }
 
@@ -254,6 +285,9 @@ private fun RaizApp(
     // fijamos con remember y navegamos siempre de forma explícita con nav.navigate.
     val start = remember { if (initiallyHasWallet) Routes.WALLET else Routes.WELCOME }
 
+    // Envuelve el NavHost en un Box para poder superponer el loading overlay
+    // sin interferir con el árbol de navegación.
+    Box(modifier = Modifier.fillMaxSize()) {
     NavHost(navController = nav, startDestination = start) {
 
         // ── Welcome flow ──────────────────────────────────────────────────
@@ -294,9 +328,11 @@ private fun RaizApp(
             IniciarSesionScreen(
                 passkeyEnabled = passkeyEnabled,
                 onBack = { nav.popBackStack() },
-                // Login exitoso: respeta el rol guardado, no fuerza ChooseRole.
+                // Login exitoso: resuelve el rol on-chain y navega a WALLET.
                 onWalletReady = { navigateAfterLogin() },
                 onImportSeed = { nav.navigate(Routes.IMPORT_WALLET_LOGIN) },
+                // Passkey no encontrada: lleva al flujo de REGISTRO (cuenta nueva).
+                onNoAccount = { nav.navigate(Routes.REGISTER) },
             )
         }
 
@@ -531,8 +567,32 @@ private fun RaizApp(
         composable(Routes.YIELD) {
             YieldScreen(onBack = { nav.popBackStack() })
         }
+    } // fin NavHost
+
+    // Overlay de loading mientras se resuelve el rol on-chain tras login.
+    // Cubre la pantalla de login por ~1-3 s hasta que RoleResolver devuelve el rol.
+    if (resolvingRoleAfterLogin) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(color = RaizYellow)
+                Text(
+                    text = "Verificando tu cuenta...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+            }
+        }
     }
-}
+    } // fin Box(fillMaxSize) que envuelve NavHost + overlay
+} // fin RaizApp
 
 /**
  * Pantalla de intro de arranque (~1.2 s + 300 ms de fade-out).
