@@ -1,5 +1,6 @@
 package com.raiz.app.data.stellar
 
+import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Execution
@@ -12,11 +13,23 @@ import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.ResidentToken
 import com.raiz.app.data.model.Reward
+import com.soneso.stellar.sdk.Address
+import com.soneso.stellar.sdk.Asset
+import com.soneso.stellar.sdk.InvokeHostFunctionOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.contract.ContractClient
+import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
+import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
+import com.soneso.stellar.sdk.scval.Scv
+import com.soneso.stellar.sdk.xdr.HostFunctionXdr
+import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
+import com.soneso.stellar.sdk.xdr.SCSymbolXdr
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /**
  * Fachada para invocar los 4 contratos Soroban de RAÍZ.
@@ -83,23 +96,10 @@ class SorobanClient @Inject constructor(
             network = network,
         ).also { cachedTreasuryClient = it }
 
-    /**
-     * Cliente del SAC del USDC de Blend (CAQCFVL...). Necesario para:
-     *   - fondear smart accounts con USDC (admin → C...)
-     *   - leer el balance USDC de un contrato (C... no tiene trustline, usa storage)
-     */
-    private suspend fun usdcSacClient(): ContractClient =
-        cachedUsdcSacClient ?: ContractClient.forContract(
-            contractId = deployments.usdcSac,
-            rpcUrl = rpcUrl,
-            network = network,
-        ).also { cachedUsdcSacClient = it }
-
     private var cachedPoolClient: ContractClient? = null
     private var cachedGovClient: ContractClient? = null
     private var cachedRewardsClient: ContractClient? = null
     private var cachedTreasuryClient: ContractClient? = null
-    private var cachedUsdcSacClient: ContractClient? = null
 
     // ── Pool: get_pool_balance ────────────────────────────────────────────
 
@@ -824,13 +824,20 @@ class SorobanClient @Inject constructor(
     // ── USDC SAC: balance y fondeo de smart accounts ─────────────────────
 
     /**
-     * Envía USDC del admin (G...) al smart account del turista (C...).
+     * Envía USDC del admin (G...) al smart account del turista (C...) invocando
+     * el SAC de Blend directamente con SCVal crudos — sin spec descargable.
      *
-     * El SAC de Blend (CAQCFVL...) gestiona los balances de contratos en
-     * instance storage — los C... NO necesitan trustline. El admin firma con
-     * su KeyPair ed25519 estándar.
+     * El SAC (Stellar Asset Contract) es un contrato nativo del host; NO tiene
+     * WASM descargable, así que `ContractClient.forContract()` fallaría con
+     * "Contract spec not found". En su lugar construimos la operación a mano:
      *
-     * @param adminSigner  KeyPair del admin que transfiere (G...).
+     *   InvokeHostFunctionOperation(SAC.transfer(from, to, amount_i128))
+     *
+     * `prepareTransaction` simula + ensambla (soroban data + fee). Para cuentas
+     * clásicas (G...) la auth en `require_auth()` se satisface con la firma
+     * estándar de la transacción — no hace falta firmar auth entries por separado.
+     *
+     * @param adminSigner      KeyPair del admin que transfiere (G...).
      * @param contractAddress  Dirección C... del smart account destino.
      * @param amountStroops    Cantidad en stroops (7 decimales). 1 USDC = 10_000_000.
      */
@@ -839,61 +846,112 @@ class SorobanClient @Inject constructor(
         contractAddress: String,
         amountStroops: Long,
     ): RaizResult<Unit> {
-        return runCatching {
-            usdcSacClient().invoke<Unit>(
-                functionName = "transfer",
-                arguments = mapOf(
-                    "from"   to adminSigner.getAccountId(),
-                    "to"     to contractAddress,
-                    "amount" to amountStroops,
+        return try {
+            val server = poolClient().server
+            val adminAccount = server.getAccount(adminSigner.getAccountId())
+
+            val invokeArgs = InvokeContractArgsXdr(
+                contractAddress = Address(deployments.usdcSac).toSCAddress(),
+                functionName = SCSymbolXdr("transfer"),
+                args = listOf(
+                    Address(adminSigner.getAccountId()).toSCVal(),
+                    Address(contractAddress).toSCVal(),
+                    Scv.toInt128(BigInteger.fromLong(amountStroops)),
                 ),
-                source = adminSigner.getAccountId(),
-                signer = adminSigner,
-                parseResultXdrFn = { /* void */ },
             )
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e ->
-                val msg = e.message.orEmpty()
-                val code = when {
-                    "InsufficientBalance" in msg ||
-                        "Error(Contract, #7)" in msg -> RaizErrorCode.INSUFFICIENT_BALANCE
-                    "Unauthorized" in msg ||
-                        "Error(Contract, #3)" in msg -> RaizErrorCode.UNAUTHORIZED
-                    else -> RaizErrorCode.NETWORK_ERROR
+            val op = InvokeHostFunctionOperation(
+                hostFunction = HostFunctionXdr.InvokeContract(invokeArgs),
+                auth = emptyList(),
+            )
+            val unsignedTx = TransactionBuilder(adminAccount, network)
+                .addOperation(op)
+                .setBaseFee(500_000L)
+                .setTimeout(30L)
+                .build()
+
+            val prepared = server.prepareTransaction(unsignedTx)
+            prepared.sign(adminSigner)
+
+            val sendResp = server.sendTransaction(prepared)
+            if (sendResp.status == SendTransactionStatus.ERROR) {
+                return RaizResult.Error(
+                    code = RaizErrorCode.NETWORK_ERROR,
+                    message = "fundContractUsdc: send error ${sendResp.errorResultXdr}",
+                )
+            }
+
+            val txHash = sendResp.hash
+                ?: return RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "fundContractUsdc: hash nulo en sendTransaction")
+
+            for (attempt in 0 until 10) {
+                delay(3_000L)
+                val txResp = server.getTransaction(txHash)
+                when (txResp.status) {
+                    GetTransactionStatus.SUCCESS ->
+                        return RaizResult.Success(Unit)
+                    GetTransactionStatus.FAILED ->
+                        return RaizResult.Error(
+                            code = RaizErrorCode.SIMULATION_FAILED,
+                            message = "fundContractUsdc: tx FAILED ${txResp.resultXdr}",
+                        )
+                    GetTransactionStatus.NOT_FOUND -> { /* todavía propagando, seguir esperando */ }
                 }
-                RaizResult.Error(code, "fundContractUsdc: ${e.message}")
-            },
-        )
+            }
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "fundContractUsdc: timeout esperando $txHash")
+
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = e.message.orEmpty()
+            val code = when {
+                "InsufficientBalance" in msg || "Error(Contract, #7)" in msg ->
+                    RaizErrorCode.INSUFFICIENT_BALANCE
+                "Unauthorized" in msg || "Error(Contract, #3)" in msg ->
+                    RaizErrorCode.UNAUTHORIZED
+                else -> RaizErrorCode.NETWORK_ERROR
+            }
+            RaizResult.Error(code, "fundContractUsdc: ${e.message}")
+        }
     }
 
     /**
-     * Lee el balance USDC (stroops) de un contrato on-chain (C...) via SAC.
+     * Lee el balance USDC (stroops) de un smart account on-chain (C...) usando
+     * la API dedicada de SAC del SDK — sin spec descargable.
      *
-     * Los smart accounts (C...) no aparecen en la API de balances de Horizon
-     * porque no son cuentas clásicas. Hay que consultar `SAC.balance(id=C...)`
-     * directamente, que devuelve el saldo como i128 en stroops.
+     * `SorobanServer.getSACBalance(holderAddress, asset, network)` accede
+     * directamente a la entrada de ledger del SAC para ese titular, devolviendo
+     * el importe como Long en stroops. No se necesita el WASM del SAC.
      *
-     * Lectura pura (signer = null). Usa el admin como fee source de simulación.
+     * Los C... no aparecen en la API de balances de Horizon (no son cuentas
+     * clásicas), por eso no se puede usar `HorizonStream` para ellos.
      *
      * @param contractAddress  Dirección C... del smart account a consultar.
-     * @return saldo en stroops como Long (máx. ~9.2 × 10^18, suficiente para USDC).
+     * @return saldo en stroops como Long. 0 si el C... no tiene balance registrado.
      */
     suspend fun usdcBalanceOfContract(contractAddress: String): RaizResult<Long> {
-        return runCatching {
-            usdcSacClient().invoke<Long>(
-                functionName = "balance",
-                arguments = mapOf("id" to contractAddress),
-                source = deployments.admin,
-                signer = null,
-                parseResultXdrFn = { ScvalParse.asLong(it) },
+        val issuer = deployments.usdcIssuer
+            ?: return RaizResult.Error(
+                code = RaizErrorCode.NETWORK_ERROR,
+                message = "usdcBalanceOfContract: usdc_issuer no está en deployments.json",
             )
-        }.fold(
-            onSuccess = { RaizResult.Success(it) },
-            onFailure = { e ->
-                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "usdcBalanceOfContract: ${e.message}")
-            },
-        )
+        return try {
+            val server = poolClient().server
+            val usdcAsset = Asset.createNonNativeAsset("USDC", issuer)
+            val response = server.getSACBalance(contractAddress, usdcAsset, network)
+            RaizResult.Success(response.balanceEntry?.getAmountAsLong() ?: 0L)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = e.message.orEmpty()
+            // Si el ledger entry no existe (cuenta nueva sin depósito), balance = 0
+            if ("entryNotFound" in msg || "not found" in msg.lowercase() ||
+                "ledger key does not exist" in msg.lowercase()
+            ) {
+                RaizResult.Success(0L)
+            } else {
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "usdcBalanceOfContract: $msg")
+            }
+        }
     }
 
     // ── Diagnóstico ──────────────────────────────────────────────────────
