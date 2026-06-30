@@ -130,6 +130,14 @@ class HorizonStream @Inject constructor(
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
             }
+            // Cuenta nueva sin fondear → Horizon responde 404 (la cuenta aún no
+            // existe on-chain). HttpURLConnection lanzaría FileNotFoundException con
+            // la URL como mensaje (sin "404"), así que lo atajamos por responseCode:
+            // no es un error, simplemente no hay historial todavía → lista vacía.
+            if (conn.responseCode == 404) {
+                conn.disconnect()
+                return@runCatching emptyList<PaymentRecord>()
+            }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
 
@@ -153,7 +161,8 @@ class HorizonStream @Inject constructor(
                 // NO es un error: simplemente aún no hay historial. Devolvemos lista
                 // vacía para que la UI muestre el estado "sin transacciones" en vez
                 // de "No pudimos cargar el historial".
-                if (msg.contains("404") ||
+                if (e is java.io.FileNotFoundException ||
+                    msg.contains("404") ||
                     msg.contains("not found", ignoreCase = true) ||
                     msg.contains("Resource Missing", ignoreCase = true)
                 ) {

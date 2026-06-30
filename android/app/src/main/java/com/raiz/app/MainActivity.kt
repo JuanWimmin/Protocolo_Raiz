@@ -164,7 +164,12 @@ private fun RaizApp(
         }
     }
 
-    val start = if (hasWallet) Routes.WALLET else Routes.WELCOME
+    // startDestination FIJO: se computa UNA sola vez desde initiallyHasWallet.
+    // Si se recalculara con `hasWallet` (mutable), al crear una wallet el flag
+    // pasa a true → el grafo del NavHost se reconstruye con start=WALLET y
+    // RESETEA la navegación a Inicio, saltándose ChooseRoleScreen. Por eso lo
+    // fijamos con remember y navegamos siempre de forma explícita con nav.navigate.
+    val start = remember { if (initiallyHasWallet) Routes.WALLET else Routes.WELCOME }
 
     NavHost(navController = nav, startDestination = start) {
 
