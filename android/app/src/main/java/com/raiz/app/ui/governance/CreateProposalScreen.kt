@@ -34,10 +34,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import android.app.Activity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -67,6 +69,9 @@ fun CreateProposalScreen(
     viewModel: CreateProposalViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    // El Activity es necesario para la rama passkey (Credential Manager WebAuthn).
+    // Se ignora en la rama clásica/demo.
+    val context = LocalContext.current
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         if (state.success) {
@@ -215,7 +220,9 @@ fun CreateProposalScreen(
 
             // ── CTA ────────────────────────────────────────────────────
             Button(
-                onClick = { viewModel.submit() },
+                // Pasamos el Activity al ViewModel para la rama passkey (WebAuthn).
+                // En demo/clásico el parámetro se ignora.
+                onClick = { viewModel.submit(context as? Activity) },
                 enabled = state.canSubmit,
                 modifier = Modifier
                     .fillMaxWidth()

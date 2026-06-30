@@ -84,20 +84,32 @@ class WalletViewModel @Inject constructor(
             val accountId = walletManager.currentAccountId() ?: return@launch
 
             // Las wallets passkey son SMART ACCOUNTS (C...): el relayer de Soneso ya
-            // las despliega y fondea con XLM al crearlas, y un contrato NO usa
-            // friendbot ni trustline clásica (su USDC vive vía SAC). Saltamos el
-            // onboarding de wallet clásica; si no, friendbot devuelve 400
-            // "account already funded" sobre una cuenta que ya está lista.
+            // las despliega y fondea con XLM al crearlas. No necesitan friendbot ni
+            // trustline clásica (su USDC vive vía SAC del contrato, no en la cuenta).
+            // El único paso pendiente es tener saldo USDC > 0; lo verificamos via SAC.
             if (walletManager.isPasskeyWallet()) {
-                Log.i(TAG, "Wallet passkey (smart account): onboarding clásico no aplica → DONE")
+                Log.i(TAG, "Wallet passkey (smart account): verificando saldo USDC via SAC…")
+                val step = when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
+                    is RaizResult.Success -> {
+                        Log.i(TAG, "Balance SAC del smart account $accountId: ${r.data} stroops")
+                        if (r.data > 0L) AccountSetupStep.DONE else AccountSetupStep.REQUEST_USDC
+                    }
+                    is RaizResult.Error -> {
+                        // Si la lectura SAC falla (red, contrato no inicializado), asumimos
+                        // sin saldo para que el banner aparezca y el usuario pueda pedir USDC.
+                        Log.w(TAG, "usdcBalanceOfContract para passkey falló: ${r.message} → REQUEST_USDC")
+                        AccountSetupStep.REQUEST_USDC
+                    }
+                }
                 _state.update { current ->
                     if (current is WalletUiState.Ready)
-                        current.copy(setupStep = AccountSetupStep.DONE, setupError = null)
+                        current.copy(setupStep = step, setupError = null)
                     else current
                 }
                 return@launch
             }
 
+            // Rama clásica (G...): Horizon para existencia, trustline y saldo.
             val step = when {
                 !horizonStream.accountExists(accountId) -> AccountSetupStep.FUND_XLM
                 !horizonStream.hasUsdcTrustline(accountId) -> AccountSetupStep.ACTIVATE_TRUSTLINE
@@ -146,11 +158,26 @@ class WalletViewModel @Inject constructor(
                 return@launch
             }
             beginSetupAction()
-            val result = horizonStream.sendUsdcFromAdmin(
-                adminSigner = admin,
-                destination = accountId,
-                amountStroops = FAUCET_USDC_STROOPS,
-            )
+
+            // Rama passkey: el smart account C... NO tiene trustline — el USDC vive
+            // en el storage del SAC (Stellar Asset Contract). El admin transfiere
+            // vía SAC.transfer(from=admin, to=C..., amount=200_000_000 stroops = 20 USDC).
+            // Rama clásica: el admin envía vía Horizon (pago clásico G→G con trustline).
+            val result = if (walletManager.isPasskeyWallet()) {
+                Log.i(TAG, "Faucet passkey: fundContractUsdc → $accountId ($FAUCET_USDC_STROOPS stroops)")
+                sorobanClient.fundContractUsdc(
+                    adminSigner     = admin,
+                    contractAddress = accountId,
+                    amountStroops   = FAUCET_USDC_STROOPS, // 20 USDC = 200_000_000 stroops
+                )
+            } else {
+                Log.i(TAG, "Faucet clásico: sendUsdcFromAdmin → $accountId ($FAUCET_USDC_STROOPS stroops)")
+                horizonStream.sendUsdcFromAdmin(
+                    adminSigner   = admin,
+                    destination   = accountId,
+                    amountStroops = FAUCET_USDC_STROOPS,
+                )
+            }
             finishSetupAction(result)
         }
     }
@@ -201,10 +228,40 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    /** Polling del balance USDC vía Horizon. Actualiza el WalletState. */
+    /**
+     * Carga el balance USDC y lo refleja en el WalletState.
+     *
+     * Rama passkey (C...): una lectura directa al SAC (Stellar Asset Contract)
+     * porque Horizon no conoce el balance de contratos Soroban. Los smart accounts
+     * no tienen trustline clásica — su saldo vive en el storage del SAC.
+     *
+     * Rama clásica (G...): Horizon SSE via [HorizonStream.usdcBalanceFlow] para
+     * actualizaciones en tiempo real.
+     */
     private fun observeUsdcBalance() {
         viewModelScope.launch {
             val accountId = walletManager.mockWallet().publicKey
+
+            if (walletManager.isPasskeyWallet()) {
+                // Los smart accounts C... no aparecen en la Horizon accounts API;
+                // consultamos SAC.balance(id=C...) una sola vez al iniciar.
+                Log.i(TAG, "Balance SAC para smart account $accountId")
+                when (val r = sorobanClient.usdcBalanceOfContract(accountId)) {
+                    is RaizResult.Success -> {
+                        Log.i(TAG, "Balance SAC: ${r.data} stroops (${r.data.formatUsdc()})")
+                        _state.update { current ->
+                            if (current is WalletUiState.Ready)
+                                current.copy(wallet = current.wallet.copy(usdcBalanceStroops = r.data))
+                            else current
+                        }
+                    }
+                    is RaizResult.Error ->
+                        Log.w(TAG, "usdcBalanceOfContract falló: ${r.message}")
+                }
+                return@launch
+            }
+
+            // Rama clásica: SSE de Horizon para actualizaciones en tiempo real.
             Log.i(TAG, "Suscribiéndome al balance USDC de $accountId")
             horizonStream.usdcBalanceFlow(accountId).collect { stroops ->
                 Log.i(TAG, "Balance USDC actualizado: $stroops stroops (${stroops.formatUsdc()})")

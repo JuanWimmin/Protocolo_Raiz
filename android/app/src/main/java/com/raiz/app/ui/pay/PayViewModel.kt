@@ -1,5 +1,6 @@
 package com.raiz.app.ui.pay
 
+import android.app.Activity
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -11,6 +12,7 @@ import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.security.AppLock
+import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,6 +50,7 @@ class PayViewModel @Inject constructor(
     private val walletManager: WalletManager,
     private val sorobanClient: SorobanClient,
     private val appLock: AppLock,
+    private val passkeyWalletManager: PasskeyWalletManager,
 ) : ViewModel() {
 
     // address del merchant, vía nav arg `merchant_address`. Si está vacío
@@ -107,13 +110,51 @@ class PayViewModel @Inject constructor(
         }
     }
 
-    fun confirm() {
+    /**
+     * Confirma el pago. El [activity] es obligatorio para la rama passkey
+     * (Credential Manager necesita un Activity para mostrar WebAuthn).
+     * En la rama clásica (KeyPair seed/demo) se ignora.
+     */
+    fun confirm(activity: Activity? = null) {
         val editing = _state.value as? PayUiState.Editing ?: return
         if (editing.submitting) return
 
         _state.update { editing.copy(submitting = true) }
 
         viewModelScope.launch {
+            // Rama passkey: el smart account C... firma la llamada pay_merchant vía WebAuthn.
+            // Incluye sub-auth para SAC.transfer en una sola ceremonia passkey.
+            if (walletManager.isPasskeyWallet() && activity != null) {
+                Log.i(
+                    TAG,
+                    "Pago passkey: ${editing.preview.baseAmountUsdc} USDC " +
+                    "tip=${editing.preview.tipBps}bps a ${editing.preview.merchant.name}",
+                )
+                val result = passkeyWalletManager.payMerchantWithPasskey(
+                    activity        = activity,
+                    merchantAddress = editing.preview.merchant.address,
+                    amountStroops   = editing.preview.baseAmountStroops,
+                    tipBps          = editing.preview.tipBps,
+                )
+                when (result) {
+                    is RaizResult.Success -> {
+                        Log.i(TAG, "Pago passkey OK")
+                        _state.value = PayUiState.Success(
+                            merchantName = editing.preview.merchant.name,
+                            totalStroops = editing.preview.totalStroops,
+                            pointsEarned = editing.preview.pointsToEarn,
+                            tipStroops   = editing.preview.tipStroops,
+                        )
+                    }
+                    is RaizResult.Error -> {
+                        Log.e(TAG, "Pago passkey falló: ${result.code} — ${result.message}")
+                        _state.value = PayUiState.Error(result.code, result.message)
+                    }
+                }
+                return@launch
+            }
+
+            // Rama clásica: firma con KeyPair ed25519 (seed BIP-39 o demo).
             val keyPair = walletManager.currentKeyPair()
             if (keyPair == null) {
                 _state.value = PayUiState.Error(
@@ -137,7 +178,7 @@ class PayViewModel @Inject constructor(
                         merchantName = editing.preview.merchant.name,
                         totalStroops = editing.preview.totalStroops,
                         pointsEarned = editing.preview.pointsToEarn,
-                        tipStroops = editing.preview.tipStroops,
+                        tipStroops   = editing.preview.tipStroops,
                     )
                 }
                 is RaizResult.Error -> {

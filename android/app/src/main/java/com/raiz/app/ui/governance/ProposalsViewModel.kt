@@ -1,10 +1,12 @@
 package com.raiz.app.ui.governance
 
+import android.app.Activity
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.Proposal
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.RoleResolver
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
@@ -69,6 +71,7 @@ class ProposalsViewModel @Inject constructor(
     private val walletManager: WalletManager,
     private val sorobanClient: SorobanClient,
     private val roleResolver: RoleResolver,
+    private val passkeyWalletManager: PasskeyWalletManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -165,16 +168,47 @@ class ProposalsViewModel @Inject constructor(
     /**
      * Vota sobre una propuesta.
      *
-     * En demo: firma con demoResidentKeyPair (la cuenta turista demo no tiene
+     * Rama passkey: si la wallet activa es un smart account (C...), firma
+     * el voto vía WebAuthn usando [PasskeyWalletManager.voteWithPasskey].
+     * [activity] es obligatorio en esta rama (Credential Manager lo necesita).
+     *
+     * Rama demo: firma con demoResidentKeyPair (la cuenta turista demo no tiene
      * ResidentToken — el contrato rechazaría con NOT_A_RESIDENT).
-     * En producción: firma con la wallet real del residente.
+     *
+     * Rama clásica: firma con el KeyPair real del residente.
      */
-    fun vote(proposalId: Long, support: Boolean) {
+    fun vote(proposalId: Long, support: Boolean, activity: Activity? = null) {
         viewModelScope.launch {
             _state.update {
                 it.copy(voteState = it.voteState + (proposalId to VoteStatus.Submitting))
             }
 
+            // Rama passkey: el smart account C... firma el voto vía WebAuthn.
+            if (walletManager.isPasskeyWallet() && activity != null) {
+                Log.i(TAG, "Voto passkey: proposalId=$proposalId support=$support")
+                when (val r = passkeyWalletManager.voteWithPasskey(activity, proposalId, support)) {
+                    is RaizResult.Success -> {
+                        Log.i(TAG, "Voto passkey registrado on-chain")
+                        _state.update {
+                            it.copy(voteState = it.voteState + (proposalId to VoteStatus.Ok))
+                        }
+                        refresh()
+                    }
+                    is RaizResult.Error -> {
+                        Log.e(TAG, "Voto passkey falló: ${r.code} — ${r.message}")
+                        _state.update {
+                            it.copy(
+                                voteState = it.voteState + (proposalId to VoteStatus.Failed(
+                                    humanError(r.code.name, r.message),
+                                )),
+                            )
+                        }
+                    }
+                }
+                return@launch
+            }
+
+            // Rama clásica / demo: firma con KeyPair ed25519.
             val signer = if (walletManager.isDemoMode) {
                 walletManager.demoResidentKeyPair()
             } else {

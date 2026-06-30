@@ -43,10 +43,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.outlined.Refresh
+import android.app.Activity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -84,6 +86,9 @@ fun ProposalsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedNav by remember { mutableStateOf(RaizDestination.Proposals) }
+    // El Activity es necesario para que el Credential Manager muestre el selector
+    // de passkey (WebAuthn) al votar. Se ignora en la rama clásica/demo.
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -163,7 +168,11 @@ fun ProposalsScreen(
                     .fillMaxSize()
                     .padding(padding),
                 state = state,
-                onVote = viewModel::vote,
+                // Pasamos el Activity al ViewModel para que la rama passkey pueda
+                // invocar voteWithPasskey(activity, ...). En demo/clásico se ignora.
+                onVote = { proposalId, support ->
+                    viewModel.vote(proposalId, support, context as? Activity)
+                },
             )
         }
     }

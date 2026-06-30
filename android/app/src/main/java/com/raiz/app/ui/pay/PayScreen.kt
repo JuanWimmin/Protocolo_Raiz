@@ -1,5 +1,6 @@
 package com.raiz.app.ui.pay
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,12 @@ fun PayScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
+    // El Activity es necesario para que el Credential Manager pueda mostrar el
+    // selector de passkey (WebAuthn). Se captura aquí (composable raíz del screen)
+    // para pasarlo a la acción confirm() del ViewModel — patrón idéntico al de
+    // CreatePasskeyWalletScreen. En la rama clásica (KeyPair seed/demo) se ignora.
+    val context = LocalContext.current
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         when (val s = state) {
             PayUiState.Loading -> Column(
@@ -78,7 +85,9 @@ fun PayScreen(
             is PayUiState.Editing -> PayEditing(
                 state = s,
                 onToggleTip = viewModel::toggleTip,
-                onConfirm = viewModel::confirm,
+                // Pasamos el Activity al ViewModel; la rama passkey lo usa para WebAuthn,
+                // la rama clásica lo ignora (activity: Activity? = null en el ViewModel).
+                onConfirm = { viewModel.confirm(context as? Activity) },
                 contentPadding = padding,
             )
             is PayUiState.Success -> PaySuccess(

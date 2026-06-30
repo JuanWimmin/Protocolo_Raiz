@@ -1,10 +1,12 @@
 package com.raiz.app.ui.governance
 
+import android.app.Activity
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -68,6 +70,7 @@ data class CreateProposalUiState(
 class CreateProposalViewModel @Inject constructor(
     private val walletManager: WalletManager,
     private val sorobanClient: SorobanClient,
+    private val passkeyWalletManager: PasskeyWalletManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CreateProposalUiState())
@@ -119,7 +122,18 @@ class CreateProposalViewModel @Inject constructor(
 
     // ── Submit ────────────────────────────────────────────────────────────
 
-    fun submit() {
+    /**
+     * Publica la propuesta on-chain.
+     *
+     * Rama passkey: el smart account C... firma [Governance.create_proposal] vía
+     * WebAuthn. [activity] es obligatorio en esta rama. Como [contractCall] no
+     * expone el valor de retorno de Soroban, el [successProposalId] queda null;
+     * la pantalla de éxito igualmente se muestra y el usuario puede refrescar
+     * ProposalsScreen para ver la nueva propuesta con su ID asignado.
+     *
+     * Rama demo/clásica: firma con KeyPair ed25519 y devuelve el ID on-chain.
+     */
+    fun submit(activity: Activity? = null) {
         val s = _state.value
         if (!s.canSubmit) return
 
@@ -131,6 +145,38 @@ class CreateProposalViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(submitting = true, error = null) }
 
+            // Rama passkey: el smart account C... firma vía WebAuthn.
+            if (walletManager.isPasskeyWallet() && activity != null) {
+                Log.i(
+                    TAG,
+                    "createProposalWithPasskey barrio=$barrioId desc=${s.description} " +
+                    "amount=${s.amountStroops} recipient=${s.recipient} dur=${s.durationDays}",
+                )
+                when (val r = passkeyWalletManager.createProposalWithPasskey(
+                    activity      = activity,
+                    barrioId      = barrioId,
+                    description   = s.description.trim(),
+                    amountStroops = s.amountStroops,
+                    recipient     = s.recipient,
+                    durationDays  = s.durationDays,
+                )) {
+                    is RaizResult.Success -> {
+                        // contractCall no expone el u64 de retorno (limitación del SDK);
+                        // mostramos éxito sin ID — la lista de propuestas lo revelará tras refresh.
+                        Log.i(TAG, "Propuesta passkey publicada (id disponible tras refresh)")
+                        _state.update {
+                            it.copy(submitting = false, success = true, successProposalId = null)
+                        }
+                    }
+                    is RaizResult.Error -> {
+                        Log.e(TAG, "createProposalWithPasskey falló: ${r.code} — ${r.message}")
+                        _state.update { it.copy(submitting = false, error = r.message) }
+                    }
+                }
+                return@launch
+            }
+
+            // Rama clásica / demo: firma con KeyPair ed25519.
             val signer = if (walletManager.isDemoMode) {
                 walletManager.demoResidentKeyPair()
             } else {

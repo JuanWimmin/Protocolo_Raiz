@@ -1,5 +1,9 @@
 package com.raiz.app.ui.map
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,13 +41,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mapbox.geojson.Point
+import com.mapbox.maps.extension.compose.MapEffect
 import com.mapbox.maps.extension.compose.MapboxMap
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
 import com.mapbox.maps.extension.compose.annotation.generated.CircleAnnotation
+import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
+import com.mapbox.maps.plugin.locationcomponent.location
+import com.mapbox.maps.plugin.viewport.data.FollowPuckViewportStateOptions
 import com.raiz.app.data.model.Merchant
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.ui.components.RaizBottomNav
@@ -55,6 +66,11 @@ import com.raiz.app.ui.theme.RaizWhite
  * Cuarta pantalla del spec: mapa de los comercios RAÍZ.
  *
  * - MapboxMap centrado en Cartagena por defecto (~10.42, -75.55) con zoom 13.
+ * - Al entrar se solicita ACCESS_FINE_LOCATION en tiempo de ejecución.
+ *   Si el usuario lo concede, se activa el location puck nativo de Mapbox
+ *   (sin Play Services) y la cámara se anima a la posición real del
+ *   dispositivo mediante transitionToFollowPuckState (zoom 14).
+ *   Si el permiso es denegado, el mapa permanece en el centro de Cartagena.
  * - CircleAnnotation verde por cada merchant — sin necesidad de drawables.
  * - Tap a un pin abre ModalBottomSheet con nombre, categoría, badge verificado
  *   y botón "Pagar aquí" que navega a PayScreen con el address pre-cargado.
@@ -78,6 +94,48 @@ fun BarrioMapScreen(
     var selectedMerchant by remember { mutableStateOf<Merchant?>(null) }
     var selectedNav by remember { mutableStateOf(RaizDestination.Map) }
     val sheetState = rememberModalBottomSheetState()
+
+    // --- Permisos de ubicación en tiempo de ejecución ---
+    val context = LocalContext.current
+
+    // Comprueba el estado actual del permiso sin volver a pedirlo si ya fue
+    // concedido en una sesión anterior.
+    var locationPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+
+    // Lanzador del diálogo nativo de permisos.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permisos ->
+        // Basta con que ACCESS_FINE_LOCATION o ACCESS_COARSE_LOCATION sea concedido.
+        locationPermissionGranted =
+            permisos.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) ||
+                permisos.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false)
+    }
+
+    // Solicitar permiso la primera vez que se abre la pantalla.
+    // Si ya fue concedido (locationPermissionGranted = true), no se muestra diálogo.
+    LaunchedEffect(Unit) {
+        if (!locationPermissionGranted) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
+    // --- Fin permisos de ubicación ---
 
     val viewportState = rememberMapViewportState {
         setCameraOptions {
@@ -113,6 +171,31 @@ fun BarrioMapScreen(
                 modifier = Modifier.fillMaxSize(),
                 mapViewportState = viewportState,
             ) {
+                // Location puck nativo de Mapbox (sin play-services-location).
+                // MapEffect re-corre cuando locationPermissionGranted cambia; el
+                // bloque recibe el MapView ya inicializado (post-estilo cargado).
+                // transitionToFollowPuckState NO es suspend — se llama directamente
+                // y anima la cámara para seguir el puck del dispositivo a zoom 14.
+                // Si el permiso es denegado este bloque no se ejecuta y el mapa
+                // permanece centrado en el barrio por defecto (Cartagena).
+                MapEffect(locationPermissionGranted) { mapView ->
+                    if (locationPermissionGranted) {
+                        // Habilitar el componente de ubicación del SDK de Mapbox.
+                        mapView.location.updateSettings {
+                            locationPuck = createDefault2DPuck(withBearing = false)
+                            enabled = true
+                            pulsingEnabled = true
+                        }
+                        // Animar la cámara para que siga la posición real del dispositivo.
+                        // API: MapViewportState.transitionToFollowPuckState(options, transitionOpts, listener?)
+                        viewportState.transitionToFollowPuckState(
+                            FollowPuckViewportStateOptions.Builder()
+                                .zoom(14.0)
+                                .build(),
+                        )
+                    }
+                }
+
                 // Un círculo verde por cada merchant. CircleAnnotation no
                 // necesita drawable — usamos color + borde blanco para
                 // contrastar con el fondo del mapa.
