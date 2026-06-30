@@ -989,87 +989,123 @@ class SorobanClient @Inject constructor(
      * del contrato Pool. Complementa a [HorizonStream.paymentHistory] (que solo
      * captura pagos clásicos y no ve las invocaciones Soroban).
      *
-     * IMPORTANTE: [touristAddress] debe ser el address exacto que se pasó como
-     * argumento `tourist` a `pay_merchant` on-chain (el `KeyPair.getAccountId()`
-     * del firmante). Para passkey esto NO es el C... del smart account sino el
-     * G... del demoKeyPair que actualmente firma (TODO passkey pleno).
+     * PAGINACIÓN: getEvents devuelve eventos en orden ASCENDENTE desde startLedger.
+     * Los pagos recientes están en las últimas páginas. Este método sigue el cursor
+     * de cada respuesta hasta que llega null (última página) o alcanza MAX_PAGES.
+     * Solo entonces filtra por tourist — nunca a mitad de la lectura.
      *
-     * @param touristAddress  Dirección G... o C... tal como aparece en el evento.
-     * @return Lista de [PaymentRecord] orden ledger desc (más reciente primero),
-     *   o lista vacía si no hay eventos en la ventana de retención disponible.
+     * PASSKEY: mientras el signing via smart-account no esté conectado, pasar el
+     * G... del demoKeyPair (el que realmente firma payMerchant), NO el C... del
+     * smart account. Ver WalletManager.currentKeyPair() y el TODO de passkey pleno.
+     *
+     * @param touristAddress  G... o C... exacto que aparece como tourist en los eventos.
+     * @return Lista de [PaymentRecord] en orden ledger desc (más reciente primero).
      */
     suspend fun tourPaymentEvents(
         touristAddress: String,
     ): RaizResult<List<PaymentRecord>> {
         Log.i(TAG, "tourPaymentEvents: touristAddress=$touristAddress pool=${deployments.pool}")
         return runCatching {
-            // SorobanServer del poolClient cacheado — evita un round-trip extra.
             val server = poolClient().server
             val latestLedger = server.getLatestLedger().sequence
             Log.i(TAG, "tourPaymentEvents: latestLedger=$latestLedger LOOKBACK=$EVENTS_LOOKBACK_LEDGERS FALLBACK=$EVENTS_LOOKBACK_FALLBACK")
 
-            // Intentamos primero con la ventana completa; si el RPC rechaza
-            // startLedger (fuera de retención), reintentamos con ventana corta.
+            // Preparamos el EventFilter (reutilizado en todas las páginas)
+            val eventFilter = GetEventsRequest.EventFilter(
+                type = GetEventsRequest.EventFilterType.CONTRACT,
+                contractIds = listOf(deployments.pool),
+                topics = emptyList(), // sin filtro de topic: match todos los eventos del Pool
+            )
+
+            // Intentamos la ventana principal; si el RPC rechaza startLedger
+            // por retención, reintentamos con la ventana de fallback.
             val windowCandidates = listOf(
                 (latestLedger - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L),
                 (latestLedger - EVENTS_LOOKBACK_FALLBACK).coerceAtLeast(1L),
             ).distinct()
 
-            var response: GetEventsResponse? = null
-            for (startLedger in windowCandidates) {
-                Log.i(TAG, "tourPaymentEvents: intentando getEvents startLedger=$startLedger")
+            var firstPage: GetEventsResponse? = null
+            for (candidateStart in windowCandidates) {
+                Log.i(TAG, "tourPaymentEvents: getEvents 1ª pág startLedger=$candidateStart")
                 try {
-                    val filter = GetEventsRequest.EventFilter(
-                        type = GetEventsRequest.EventFilterType.CONTRACT,
-                        contractIds = listOf(deployments.pool),
-                        topics = emptyList(), // wildcard: todos los topics del contrato Pool
-                    )
-                    val request = GetEventsRequest(
-                        startLedger = startLedger,
-                        endLedger = null,   // null = hasta ledger más reciente
-                        filters = listOf(filter),
-                        pagination = GetEventsRequest.Pagination(
-                            cursor = null,
-                            limit = 100L,
+                    firstPage = server.getEvents(
+                        GetEventsRequest(
+                            startLedger = candidateStart,
+                            endLedger = null,
+                            filters = listOf(eventFilter),
+                            pagination = GetEventsRequest.Pagination(cursor = null, limit = 100L),
                         ),
                     )
-                    response = server.getEvents(request)
-                    Log.i(TAG, "tourPaymentEvents: getEvents OK → events=${response.events.size} oldestLedger=${response.oldestLedger} latestLedger=${response.latestLedger}")
+                    Log.i(TAG, "tourPaymentEvents: 1ª pág OK → ${firstPage.events.size} ev cursor=${firstPage.cursor?.take(20)} oldest=${firstPage.oldestLedger}")
                     break
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (e: Exception) {
                     val msg = e.message.orEmpty()
-                    // Logueamos SIEMPRE el error real — nunca silenciamos.
-                    Log.w(TAG, "tourPaymentEvents: getEvents(startLedger=$startLedger) FALLÓ: $msg")
-                    val isRetentionError = "startLedger" in msg ||
-                        "start ledger" in msg.lowercase() ||
+                    Log.w(TAG, "tourPaymentEvents: getEvents(startLedger=$candidateStart) FALLÓ: $msg")
+                    val isRetentionError = "startledger" in msg.lowercase() ||
                         "event retention" in msg.lowercase() ||
                         "minimum ledger" in msg.lowercase()
-                    if (!isRetentionError) throw e  // error no relacionado → propagar
-                    // Error de retención → siguiente ventana (si la hay)
+                    if (!isRetentionError) throw e   // error no relacionado → propagar al onFailure
+                    // Error de retención → prueba la siguiente ventana
                 }
             }
 
-            if (response == null) {
-                Log.w(TAG, "tourPaymentEvents: sin respuesta tras ${windowCandidates.size} intentos → lista vacía")
+            if (firstPage == null) {
+                Log.w(TAG, "tourPaymentEvents: sin respuesta en ninguna ventana → vacío")
                 return@runCatching emptyList<PaymentRecord>()
             }
 
-            // Parsea y filtra: solo eventos "payment" del turista indicado.
-            val records = response.events
+            // ── Paginación completa ───────────────────────────────────────────
+            // Protocolo cursor (Soroban RPC spec):
+            //   Pág 1: startLedger=N, cursor=null  → responde cursor=X (o null si última)
+            //   Pág 2: startLedger=null, cursor=X  → responde cursor=Y (o null si última)
+            //   REGLA: cuando cursor != null, startLedger DEBE ser null.
+            //
+            // Acumulamos todos los eventos; filtramos tourist solo al final.
+            val allEvents = mutableListOf<GetEventsResponse.EventInfo>()
+            allEvents.addAll(firstPage.events)
+
+            var pageCursor: String? = firstPage.cursor?.takeIf { it.isNotEmpty() }
+            var pageCount = 1
+
+            while (pageCursor != null && pageCount < MAX_PAGES) {
+                Log.i(TAG, "tourPaymentEvents: pág ${pageCount + 1} cursor=${pageCursor.take(20)} (total acum=${allEvents.size})")
+                val nextPage = server.getEvents(
+                    GetEventsRequest(
+                        startLedger = null,   // OBLIGATORIO null cuando cursor está presente
+                        endLedger = null,
+                        filters = listOf(eventFilter),
+                        pagination = GetEventsRequest.Pagination(cursor = pageCursor, limit = 100L),
+                    ),
+                )
+                pageCount++
+                allEvents.addAll(nextPage.events)
+                Log.i(TAG, "tourPaymentEvents: pág $pageCount → ${nextPage.events.size} ev (total=${allEvents.size}) nextCursor=${nextPage.cursor?.take(20)}")
+
+                pageCursor = nextPage.cursor?.takeIf { it.isNotEmpty() }
+                if (nextPage.events.isEmpty()) break  // página vacía = fin
+            }
+
+            if (pageCount >= MAX_PAGES && pageCursor != null) {
+                Log.w(TAG, "tourPaymentEvents: cap MAX_PAGES=$MAX_PAGES alcanzado — posibles eventos adicionales sin leer")
+            }
+            Log.i(TAG, "tourPaymentEvents: paginación completa: $pageCount págs, ${allEvents.size} eventos crudos")
+
+            // ── Filtrado y parseo ─────────────────────────────────────────────
+            val records = allEvents
                 .sortedByDescending { it.ledger }
                 .mapNotNull { event ->
                     runCatching { parsePaymentEvent(event, touristAddress) }
-                        .onFailure { Log.w(TAG, "tourPaymentEvents: parsePaymentEvent falló event=${event.id}: ${it.message}") }
+                        .onFailure { Log.w(TAG, "tourPaymentEvents: parse falló event=${event.id}: ${it.message}") }
                         .getOrNull()
                 }
-            Log.i(TAG, "tourPaymentEvents: PaymentRecords para $touristAddress → ${records.size} de ${response.events.size} crudos")
+            Log.i(TAG, "tourPaymentEvents: RESULTADO → ${records.size} PaymentRecords de ${allEvents.size} crudos para $touristAddress")
             records
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
-                Log.w(TAG, "tourPaymentEvents: error final no recuperable: ${e.message}")
+                Log.w(TAG, "tourPaymentEvents: error no recuperable: ${e.message}")
                 RaizResult.Error(
                     code = RaizErrorCode.NETWORK_ERROR,
                     message = "tourPaymentEvents: ${e.message}",
@@ -1226,11 +1262,12 @@ class SorobanClient @Inject constructor(
         const val TAG = "RAIZ"
 
         /**
-         * Ventana principal de lookback para getEvents: ~24h en testnet (ledger ~5s).
-         * 17 280 × 5s = 86 400s = 24h. Si el RPC rechaza este startLedger por retención,
-         * se reintenta con EVENTS_LOOKBACK_FALLBACK.
+         * Ventana principal de lookback para getEvents: ~11h en testnet (ledger ~5s).
+         * 8 000 × 5s = 40 000s ≈ 11h. Ventana suficiente para la sesión de demo
+         * sin forzar que el RPC busque ledgers expirados (testnet retiene ~24h).
+         * Reducida de 17 280 (24h) porque la paginación ya cubre páginas tardías.
          */
-        const val EVENTS_LOOKBACK_LEDGERS = 17_280L
+        const val EVENTS_LOOKBACK_LEDGERS = 8_000L
 
         /**
          * Ventana de fallback: ~3h (600 ledgers × 5s = 3 000s). Se usa solo si el
@@ -1238,5 +1275,13 @@ class SorobanClient @Inject constructor(
          * en testnet. Cubre todos los pagos de la sesión de demostración reciente.
          */
         const val EVENTS_LOOKBACK_FALLBACK = 600L
+
+        /**
+         * Límite de seguridad de páginas de paginación en getEvents. Con limit=100
+         * por página, esto cubre hasta 2 000 eventos del Pool. Un pool activo de
+         * hackathon raramente supera las 5 páginas — el cap solo protege contra
+         * contratos con miles de eventos que harían el fetch inmanejable.
+         */
+        const val MAX_PAGES = 20
     }
 }
