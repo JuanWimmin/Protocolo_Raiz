@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizResult
-import com.raiz.app.data.stellar.HorizonStream
+import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,14 +53,16 @@ data class CobrosUiState(
 /**
  * ViewModel de CobrosScreen — pantalla exclusiva del rol MERCHANT.
  *
- * Lee el historial de pagos vía [HorizonStream.paymentHistory] y filtra
- * solo los entrantes. Los cobros salientes (compras del comerciante) no se
- * muestran aquí.
+ * Lee las VENTAS RECIBIDAS vía [SorobanClient.tourPaymentEvents] (eventos
+ * `payment` del Pool donde este comerciante es el destinatario) y filtra los
+ * entrantes. Horizon NO sirve aquí: los pagos a comercio son llamadas Soroban
+ * (no pagos clásicos), y un comerciante passkey es un contrato C… que Horizon
+ * tampoco indexa — por eso antes salía siempre 0.
  */
 @HiltViewModel
 class CobrosViewModel @Inject constructor(
     private val walletManager: WalletManager,
-    private val horizonStream: HorizonStream,
+    private val sorobanClient: SorobanClient,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -76,11 +78,14 @@ class CobrosViewModel @Inject constructor(
         val accountId = walletManager.currentAccountId() ?: return
         _state.update { it.copy(accountId = accountId, loading = true, error = null) }
         viewModelScope.launch {
-            when (val r = horizonStream.paymentHistory(accountId, limit = 50)) {
+            when (val r = sorobanClient.tourPaymentEvents(accountId)) {
                 is RaizResult.Success -> {
+                    // Ventas recibidas = eventos del Pool donde este comerciante es
+                    // el destinatario (isOutgoing = false). Los salientes (compras
+                    // propias del comerciante) se excluyen.
                     val incoming = r.data.filter { !it.isOutgoing }
                     val total = incoming.sumOf { it.amountStroops }
-                    Log.i(TAG, "Cobros cargados: ${incoming.size}, total=$total stroops")
+                    Log.i(TAG, "Ventas recibidas: ${incoming.size}, total=$total stroops")
                     _state.update {
                         it.copy(
                             loading = false,
