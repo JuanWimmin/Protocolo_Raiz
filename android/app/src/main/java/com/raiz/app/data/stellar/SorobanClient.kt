@@ -535,6 +535,77 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Governance: mint_resident (admin del barrio) ─────────────────────
+
+    /**
+     * Mintea un ResidentToken soulbound a una address. On-chain solo el admin
+     * del barrio puede llamar `mint_resident`; la app lo expone con el
+     * demoAdminKeyPair en modo demo para que un usuario que eligió "Soy
+     * residente" se verifique al instante sin coordinar offline. En producción
+     * esto pasaría por validación de documentos de residencia / KYC.
+     *
+     * Espejo EXACTO de [registerMerchant]: el admin firma por el usuario.
+     * La firma del contrato es `mint_resident(barrio_admin, resident, barrio_id)`.
+     *
+     * @param adminSigner  KeyPair del admin del barrio (= demoAdminKeyPair en demo).
+     * @param resident     Address G.../C... que recibirá el soulbound.
+     * @param barrioId     hex de 32 bytes del barrio del residente.
+     */
+    suspend fun mintResident(
+        adminSigner: KeyPair,
+        resident: String,
+        barrioId: String,
+    ): RaizResult<Unit> {
+        val barrioBytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+
+        return runCatching {
+            governanceClient().invoke<Unit>(
+                functionName = "mint_resident",
+                arguments = mapOf(
+                    "barrio_admin" to adminSigner.getAccountId(),
+                    "resident" to resident,
+                    "barrio_id" to barrioBytes,
+                ),
+                source = adminSigner.getAccountId(),
+                signer = adminSigner,
+                parseResultXdrFn = { /* void */ },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e ->
+                val msg = e.message.orEmpty()
+                when {
+                    // Ya residente (#5): el estado final deseado ya se cumple
+                    // (puede votar/proponer), así que lo tratamos como éxito
+                    // idempotente en lugar de un error.
+                    "AlreadyResident" in msg ||
+                        "Error(Contract, #5)" in msg ->
+                        RaizResult.Success(Unit)
+                    // El barrio no tiene admin configurado (#4).
+                    "BarrioAdminNotSet" in msg ||
+                        "Error(Contract, #4)" in msg ->
+                        RaizResult.Error(
+                            RaizErrorCode.NOT_FOUND,
+                            "El barrio no tiene admin configurado on-chain",
+                        )
+                    // El firmante no es el admin de este barrio (#3).
+                    "Unauthorized" in msg ||
+                        "Error(Contract, #3)" in msg ->
+                        RaizResult.Error(
+                            RaizErrorCode.UNAUTHORIZED,
+                            "El admin no está autorizado para este barrio",
+                        )
+                    else ->
+                        RaizResult.Error(
+                            RaizErrorCode.NETWORK_ERROR,
+                            "mintResident: ${e.message}",
+                        )
+                }
+            },
+        )
+    }
+
     // ── Governance: vote (ESCRITURA firmada) ─────────────────────────────
 
     suspend fun vote(

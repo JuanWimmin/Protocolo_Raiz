@@ -170,6 +170,19 @@ class WalletManager @Inject constructor(
         return runCatching { UserRole.valueOf(name) }.getOrNull()
     }
 
+    // ── Barrio del residente pendiente de verificación on-chain ────────────
+
+    /**
+     * Persiste el barrio (hex) que el usuario eligió al entrar como residente
+     * en el onboarding. Se lee luego en ProposalsScreen para mintear el
+     * ResidentToken al barrio correcto cuando pulsa "Verificar como residente".
+     * Delega en [SecureWalletStore.savePendingResidentBarrio].
+     */
+    fun savePendingResidentBarrio(hex: String) = store.savePendingResidentBarrio(hex)
+
+    /** Barrio (hex) elegido por el residente pendiente, o null si no eligió. */
+    fun pendingResidentBarrio(): String? = store.pendingResidentBarrio()
+
     /**
      * true si no hay ninguna wallet real guardada en el dispositivo (ni
      * seed BIP-39 ni passkey) Y existe un DEMO_TOURIST_SECRET configurado

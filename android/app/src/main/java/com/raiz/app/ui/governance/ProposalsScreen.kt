@@ -160,7 +160,11 @@ fun ProposalsScreen(
             state.isRegisteredOnChain == null -> LoadingBox(padding)
 
             // No registrado on-chain como residente.
-            state.isRegisteredOnChain == false -> PendingRegistrationBox(padding)
+            state.isRegisteredOnChain == false -> PendingRegistrationBox(
+                padding = padding,
+                state = state,
+                onVerify = viewModel::verifyAsResident,
+            )
 
             // Registrado — muestra propuestas.
             else -> ProposalsList(
@@ -452,11 +456,19 @@ private fun ErrorBox(message: String) {
 }
 
 /**
- * Banner informativo cuando el usuario no está registrado on-chain como
- * residente. El admin del barrio debe mintear el ResidentToken.
+ * Banner cuando el usuario no está registrado on-chain como residente.
+ *
+ * En modo demo el admin firma por el usuario: muestra un botón "Verificar como
+ * residente de [barrio]" que mintea el ResidentToken soulbound al instante
+ * (mismo patrón que el alta de comerciante). Si no hay barrio elegido, guía al
+ * usuario a entrar de nuevo como residente para elegirlo.
  */
 @Composable
-private fun PendingRegistrationBox(padding: PaddingValues) {
+private fun PendingRegistrationBox(
+    padding: PaddingValues,
+    state: ProposalsUiState,
+    onVerify: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -480,15 +492,66 @@ private fun PendingRegistrationBox(padding: PaddingValues) {
                 modifier = Modifier.size(40.dp),
             )
             Text(
-                text = "Pendiente de registro por tu barrio",
+                text = "Aún no eres residente verificado",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = RaizBlack,
             )
             Text(
-                text = "Pídele al admin de tu barrio que te registre para proponer y votar. El registro otorga un token de residencia on-chain (soulbound).",
+                text = "Para proponer y votar necesitas un token de residencia on-chain (soulbound). En esta demo el admin lo aprueba al instante.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
             )
+
+            // Error de la última verificación, si lo hubo.
+            if (state.verifyError != null) {
+                Text(
+                    text = state.verifyError,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB00020),
+                )
+            }
+
+            Spacer(modifier = Modifier.size(4.dp))
+
+            if (state.pendingBarrioName != null) {
+                // Botón de verificación: el admin demo mintea el soulbound.
+                Button(
+                    onClick = onVerify,
+                    enabled = !state.verifying,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RaizPurple,
+                        contentColor = RaizWhite,
+                        disabledContainerColor = RaizPurple.copy(alpha = 0.4f),
+                        disabledContentColor = RaizWhite.copy(alpha = 0.7f),
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    if (state.verifying) {
+                        CircularProgressIndicator(
+                            color = RaizWhite,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    } else {
+                        Icon(Icons.Outlined.HowToVote, contentDescription = null)
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(
+                            "Verificar como residente de ${state.pendingBarrioName}",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            } else {
+                // Sin barrio elegido: no podemos mintear. Guía al usuario.
+                Text(
+                    text = "Aún no has elegido tu barrio. Vuelve a entrar como residente desde tu perfil para elegirlo y poder verificarte.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.7f),
+                )
+            }
         }
     }
 }

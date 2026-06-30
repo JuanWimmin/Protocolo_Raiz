@@ -54,6 +54,7 @@ import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
+import com.raiz.app.ui.become_resident.BecomeResidentScreen
 import com.raiz.app.ui.cobros.CobrosScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
 import com.raiz.app.ui.governance.CreateProposalScreen
@@ -126,6 +127,10 @@ class MainActivity : FragmentActivity() {
                             },
                             isDemoMode = walletManager.isDemoMode,
                             onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
+                            // Persiste el barrio elegido en el onboarding de residente.
+                            onSavePendingResidentBarrio = { hex ->
+                                walletManager.savePendingResidentBarrio(hex)
+                            },
                             // Address del wallet activo para resolver el rol on-chain tras login.
                             getAccountId = { walletManager.currentAccountId() },
                             // Resolución on-chain: delega en RoleResolver (Hilt singleton).
@@ -205,6 +210,8 @@ private fun RaizApp(
     initialRole: UserRole = UserRole.TOURIST,
     isDemoMode: Boolean = false,
     onSetPreferredRole: (UserRole) -> Unit = {},
+    /** Persiste el barrio (hex) elegido en el onboarding de residente. */
+    onSavePendingResidentBarrio: (String) -> Unit = {},
     /** Address del wallet activo (para resolver el rol on-chain tras login). */
     getAccountId: () -> String? = { null },
     /** Suspend lambda que consulta el rol on-chain a partir del address. */
@@ -382,9 +389,10 @@ private fun RaizApp(
          * Selección de rol en el onboarding.
          *
          *   Turista   → persiste TOURIST → entra directo en la app.
-         *   Residente → persiste RESIDENT → entra (el admin del barrio mintea
-         *               el token; el residente ya puede ir a Propuestas aunque
-         *               aún no tenga token, la pantalla le explica qué hacer).
+         *   Residente → navega a BECOME_RESIDENT para elegir barrio; ahí se
+         *               persiste RESIDENT + el barrio elegido y entra a la app.
+         *               El token soulbound lo mintea el admin al pulsar
+         *               "Verificar como residente" en Propuestas.
          *   Comerciante → navega a BECOME_MERCHANT_ONBOARDING; la app SOLO
          *                 persiste MERCHANT y entra si el registro on-chain
          *                 termina con éxito. Si el usuario cancela vuelve aquí.
@@ -404,9 +412,27 @@ private fun RaizApp(
                     nav.navigate(Routes.BECOME_MERCHANT_ONBOARDING)
                 },
                 onResident = {
+                    // Navega a la pantalla de elección de barrio sin sacar
+                    // ChooseRole del backstack — si cancela, vuelve aquí.
+                    nav.navigate(Routes.BECOME_RESIDENT)
+                },
+            )
+        }
+
+        // Onboarding de residente: elige barrio → persiste RESIDENT + barrio
+        // pendiente y entra a la app. El admin mintea el soulbound más tarde,
+        // cuando el usuario pulsa "Verificar como residente" en Propuestas.
+        composable(Routes.BECOME_RESIDENT) {
+            BecomeResidentScreen(
+                onBack = { nav.popBackStack() },
+                onConfirm = { barrioId ->
                     onSetPreferredRole(UserRole.RESIDENT)
                     currentRole = UserRole.RESIDENT
+                    onSavePendingResidentBarrio(barrioId)
                     nav.navigate(Routes.WALLET) {
+                        // CHOOSE_ROLE es la raíz del onboarding presente en el
+                        // backstack (WELCOME ya fue removido al entrar aquí), así
+                        // que pop inclusive deja un backstack limpio en [WALLET].
                         popUpTo(Routes.CHOOSE_ROLE) { inclusive = true }
                     }
                 },
@@ -687,6 +713,9 @@ private object Routes {
     // Registrar comerciante — dos rutas por contexto de origen
     const val BECOME_MERCHANT            = "become_merchant"
     const val BECOME_MERCHANT_ONBOARDING = "become_merchant_onboarding"
+
+    // Onboarding de residente — elegir barrio
+    const val BECOME_RESIDENT            = "become_resident"
 
     // Pantallas de rol
     const val PROPOSALS                  = "proposals"

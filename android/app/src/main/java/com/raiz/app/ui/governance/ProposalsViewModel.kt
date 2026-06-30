@@ -46,11 +46,27 @@ data class ProposalsUiState(
     val barrioName: String = "Mi barrio",
     val voteState: Map<Long, VoteStatus> = emptyMap(),
     val isDemoMode: Boolean = false,
+    // ── Verificación de residente (no registrado on-chain) ─────────────────
+    /** Barrio (hex) al que el usuario puede verificarse, o null si no eligió. */
+    val pendingBarrioId: String? = null,
+    /** Nombre legible del barrio pendiente, para el botón de verificación. */
+    val pendingBarrioName: String? = null,
+    /** true mientras el admin mintea el ResidentToken (mint_resident). */
+    val verifying: Boolean = false,
+    /** Mensaje de error de la última verificación fallida, o null. */
+    val verifyError: String? = null,
 ) {
     companion object {
         const val DEMO_BARRIO_ID =
             "ce47120000000000000000000000000000000000000000000000000000000001"
         const val DEMO_BARRIO_NAME = "Centro Histórico"
+
+        /** Mapa hex → nombre de los 3 barrios del seed (espejo de RoleResolver). */
+        val BARRIOS: Map<String, String> = linkedMapOf(
+            "ce47120000000000000000000000000000000000000000000000000000000001" to "Centro Histórico",
+            "bba17e0000000000000000000000000000000000000000000000000000000002" to "Barrio Norte",
+            "c057a9000000000000000000000000000000000000000000000000000000000a" to "Costa Vieja",
+        )
     }
 }
 
@@ -120,11 +136,105 @@ class ProposalsViewModel @Inject constructor(
                 }
                 is RaizResult.Error -> {
                     Log.i(TAG, "getResident falló — cuenta no registrada como residente.")
-                    _state.update { it.copy(isRegisteredOnChain = false, loading = false) }
+                    // Determina a qué barrio puede verificarse:
+                    //   1) el que eligió en el onboarding (pendingResidentBarrio), o
+                    //   2) fallback: el barrio del rol detectado on-chain (p.ej. si
+                    //      ya es comerciante de un barrio).
+                    val pendingHex = walletManager.pendingResidentBarrio()
+                        ?: roleResolver.resolve(address).barrioId
+                    _state.update {
+                        it.copy(
+                            isRegisteredOnChain = false,
+                            loading = false,
+                            pendingBarrioId = pendingHex,
+                            pendingBarrioName = pendingHex?.let(::barrioNameFor),
+                        )
+                    }
                 }
             }
         }
     }
+
+    /**
+     * Verifica al usuario como residente del barrio pendiente: el admin demo
+     * mintea el ResidentToken soulbound (mint_resident) firmando por él. Mismo
+     * patrón "el admin firma por el usuario" del flujo de comerciante.
+     *
+     * Al éxito refresca el estado (re-chequea getResident → isRegisteredOnChain
+     * = true) y carga las propuestas para que ya pueda votar/proponer.
+     */
+    fun verifyAsResident() {
+        viewModelScope.launch {
+            val address = walletManager.currentAccountId()
+            if (address == null) {
+                _state.update { it.copy(verifyError = "No hay wallet activa.") }
+                return@launch
+            }
+            val barrio = _state.value.pendingBarrioId
+            if (barrio == null) {
+                _state.update {
+                    it.copy(verifyError = "Elige tu barrio primero (vuelve a entrar como residente).")
+                }
+                return@launch
+            }
+            val admin = walletManager.demoAdminKeyPair()
+            if (admin == null) {
+                _state.update {
+                    it.copy(
+                        verifyError = "Admin no configurado en local.properties. " +
+                            "En producción te registraría el admin de tu barrio.",
+                    )
+                }
+                return@launch
+            }
+
+            _state.update { it.copy(verifying = true, verifyError = null) }
+            Log.i(TAG, "mint_resident: resident=$address barrio=${barrioNameFor(barrio)}")
+
+            when (val r = sorobanClient.mintResident(admin, address, barrio)) {
+                is RaizResult.Success -> {
+                    Log.i(TAG, "Residente verificado on-chain.")
+                    // El rol del usuario cambió on-chain → invalida el cache.
+                    roleResolver.invalidate()
+                    // Re-chequea el registro: ahora getResident debe devolver el token.
+                    when (val rr = sorobanClient.getResident(address)) {
+                        is RaizResult.Success -> {
+                            val barrioId = rr.data.barrioId
+                            _state.update {
+                                it.copy(
+                                    verifying = false,
+                                    isRegisteredOnChain = true,
+                                    barrioId = barrioId,
+                                    barrioName = barrioNameFor(barrioId),
+                                )
+                            }
+                            loadProposalsAndCount(barrioId)
+                        }
+                        is RaizResult.Error -> {
+                            // Minteó pero la lectura aún no propaga: asume éxito
+                            // con el barrio elegido para no bloquear al usuario.
+                            _state.update {
+                                it.copy(
+                                    verifying = false,
+                                    isRegisteredOnChain = true,
+                                    barrioId = barrio,
+                                    barrioName = barrioNameFor(barrio),
+                                )
+                            }
+                            loadProposalsAndCount(barrio)
+                        }
+                    }
+                }
+                is RaizResult.Error -> {
+                    Log.e(TAG, "Verificación falló: ${r.code} — ${r.message}")
+                    _state.update { it.copy(verifying = false, verifyError = r.message) }
+                }
+            }
+        }
+    }
+
+    private fun barrioNameFor(barrioId: String): String =
+        ProposalsUiState.BARRIOS[barrioId] ?: (barrioId.take(8) + "…")
 
     /** Carga propuestas activas y conteo de residentes en paralelo. */
     private fun loadProposalsAndCount(barrioId: String) {

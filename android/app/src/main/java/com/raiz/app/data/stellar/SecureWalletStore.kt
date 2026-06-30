@@ -130,6 +130,22 @@ class SecureWalletStore @Inject constructor(
      */
     fun preferredRole(): String? = prefs.getString(KEY_PREFERRED_ROLE, null)
 
+    // ── Barrio del residente pendiente de verificación ────────────────────
+
+    /**
+     * Guarda el hex (64 chars) del barrio que el usuario eligió al entrar como
+     * "residente" en el onboarding, ANTES de que el admin le mintee el
+     * ResidentToken. Se lee luego en ProposalsScreen para saber a qué barrio
+     * mintear al pulsar "Verificar como residente". No es sensible; se limpia
+     * con [clear] al hacer logout.
+     */
+    fun savePendingResidentBarrio(hex: String) {
+        prefs.edit().putString(KEY_PENDING_RESIDENT_BARRIO, hex).apply()
+    }
+
+    /** Hex del barrio elegido por el residente pendiente, o null si no eligió. */
+    fun pendingResidentBarrio(): String? = prefs.getString(KEY_PENDING_RESIDENT_BARRIO, null)
+
     // ── General ───────────────────────────────────────────────────────────
 
     /**
@@ -152,6 +168,8 @@ class SecureWalletStore @Inject constructor(
         const val KEY_PASSKEY_CONTRACT_ID = "passkey_contract_id"
         // Rol preferido (no sensible — se limpia con .clear() en logout)
         const val KEY_PREFERRED_ROLE = "preferred_role"
+        // Barrio elegido por el residente pendiente de verificación on-chain
+        const val KEY_PENDING_RESIDENT_BARRIO = "pending_resident_barrio"
         const val TAG = "RAIZ"
     }
 }
