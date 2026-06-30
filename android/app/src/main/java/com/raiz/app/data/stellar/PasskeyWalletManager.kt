@@ -4,11 +4,14 @@ import android.app.Activity
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.raiz.app.BuildConfig
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.WalletAuthMethod
 import com.raiz.app.data.model.WalletState
+import com.soneso.stellar.sdk.Address
+import com.soneso.stellar.sdk.scval.Scv
 import com.soneso.stellar.sdk.smartaccount.AndroidStorageAdapter
 import com.soneso.stellar.sdk.smartaccount.AndroidWebAuthnProvider
 import com.soneso.stellar.sdk.smartaccount.core.CredentialException
@@ -58,7 +61,11 @@ import javax.inject.Singleton
 class PasskeyWalletManager @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val store: SecureWalletStore,
+    private val deploymentsLoader: DeploymentsLoader,
 ) {
+
+    // Lazy porque DeploymentsLoader lee assets — no queremos I/O en el hilo de inyección.
+    private val deployments by lazy { deploymentsLoader.load() }
 
     /** true si el dispositivo tiene soporte de passkeys (API >= 28). */
     val isSupported: Boolean
@@ -391,6 +398,333 @@ class PasskeyWalletManager @Inject constructor(
                 authMethod         = WalletAuthMethod.PASSKEY,
             ),
         )
+
+    // ── Transacciones firmadas con passkey ────────────────────────────────
+    //
+    // FLUJO GENERAL DE CADA MÉTODO:
+    //   1. Verificar que hay credenciales guardadas.
+    //   2. buildKit(activity) — kit fresco con el Activity actual.
+    //   3. connectWallet(fresh=false, prompt=true) — restaura sesión del
+    //      AndroidStorageAdapter; si la sesión local expiró, muestra WebAuthn
+    //      (excepcional). No genera fee on-chain.
+    //   4. transactionOperations.contractCall(...) — simula la tx, recoge el
+    //      árbol de auth entries del servidor RPC y firma TODAS las entradas
+    //      que pertenecen al smart account (C...) con UNA SOLA ceremonia
+    //      WebAuthn (passkey). Incluye sub-invocaciones cruzadas (e.g. la
+    //      transferencia USDC interna en pay_merchant). Luego envía via relayer.
+    //   5. TransactionResult.success/error → RaizResult.
+    //
+    // AUTH ANIDADA (pay_merchant):
+    //   Pool.pay_merchant llama internamente a SAC.transfer(from=tourist=C…, …)
+    //   que genera auth entries adicionales para el smart account. La simulación
+    //   devuelve el árbol completo; contractCall firma todas las entradas del C…
+    //   en la misma ceremonia passkey → UNA firma, múltiples auth entries.
+    //
+    // LIMITACIÓN — valor de retorno:
+    //   contractCall() devuelve TransactionResult(success, hash, ledger, error)
+    //   pero NO expone el valor de retorno de la función Soroban (solo hay acceso
+    //   a eso via simulateAndExtractResult, que es @InternalStellarSdkApi).
+    //   Por eso createProposalWithPasskey devuelve RaizResult<Unit> en lugar de
+    //   RaizResult<Long>; la UI debe consultar listActiveProposals() para obtener
+    //   el id de la propuesta recién creada.
+
+    /**
+     * Paga al comercio desde el smart account del turista, firmado con passkey.
+     *
+     * Invoca [Pool.pay_merchant(tourist=C…, merchant, amount, tip_bps)] donde
+     * `tourist` es la dirección C… del smart account. El contrato Pool requiere
+     * que el tourist autorice tanto la llamada top-level como la transferencia
+     * USDC interna (SAC.transfer). Ambas auth entries se firman en una sola
+     * ceremonia WebAuthn (passkey).
+     *
+     * @param activity        Activity activa — OBLIGATORIO para el Credential Manager.
+     * @param merchantAddress Dirección G… del comercio (registrado en Pool).
+     * @param amountStroops   Importe total en stroops (7 decimales). 1 USDC = 10_000_000.
+     * @param tipBps          Tip Barrio en basis points. 200 = 2%. Validado en el contrato.
+     */
+    suspend fun payMerchantWithPasskey(
+        activity: Activity,
+        merchantAddress: String,
+        amountStroops: Long,
+        tipBps: Int,
+    ): RaizResult<Unit> {
+        if (!isAvailable) return passkeyNotAvailableError()
+
+        val credId      = store.storedPasskeyCredentialId() ?: return noWalletError()
+        val contractId  = store.storedPasskeyContractId()   ?: return noWalletError()
+
+        return try {
+            val kit = buildKit(activity)
+
+            // Restaurar la sesión. fresh=false usa la clave de sesión cacheada;
+            // prompt=true la renueva via WebAuthn solo si expiró (poco frecuente).
+            kit.walletOperations.connectWallet(
+                OZWalletOperations.ConnectWalletOptions(
+                    credentialId = credId,
+                    contractId   = contractId,
+                    fresh        = false,
+                    prompt       = true,
+                ),
+            )
+
+            // Parámetros en el orden exacto que espera Pool.pay_merchant:
+            //   tourist: Address, merchant: Address, amount: i128, tip_bps: u32
+            val params = listOf(
+                Address(contractId).toSCVal(),                    // tourist  (C…)
+                Address(merchantAddress).toSCVal(),               // merchant (G…)
+                Scv.toInt128(BigInteger.fromLong(amountStroops)), // amount   stroops
+                Scv.toUint32(tipBps.toUInt()),                    // tip_bps  basis points
+            )
+
+            val result = kit.transactionOperations.contractCall(
+                target    = deployments.pool,
+                targetFn  = "pay_merchant",
+                targetArgs = params,
+            )
+
+            if (result.success) {
+                Log.i(TAG, "payMerchantWithPasskey OK hash=${result.hash}")
+                RaizResult.Success(Unit)
+            } else {
+                Log.e(TAG, "payMerchantWithPasskey FAIL: ${result.error}")
+                val code = when {
+                    result.error?.contains("InsufficientBalance") == true ||
+                        result.error?.contains("Error(Contract, #7)") == true ->
+                        RaizErrorCode.INSUFFICIENT_BALANCE
+                    result.error?.contains("MerchantNotFound") == true ||
+                        result.error?.contains("Error(Contract, #4)") == true ->
+                        RaizErrorCode.NOT_FOUND
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, result.error ?: "pay_merchant falló")
+            }
+        } catch (e: WebAuthnException.Cancelled) {
+            RaizResult.Error(RaizErrorCode.UNKNOWN, "Operación cancelada por el usuario.")
+        } catch (e: WebAuthnException) {
+            Log.e(TAG, "payMerchantWithPasskey WebAuthn: ${e.message}")
+            RaizResult.Error(RaizErrorCode.UNAUTHORIZED, "Verificación passkey falló: ${e.message}")
+        } catch (e: SmartAccountException) {
+            Log.e(TAG, "payMerchantWithPasskey SmartAccount: ${e.message}")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "Error del smart account.")
+        } catch (e: Exception) {
+            Log.e(TAG, "payMerchantWithPasskey inesperado", e)
+            RaizResult.Error(RaizErrorCode.UNKNOWN, e.message ?: "Error desconocido.")
+        }
+    }
+
+    /**
+     * Emite un voto en una propuesta de gobernanza, firmado con passkey.
+     *
+     * Invoca [Governance.vote(resident=C…, proposal_id, support)]. El smart
+     * account debe tener un ResidentToken minted en el barrio de la propuesta;
+     * el contrato lo verifica on-chain y rechaza con NotAResident si no.
+     *
+     * @param activity    Activity activa — OBLIGATORIO.
+     * @param proposalId  ID (u64) de la propuesta activa.
+     * @param support     true = a favor, false = en contra.
+     */
+    suspend fun voteWithPasskey(
+        activity: Activity,
+        proposalId: Long,
+        support: Boolean,
+    ): RaizResult<Unit> {
+        if (!isAvailable) return passkeyNotAvailableError()
+
+        val credId     = store.storedPasskeyCredentialId() ?: return noWalletError()
+        val contractId = store.storedPasskeyContractId()   ?: return noWalletError()
+
+        return try {
+            val kit = buildKit(activity)
+            kit.walletOperations.connectWallet(
+                OZWalletOperations.ConnectWalletOptions(
+                    credentialId = credId,
+                    contractId   = contractId,
+                    fresh        = false,
+                    prompt       = true,
+                ),
+            )
+
+            // Governance.vote(resident: Address, proposal_id: u64, support: bool)
+            val params = listOf(
+                Address(contractId).toSCVal(),           // resident  (C… del smart account)
+                Scv.toUint64(proposalId.toULong()),     // proposal_id u64
+                Scv.toBoolean(support),                  // support   bool
+            )
+
+            val result = kit.transactionOperations.contractCall(
+                target     = deployments.governance,
+                targetFn   = "vote",
+                targetArgs = params,
+            )
+
+            if (result.success) {
+                Log.i(TAG, "voteWithPasskey OK proposalId=$proposalId support=$support hash=${result.hash}")
+                RaizResult.Success(Unit)
+            } else {
+                Log.e(TAG, "voteWithPasskey FAIL: ${result.error}")
+                val code = when {
+                    result.error?.contains("AlreadyVoted") == true ||
+                        result.error?.contains("Error(Contract, #10)") == true ->
+                        RaizErrorCode.ALREADY_VOTED
+                    result.error?.contains("NotAResident") == true ||
+                        result.error?.contains("Error(Contract, #6)") == true ->
+                        RaizErrorCode.NOT_A_RESIDENT
+                    result.error?.contains("ProposalClosed") == true ||
+                        result.error?.contains("Error(Contract, #11)") == true ->
+                        RaizErrorCode.PROPOSAL_CLOSED
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, result.error ?: "vote falló")
+            }
+        } catch (e: WebAuthnException.Cancelled) {
+            RaizResult.Error(RaizErrorCode.UNKNOWN, "Operación cancelada por el usuario.")
+        } catch (e: WebAuthnException) {
+            Log.e(TAG, "voteWithPasskey WebAuthn: ${e.message}")
+            RaizResult.Error(RaizErrorCode.UNAUTHORIZED, "Verificación passkey falló: ${e.message}")
+        } catch (e: SmartAccountException) {
+            Log.e(TAG, "voteWithPasskey SmartAccount: ${e.message}")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "Error del smart account.")
+        } catch (e: Exception) {
+            Log.e(TAG, "voteWithPasskey inesperado", e)
+            RaizResult.Error(RaizErrorCode.UNKNOWN, e.message ?: "Error desconocido.")
+        }
+    }
+
+    /**
+     * Crea una propuesta de gasto del fondo comunitario, firmada con passkey.
+     *
+     * Invoca [Governance.create_proposal(proposer=C…, barrio_id, description,
+     * amount, recipient, duration_days)]. El smart account debe ser residente
+     * verificado del barrio (ResidentToken minted); el contrato rechaza con
+     * NotAResident si no.
+     *
+     * ## Limitación
+     * [OZTransactionOperations.contractCall] devuelve [TransactionResult] que
+     * solo contiene éxito/error y el hash de la tx, pero NO el valor de retorno
+     * de la función Soroban (el u64 con el proposal_id asignado on-chain). Por
+     * eso este método devuelve [RaizResult<Unit>]. La UI debe llamar a
+     * [SorobanClient.listActiveProposals] después de crear para obtener el id.
+     *
+     * @param activity       Activity activa — OBLIGATORIO.
+     * @param barrioId       ID del barrio (hex 64 chars = 32 bytes).
+     * @param description    Texto de la propuesta (soroban::String).
+     * @param amountStroops  Monto a retirar del fondo, en stroops.
+     * @param recipient      Dirección G… o C… del beneficiario.
+     * @param durationDays   Duración de la votación [3, 14] días.
+     */
+    suspend fun createProposalWithPasskey(
+        activity: Activity,
+        barrioId: String,
+        description: String,
+        amountStroops: Long,
+        recipient: String,
+        durationDays: Int,
+    ): RaizResult<Unit> {
+        if (!isAvailable) return passkeyNotAvailableError()
+
+        val credId     = store.storedPasskeyCredentialId() ?: return noWalletError()
+        val contractId = store.storedPasskeyContractId()   ?: return noWalletError()
+
+        val barrioBytes = barrioId.hexToBytes32()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id no es hex de 32 bytes: $barrioId")
+
+        return try {
+            val kit = buildKit(activity)
+            kit.walletOperations.connectWallet(
+                OZWalletOperations.ConnectWalletOptions(
+                    credentialId = credId,
+                    contractId   = contractId,
+                    fresh        = false,
+                    prompt       = true,
+                ),
+            )
+
+            // Governance.create_proposal(proposer, barrio_id, description, amount, recipient, duration_days)
+            // ORDEN CRÍTICO — debe coincidir con el spec del contrato.
+            val params = listOf(
+                Address(contractId).toSCVal(),                    // proposer     (C… del smart account)
+                Scv.toBytes(barrioBytes),                         // barrio_id    BytesN<32>
+                Scv.toString(description),                        // description  soroban::String
+                Scv.toInt128(BigInteger.fromLong(amountStroops)), // amount       i128 stroops
+                Address(recipient).toSCVal(),                     // recipient    Address
+                Scv.toUint32(durationDays.toUInt()),             // duration_days u32
+            )
+
+            val result = kit.transactionOperations.contractCall(
+                target     = deployments.governance,
+                targetFn   = "create_proposal",
+                targetArgs = params,
+            )
+
+            if (result.success) {
+                Log.i(TAG, "createProposalWithPasskey OK hash=${result.hash}")
+                RaizResult.Success(Unit)
+            } else {
+                Log.e(TAG, "createProposalWithPasskey FAIL: ${result.error}")
+                val code = when {
+                    result.error?.contains("NotAResident") == true ||
+                        result.error?.contains("Error(Contract, #6)") == true ->
+                        RaizErrorCode.NOT_A_RESIDENT
+                    result.error?.contains("InvalidAmount") == true ||
+                        result.error?.contains("Error(Contract, #9)") == true ->
+                        RaizErrorCode.PARSE_ERROR
+                    result.error?.contains("InvalidDuration") == true ||
+                        result.error?.contains("Error(Contract, #8)") == true ->
+                        RaizErrorCode.PARSE_ERROR
+                    else -> RaizErrorCode.NETWORK_ERROR
+                }
+                RaizResult.Error(code, result.error ?: "create_proposal falló")
+            }
+        } catch (e: WebAuthnException.Cancelled) {
+            RaizResult.Error(RaizErrorCode.UNKNOWN, "Operación cancelada por el usuario.")
+        } catch (e: WebAuthnException) {
+            Log.e(TAG, "createProposalWithPasskey WebAuthn: ${e.message}")
+            RaizResult.Error(RaizErrorCode.UNAUTHORIZED, "Verificación passkey falló: ${e.message}")
+        } catch (e: SmartAccountException) {
+            Log.e(TAG, "createProposalWithPasskey SmartAccount: ${e.message}")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "Error del smart account.")
+        } catch (e: Exception) {
+            Log.e(TAG, "createProposalWithPasskey inesperado", e)
+            RaizResult.Error(RaizErrorCode.UNKNOWN, e.message ?: "Error desconocido.")
+        }
+    }
+
+    // ── Helpers de error ──────────────────────────────────────────────────
+
+    private fun passkeyNotAvailableError(): RaizResult.Error =
+        RaizResult.Error(
+            RaizErrorCode.UNKNOWN,
+            when {
+                !isSupported  -> "Passkey requiere Android 9 (API 28)+. API actual: ${Build.VERSION.SDK_INT}."
+                !isConfigured -> "passkey.rp.id no está configurado en local.properties."
+                else          -> "Passkey no disponible."
+            },
+        )
+
+    private fun noWalletError(): RaizResult.Error =
+        RaizResult.Error(
+            RaizErrorCode.NOT_FOUND,
+            "No hay wallet passkey guardada en este dispositivo. " +
+            "Crea una nueva wallet o importa tu frase semilla.",
+        )
+
+    // ── Helpers privados ──────────────────────────────────────────────────
+
+    /**
+     * Convierte un barrio_id (hex, 64 chars) a 32 bytes para [Scv.toBytes].
+     * Devuelve null si la cadena no es hex válido de exactamente 32 bytes.
+     * Mismo patrón que SorobanClient.hexToBytes (duplicado intencionalmente
+     * para mantener independencia de módulo entre ambas clases).
+     */
+    private fun String.hexToBytes32(): ByteArray? {
+        val clean = removePrefix("0x")
+        if (clean.length != 64 || !clean.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+            return null
+        }
+        return ByteArray(32) { i ->
+            clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+    }
 
     // ── Construcción del kit ──────────────────────────────────────────────
 
