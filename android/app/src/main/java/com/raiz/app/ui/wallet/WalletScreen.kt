@@ -112,21 +112,22 @@ fun WalletScreen(
 
     // Launcher para el escáner de QR de zxing-android-embedded.
     // Distingue dos formatos:
-    //   1. Orden de cobro RAÍZ: `raiz:pay?to=G...&amount=<stroops>` → onPayMerchantConMonto
-    //   2. Dirección Stellar pelada G... (legacy) → onPayMerchant (cobro abierto)
+    //   1. Orden de cobro RAÍZ: `raiz:pay?to=<addr>&amount=<stroops>` → onPayMerchantConMonto
+    //      Acepta tanto G… (cuenta clásica) como C… (smart account passkey).
+    //   2. Dirección Stellar pelada G… o C… → onPayMerchant (cobro abierto)
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents?.trim().orEmpty()
         val ordenDeCobro = parsearQrRaizPay(raw)
         when {
-            // Orden de cobro con monto fijo
+            // Orden de cobro con monto fijo (G… o C… aceptados en el campo `to`)
             ordenDeCobro != null ->
                 onPayMerchantConMonto(ordenDeCobro.first, ordenDeCobro.second)
-            // Dirección Stellar pelada (flujo legacy — cobro abierto)
-            raw.isStellarPublicKey() -> onPayMerchant(raw)
+            // Dirección Stellar pelada: G… cuenta clásica o C… smart account (passkey)
+            raw.isStellarAddress() -> onPayMerchant(raw)
             // QR no reconocido
             raw.isNotEmpty() -> Toast.makeText(
                 context,
-                "QR inválido: se esperaba una cuenta G… de Stellar o una orden RAÍZ",
+                "QR inválido: se esperaba una dirección Stellar (G… o C…) o una orden RAÍZ",
                 Toast.LENGTH_SHORT,
             ).show()
             // raw vacío = el usuario canceló el escáner
@@ -176,17 +177,27 @@ fun WalletScreen(
     }
 }
 
-/** Heurística: G... de 56 chars base32 = Stellar public key. */
-private fun String.isStellarPublicKey(): Boolean =
-    length == 56 && startsWith("G") && all { it in 'A'..'Z' || it in '2'..'7' }
+/**
+ * Valida que el string es una dirección Stellar en formato Strkey base32.
+ *
+ * Un address Stellar válido mide exactamente 56 caracteres y comienza con:
+ *   - 'G' para cuentas clásicas (ed25519 pública, keypair normal).
+ *   - 'C' para contratos / smart accounts (ej. wallets passkey de Soneso).
+ *
+ * Regex equivalente: ^[GC][A-Z2-7]{55}$
+ */
+private fun String.isStellarAddress(): Boolean =
+    length == 56 && (startsWith("G") || startsWith("C")) &&
+        all { it in 'A'..'Z' || it in '2'..'7' }
 
 /**
  * Parsea una URL de orden de cobro RAÍZ.
  *
- * Formato esperado: `raiz:pay?to=<G...>&amount=<stroops>`
+ * Formato esperado: `raiz:pay?to=<addr>&amount=<stroops>`
+ * El campo `to` acepta G… (cuenta clásica) y C… (smart account passkey).
  *
- * @return Pair(address, stroops) si el formato es válido y la address es una
- *   Stellar public key; null en cualquier otro caso (incluido monto = 0).
+ * @return Pair(address, stroops) si el formato es válido y la dirección es
+ *   Stellar (G o C, 56 chars base32); null en cualquier otro caso o monto ≤ 0.
  */
 private fun parsearQrRaizPay(raw: String): Pair<String, Long>? {
     if (!raw.startsWith("raiz:pay?")) return null
@@ -197,7 +208,8 @@ private fun parsearQrRaizPay(raw: String): Pair<String, Long>? {
             if (kv.size == 2) kv[0] to kv[1] else null
         }
         .toMap()
-    val to = params["to"]?.takeIf { it.isStellarPublicKey() } ?: return null
+    // P7: acepta tanto G… como C… — un comerciante passkey tiene dirección C…
+    val to = params["to"]?.takeIf { it.isStellarAddress() } ?: return null
     val amount = params["amount"]?.toLongOrNull()?.takeIf { it > 0L } ?: return null
     return to to amount
 }

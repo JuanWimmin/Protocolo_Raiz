@@ -335,12 +335,14 @@ private fun MontoCobroCard(
                 unfocusedBorderColor = RaizBlack.copy(alpha = 0.15f),
             ),
         )
-        // Texto instructivo adaptativo: vacío = cobro abierto, con monto = orden fija
+        // P8.3: texto instructivo claro — el turista REVISA y CONFIRMA antes de pagar.
+        // El QR lleva al turista a la pantalla de orden (PayScreen) con el monto y el
+        // toggle de Tip Barrio; el pago solo se ejecuta cuando pulsa "Confirmar pago".
         Text(
             text = if (montoStroops > 0L)
-                "El turista escanea y paga ${montoStroops.formatUsdc()}. El 2% va al barrio."
+                "El turista escaneará este QR, verá el resumen de ${montoStroops.formatUsdc()} y confirmará el pago."
             else
-                "Deja vacío para cobro abierto — el turista elige el monto.",
+                "Deja vacío para cobro abierto — el turista ingresa el monto antes de confirmar.",
             style = MaterialTheme.typography.bodyMedium,
             color = if (montoStroops > 0L) RaizGreen else RaizBlack.copy(alpha = 0.5f),
         )

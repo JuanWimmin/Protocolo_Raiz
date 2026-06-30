@@ -247,13 +247,18 @@ private fun TipToggle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
+            // P8.2: el label del toggle deja claro que el 2% se SUMA al monto
+            // del comercio — no se descuenta de él. Es aditivo.
             Text(
-                text = "Tip Barrio (2%)",
+                text = "Aportar 2% al barrio",
                 style = MaterialTheme.typography.labelLarge,
                 color = RaizBlack,
             )
             Text(
-                text = if (enabled) "Ganas $pointsToEarn puntos · +${"%.3f".format(tipUsdc)} USDC" else "Sin aporte al barrio",
+                text = if (enabled)
+                    "Ganas $pointsToEarn puntos · +${"%.3f".format(tipUsdc)} USDC al pool"
+                else
+                    "Sin aporte al barrio",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.6f),
             )
@@ -281,12 +286,14 @@ private fun Breakdown(preview: PaymentPreview) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BreakdownRow("Subtotal", preview.baseAmountStroops.formatUsdc())
+        // P8.2: "Al comercio" deja inequívoco que el merchant recibe ese importe
+        // y el tip es ADICIONAL, no descontado. Total = Al comercio + Tip barrio.
+        BreakdownRow("Al comercio", preview.baseAmountStroops.formatUsdc())
         if (preview.tipBps > 0) {
-            BreakdownRow("Tip Barrio", preview.tipStroops.formatUsdc(), accent = RaizGreen)
+            BreakdownRow("Tip barrio (2%)", preview.tipStroops.formatUsdc(), accent = RaizGreen)
         }
         BreakdownRow(
-            label = "Total",
+            label = "Total a pagar",
             value = preview.totalStroops.formatUsdc(),
             bold = true,
         )

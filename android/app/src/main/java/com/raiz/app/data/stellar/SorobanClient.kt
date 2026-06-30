@@ -985,26 +985,31 @@ class SorobanClient @Inject constructor(
     // errores se loguean explícitamente — nunca silenciosos.
 
     /**
-     * Historial de pagos on-chain del turista, leído desde los eventos Soroban
+     * Historial de pagos on-chain para un address, leído desde los eventos Soroban
      * del contrato Pool. Complementa a [HorizonStream.paymentHistory] (que solo
      * captura pagos clásicos y no ve las invocaciones Soroban).
+     *
+     * Devuelve tanto SALIENTES (tourist==addr) como ENTRANTES (merchant==addr).
+     * Un mismo address puede aparecer en ambos roles si tiene wallet dual
+     * (turista que también es comerciante).
      *
      * PAGINACIÓN: getEvents devuelve eventos en orden ASCENDENTE desde startLedger.
      * Los pagos recientes están en las últimas páginas. Este método sigue el cursor
      * de cada respuesta hasta que llega null (última página) o alcanza MAX_PAGES.
-     * Solo entonces filtra por tourist — nunca a mitad de la lectura.
+     * Solo entonces filtra por addr — nunca a mitad de la lectura.
      *
      * PASSKEY: mientras el signing via smart-account no esté conectado, pasar el
      * G... del demoKeyPair (el que realmente firma payMerchant), NO el C... del
      * smart account. Ver WalletManager.currentKeyPair() y el TODO de passkey pleno.
      *
-     * @param touristAddress  G... o C... exacto que aparece como tourist en los eventos.
+     * @param addr  G... o C... de la wallet. Devuelve SALIENTES (tourist==addr) y
+     *              ENTRANTES (merchant==addr).
      * @return Lista de [PaymentRecord] en orden ledger desc (más reciente primero).
      */
     suspend fun tourPaymentEvents(
-        touristAddress: String,
+        addr: String,
     ): RaizResult<List<PaymentRecord>> {
-        Log.i(TAG, "tourPaymentEvents: touristAddress=$touristAddress pool=${deployments.pool}")
+        Log.i(TAG, "tourPaymentEvents: addr=$addr pool=${deployments.pool}")
         return runCatching {
             val server = poolClient().server
             val latestLedger = server.getLatestLedger().sequence
@@ -1096,11 +1101,11 @@ class SorobanClient @Inject constructor(
             val records = allEvents
                 .sortedByDescending { it.ledger }
                 .mapNotNull { event ->
-                    runCatching { parsePaymentEvent(event, touristAddress) }
+                    runCatching { parsePaymentEvent(event, addr) }
                         .onFailure { Log.w(TAG, "tourPaymentEvents: parse falló event=${event.id}: ${it.message}") }
                         .getOrNull()
                 }
-            Log.i(TAG, "tourPaymentEvents: RESULTADO → ${records.size} PaymentRecords de ${allEvents.size} crudos para $touristAddress")
+            Log.i(TAG, "tourPaymentEvents: RESULTADO → ${records.size} PaymentRecords de ${allEvents.size} crudos para $addr")
             records
         }.fold(
             onSuccess = { RaizResult.Success(it) },
@@ -1121,12 +1126,16 @@ class SorobanClient @Inject constructor(
      * Devuelve null si:
      *   - topic[0] no es Symbol("payment")  (puede ser "vault_dep", "vault_red")
      *   - value no es Vec[≥4]
-     *   - tourist del evento != touristAddress
+     *   - ni tourist ni merchant del evento coinciden con addr
      *   - cualquier decodificación XDR falla
+     *
+     * Lógica de dirección:
+     *   - tourist == addr → SALIENTE: from=tourist, to=merchant, amountStroops = amount + tip
+     *   - merchant == addr → ENTRANTE: from=tourist, to=merchant, amountStroops = amount
      */
     private fun parsePaymentEvent(
         event: GetEventsResponse.EventInfo,
-        touristAddress: String,
+        addr: String,
     ): PaymentRecord? {
         // ── topic[0] debe ser Symbol("payment") ───────────────────────────
         val topics = runCatching { event.parseTopic() }.getOrElse { e ->
@@ -1165,18 +1174,24 @@ class SorobanClient @Inject constructor(
             Log.w(TAG, "parsePaymentEvent: asAddressString(merchant) lanzó ${e.message} en event=${event.id}")
             return null
         }
-        Log.i(TAG, "parsePaymentEvent: event=${event.id} tourist=$tourist merchant=$merchant buscando=$touristAddress")
+        Log.i(TAG, "parsePaymentEvent: event=${event.id} tourist=$tourist merchant=$merchant buscando=$addr")
 
-        // Filtro por turista — loguea cuando hay mismatch (útil para passkey C... vs G...)
-        if (tourist != touristAddress) {
-            Log.i(TAG, "parsePaymentEvent: SKIP tourist=$tourist != buscando=$touristAddress")
-            return null
+        // Determinar si el evento es SALIENTE (addr pagó) o ENTRANTE (addr cobró).
+        // Si addr no coincide con ninguno de los dos, descartar silenciosamente.
+        val isOutgoing = when (addr) {
+            tourist  -> true
+            merchant -> false
+            else     -> {
+                Log.i(TAG, "parsePaymentEvent: SKIP addr=$addr no es tourist ni merchant en event=${event.id}")
+                return null
+            }
         }
 
         // ── [2] amount + [3] tip → i128 stroops ────────────────────────────
         // El contrato define `amount` = monto base al comercio y `tip` = aporte al
-        // barrio (amount * tip_bps / 10_000). El TOTAL que se le descuenta al turista
-        // es amount + tip → eso es lo que mostramos en el historial (lo que pagó de verdad).
+        // barrio (amount * tip_bps / 10_000).
+        // - SALIENTE: el turista pagó amount + tip (total deducido de su cuenta).
+        // - ENTRANTE: el comercio recibió `amount` (el tip fue al pool, no al comercio).
         val amount = runCatching { ScvalParse.asLong(dataVec[2]) }.getOrElse { e ->
             Log.w(TAG, "parsePaymentEvent: asLong(amount) lanzó ${e.message} en event=${event.id}")
             return null
@@ -1187,10 +1202,10 @@ class SorobanClient @Inject constructor(
             txHash = event.transactionHash,
             from = tourist,
             to = merchant,
-            amountStroops = amount + tip,   // total deducido = monto al comercio + tip al barrio
+            amountStroops = if (isOutgoing) amount + tip else amount,
             assetCode = "USDC",
             createdAt = event.ledgerClosedAt,
-            isOutgoing = true, // el turista siempre es el pagador en pay_merchant
+            isOutgoing = isOutgoing,
         )
     }
 

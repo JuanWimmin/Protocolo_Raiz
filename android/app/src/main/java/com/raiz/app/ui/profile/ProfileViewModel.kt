@@ -186,11 +186,19 @@ class ProfileViewModel @Inject constructor(
     /**
      * Historial fusionado de DOS fuentes:
      *  1. Eventos Soroban `payment` del Pool ([SorobanClient.tourPaymentEvents]) —
-     *     los pagos a comercios, que Horizon NO ve porque mueven USDC dentro del
-     *     contrato vía el SAC (no son pagos clásicos).
-     *  2. Pagos clásicos de Horizon ([HorizonStream.paymentHistory]) — p.ej. el
-     *     faucet entrante de la wallet seed. Para passkey (C...) Horizon devuelve
-     *     vacío (no es cuenta clásica).
+     *     incluye SALIENTES (accountId==tourist) e ENTRANTES (accountId==merchant).
+     *     Horizon NO ve estos movimientos (son invocaciones de contrato, no ops clásicas).
+     *  2. Pagos clásicos de Horizon ([HorizonStream.paymentHistory]) — incluye TANTO
+     *     entrantes COMO salientes. Para wallets seed (G...) incluye el faucet ENTRANTE.
+     *     Para passkey (C...) Horizon devuelve vacío (no es cuenta clásica).
+     *     Los registros ya traen [PaymentRecord.isOutgoing] correcto; el merge NO filtra
+     *     por dirección — se muestra todo el historial.
+     *
+     * NOTA passkey (stretch): el faucet de una wallet C... es un SAC transfer — no
+     * aparece ni en Horizon (no es cuenta clásica) ni en los eventos del Pool.
+     * Para mostrarlo habría que leer getEvents(contractId=usdcSac, topic=transfer, to=accountId).
+     * Pendiente de implementar cuando WalletManager soporte signing pleno via smart-account.
+     *
      * Se mezclan y ordenan por fecha (createdAt ISO 8601, orden lexicográfico = cronológico).
      */
     fun loadHistory() {
@@ -198,13 +206,16 @@ class ProfileViewModel @Inject constructor(
             _state.update { it.copy(historyLoading = true, historyError = null) }
             val accountId = walletManager.currentAccountId() ?: walletManager.mockWallet().publicKey
 
-            val merchantPayments = (sorobanClient.tourPaymentEvents(accountId) as? RaizResult.Success)?.data
+            // Pool events: SALIENTES cuando accountId==tourist, ENTRANTES cuando accountId==merchant.
+            val poolEvents = (sorobanClient.tourPaymentEvents(accountId) as? RaizResult.Success)?.data
                 ?: emptyList()
 
+            // Horizon: pagos clásicos en ambas direcciones (incluye faucet ENTRANTE de seed).
             val classicResult = horizonStream.paymentHistory(accountId, limit = 30)
             val classic = (classicResult as? RaizResult.Success)?.data ?: emptyList()
 
-            val merged = (merchantPayments + classic).sortedByDescending { it.createdAt }
+            // Merge sin filtrar por isOutgoing — se quiere ver todo el historial (entrada + salida).
+            val merged = (poolEvents + classic).sortedByDescending { it.createdAt }
             // Solo mostramos error si NO hay nada que enseñar y Horizon falló.
             val error = if (merged.isEmpty() && classicResult is RaizResult.Error) classicResult.message else null
 

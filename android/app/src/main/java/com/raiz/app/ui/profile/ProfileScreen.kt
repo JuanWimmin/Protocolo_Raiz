@@ -118,6 +118,15 @@ fun ProfileScreen(
     var tab by remember { mutableStateOf(ProfileTab.HISTORIAL) }
     var selectedNav by remember { mutableStateOf(RaizDestination.Profile) }
 
+    // P8.1: si el rol cambia a MERCHANT (o ya era MERCHANT al entrar) y la tab
+    // activa es QR, reseteamos a HISTORIAL porque los comerciantes cobran desde
+    // CobrosScreen — la tab "Mi QR" no aplica para ellos.
+    androidx.compose.runtime.LaunchedEffect(state.effectiveRole) {
+        if (state.effectiveRole == UserRole.MERCHANT && tab == ProfileTab.QR) {
+            tab = ProfileTab.HISTORIAL
+        }
+    }
+
     // Refresco al volver a la pantalla (ON_RESUME) — sincroniza saldo, puntos e historial.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -158,11 +167,18 @@ fun ProfileScreen(
                 usdcStroops = state.wallet.usdcBalanceStroops,
                 points = state.wallet.points,
             )
-            TabBar(selected = tab, onSelect = { tab = it })
+            TabBar(selected = tab, role = state.effectiveRole, onSelect = { tab = it })
 
             when (tab) {
                 ProfileTab.HISTORIAL -> HistoryTab(state = state)
-                ProfileTab.QR -> QrTab(publicKey = state.wallet.publicKey)
+                ProfileTab.QR -> if (state.effectiveRole != UserRole.MERCHANT) {
+                    // Solo turistas y residentes usan el QR de perfil para recibir pagos.
+                    QrTab(publicKey = state.wallet.publicKey)
+                } else {
+                    // Fallback defensivo: el LaunchedEffect ya resetea el tab,
+                    // pero si por alguna razón llegamos aquí mostramos historial.
+                    HistoryTab(state = state)
+                }
                 ProfileTab.CONFIGURACION -> ConfigTab(
                     state = state,
                     appLockEnabled = state.appLockEnabled,
@@ -309,14 +325,34 @@ private fun BalanceTile(
 // Tabs
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Barra de tabs de Perfil.
+ *
+ * P8.1: para el rol MERCHANT se oculta la tab "Mi QR" porque los comerciantes
+ * generan y muestran su QR de cobro desde la pantalla CobrosScreen. Mantener
+ * el QR aquí sería confuso (el QR del perfil es solo la dirección, sin monto).
+ *
+ * Para turistas y residentes se muestran los tres tabs completos.
+ */
 @Composable
-private fun TabBar(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
+private fun TabBar(selected: ProfileTab, role: UserRole, onSelect: (ProfileTab) -> Unit) {
+    // Los comerciantes no necesitan "Mi QR" aquí — lo tienen en CobrosScreen.
+    val tabs: List<ProfileTab> = if (role == UserRole.MERCHANT)
+        ProfileTab.entries.filter { it != ProfileTab.QR }
+    else
+        ProfileTab.entries.toList()
+
+    // Buscar el índice de la tab activa dentro de la lista filtrada.
+    // coerceAtLeast(0): si `selected` no está en la lista filtrada (ej. QR con MERCHANT),
+    // el índice es -1 → forzamos 0 (HISTORIAL) visualmente hasta que el LaunchedEffect actúe.
+    val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
+
     TabRow(
-        selectedTabIndex = selected.ordinal,
+        selectedTabIndex = selectedIndex,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = RaizBlack,
     ) {
-        ProfileTab.entries.forEach { t ->
+        tabs.forEach { t ->
             Tab(
                 selected = t == selected,
                 onClick = { onSelect(t) },
