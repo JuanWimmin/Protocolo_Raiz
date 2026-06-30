@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,7 +44,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizError
-import com.raiz.app.ui.theme.RaizGrayLight
 import com.raiz.app.ui.theme.RaizGreen
 import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
@@ -54,9 +52,12 @@ import com.raiz.app.ui.theme.RaizYellow
 /**
  * Pantalla "Tesorería que rinde".
  *
- * Muestra el fondo de la tesorería RAÍZ puesto a rendir en el vault USDC de
- * DeFindex: valor actual, rendimiento generado, APY y precio por share — todo
- * leído on-chain. Permite depositar/rescatar firmando como tesorería.
+ * Muestra:
+ *  1. Tarjeta global del vault DeFindex (APY, TVL, precio por share, estrategia).
+ *  2. Lista per-barrio: posición de cada uno de los 3 barrios del demo en el vault
+ *     (depositado, valor actual, rendimiento).
+ *  3. Sección secundaria "Reserva del protocolo": deposit/withdraw del capital
+ *     admin del protocolo.
  */
 @Composable
 fun YieldScreen(
@@ -82,6 +83,8 @@ fun YieldScreen(
     }
 }
 
+// ── Barra superior ───────────────────────────────────────────────────────────
+
 @Composable
 private fun TopBar(onBack: () -> Unit, onRefresh: () -> Unit) {
     Row(
@@ -105,6 +108,8 @@ private fun TopBar(onBack: () -> Unit, onRefresh: () -> Unit) {
     }
 }
 
+// ── Cuerpo principal ─────────────────────────────────────────────────────────
+
 @Composable
 private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
     Column(
@@ -114,15 +119,34 @@ private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        HeroCard(state = state)
-        StatsRow(state = state)
-        StrategyCard()
+        // 1. Tarjeta global del vault DeFindex
+        VaultGlobalCard(state = state)
+
+        // 2. Posición por barrio
+        SectionLabel(texto = "Posición por barrio")
+
+        if (state.barriosYield.isEmpty()) {
+            // Solo ocurre si todos los getVaultShares fallaron (red caída, etc.)
+            Text(
+                text = "No se pudieron cargar los datos de barrios.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.5f),
+            )
+        } else {
+            state.barriosYield.forEach { item ->
+                BarrioYieldCard(item = item)
+            }
+        }
+
+        // 3. Reserva del protocolo (capital admin)
+        SectionLabel(texto = "Reserva del protocolo")
         ActionCard(state = state, viewModel = viewModel)
 
+        // Nota informativa al pie
         Text(
-            text = "Capital de reserva de la tesorería RAÍZ rindiendo on-chain en DeFindex. " +
-                "El fondo de cada barrio también rinde vía el contrato Pool " +
-                "(deposit_idle_to_vault) — míralo en Transparencia.",
+            text = "Un solo vault USDC compartido que rinde on-chain. Los fondos de " +
+                "cada barrio y la reserva del protocolo aportan al mismo vault DeFindex " +
+                "(Blend, auditado OtterSec). Liquidez disponible al rescatar.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
             color = RaizBlack.copy(alpha = 0.55f),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
@@ -130,54 +154,98 @@ private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
     }
 }
 
-// ── Hero: valor actual + rendimiento + APY ───────────────────────────────────
+// ── Tarjeta global del vault ─────────────────────────────────────────────────
 
+/**
+ * Muestra los stats globales del vault DeFindex: APY, TVL, precio por share
+ * y la estrategia (Blend USDC). Contexto visual: "un solo vault compartido".
+ */
 @Composable
-private fun HeroCard(state: YieldUiState) {
-    val valueStroops = state.position?.currentValueStroops ?: 0L
+private fun VaultGlobalCard(state: YieldUiState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(RaizBlack)
             .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            text = "Fondo rindiendo en DeFindex",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizWhite.copy(alpha = 0.7f),
-        )
-        Text(
-            text = valueStroops.formatUsdc(),
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 34.sp,
-            ),
-            color = RaizWhite,
-        )
+        // Encabezado: nombre del vault + badge APY
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.TrendingUp,
-                    contentDescription = null,
-                    tint = RaizYellow,
-                    modifier = Modifier.size(18.dp),
+            Column {
+                Text(
+                    text = "Vault DeFindex · USDC",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizWhite.copy(alpha = 0.7f),
                 )
                 Text(
-                    text = "+${state.yieldStroops.formatUsdc()} generado",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = RaizYellow,
+                    text = "Un solo vault compartido que rinde",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+                    color = RaizWhite.copy(alpha = 0.45f),
                 )
             }
             ApyBadge(apyBps = state.apyBps)
+        }
+
+        // TVL y precio por share en fila
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // TVL
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "TVL del vault",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+                    color = RaizWhite.copy(alpha = 0.5f),
+                )
+                Text(
+                    text = (state.stats?.tvlStroops ?: 0L).formatUsdc(),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                    ),
+                    color = RaizYellow,
+                )
+            }
+            // Precio por share
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Precio / share",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+                    color = RaizWhite.copy(alpha = 0.5f),
+                )
+                Text(
+                    text = (state.stats?.pricePerShareStroops ?: 0L).formatUsdc(),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                    ),
+                    color = RaizWhite,
+                )
+            }
+        }
+
+        // Estrategia
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.TrendingUp,
+                contentDescription = null,
+                tint = RaizGreen,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = "Blend (USDC) · auditado por OtterSec",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+                color = RaizWhite.copy(alpha = 0.55f),
+            )
         }
     }
 }
@@ -199,86 +267,94 @@ private fun ApyBadge(apyBps: Int?) {
     }
 }
 
-// ── Stats: APY · precio por share · TVL ──────────────────────────────────────
+// ── Card por barrio ──────────────────────────────────────────────────────────
 
+/**
+ * Muestra la posición de un barrio en el vault: depositado, valor actual y
+ * rendimiento (en verde). Los valores difieren entre barrios según las shares
+ * que cada uno tenga acumuladas on-chain.
+ */
 @Composable
-private fun StatsRow(state: YieldUiState) {
-    val stats = state.stats
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        StatTile(
-            label = "APY",
-            value = state.apyBps?.let { "%.2f%%".format(it / 100.0) } ?: "—",
-            accent = RaizGreen,
-            modifier = Modifier.weight(1f),
-        )
-        StatTile(
-            label = "Precio / share",
-            value = (stats?.pricePerShareStroops ?: 0L).formatUsdc(),
-            accent = RaizPurple,
-            modifier = Modifier.weight(1f),
-        )
-        StatTile(
-            label = "TVL del vault",
-            value = (stats?.tvlStroops ?: 0L).formatUsdc(),
-            accent = RaizBlack,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun StatTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+private fun BarrioYieldCard(item: BarrioYieldItem) {
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(RaizWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
-            color = RaizBlack.copy(alpha = 0.6f),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-            ),
-            color = accent,
-        )
-    }
-}
-
-@Composable
-private fun StrategyCard() {
-    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(RaizPurple.copy(alpha = 0.08f))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .clip(RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(Icons.Outlined.TrendingUp, contentDescription = null, tint = RaizPurple)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Estrategia: Blend (USDC)",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
+        // Nombre del barrio con acento púrpura izquierdo (borde decorativo via padding)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = 18.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(RaizPurple),
             )
             Text(
-                text = "Vault de DeFindex auditado por OtterSec · liquidez disponible al rescatar",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = RaizBlack.copy(alpha = 0.6f),
+                text = item.nombre,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = RaizBlack,
+            )
+        }
+
+        // Tres métricas en fila: depositado | valor actual | rendimiento
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BarrioYieldStat(
+                label = "Depositado",
+                value = item.depositadoStroops.formatUsdc(),
+                valueColor = RaizBlack,
+                modifier = Modifier.weight(1f),
+            )
+            BarrioYieldStat(
+                label = "Valor actual",
+                value = item.valorActualStroops.formatUsdc(),
+                valueColor = RaizBlack,
+                modifier = Modifier.weight(1f),
+            )
+            BarrioYieldStat(
+                label = "Rendimiento",
+                value = "+${item.rendimientoStroops.formatUsdc()}",
+                valueColor = RaizGreen,
+                modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
-// ── Acciones: depositar / rescatar ───────────────────────────────────────────
+/** Una sola métrica dentro de [BarrioYieldCard]: etiqueta + valor formateado. */
+@Composable
+private fun BarrioYieldStat(
+    label: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 10.sp),
+            color = RaizBlack.copy(alpha = 0.5f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = valueColor,
+        )
+    }
+}
+
+// ── Sección "Reserva del protocolo": deposit / withdraw del admin ─────────────
 
 @Composable
 private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
@@ -292,7 +368,7 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "Mover fondos",
+            text = "Mover fondos (admin)",
             style = MaterialTheme.typography.labelLarge,
             color = RaizBlack,
         )
@@ -329,7 +405,11 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
                     .height(52.dp),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Text("Rescatar todo", style = MaterialTheme.typography.labelLarge, color = RaizBlack)
+                Text(
+                    text = "Rescatar todo",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                )
             }
         }
         ActionFeedback(action = state.action)
@@ -341,31 +421,52 @@ private fun ActionFeedback(action: TreasuryAction) {
     when (action) {
         TreasuryAction.Idle -> Unit
         TreasuryAction.Submitting -> Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(color = RaizGreen, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+            CircularProgressIndicator(
+                color = RaizGreen,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(14.dp),
+            )
             Spacer(Modifier.size(8.dp))
-            Text("Enviando a la red…", style = MaterialTheme.typography.bodyMedium, color = RaizBlack.copy(alpha = 0.7f))
+            Text(
+                text = "Enviando a la red…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.7f),
+            )
         }
         is TreasuryAction.Ok -> Text(
-            "✓ ${action.message}",
+            text = "Confirmado on-chain: ${action.message}",
             style = MaterialTheme.typography.bodyMedium,
             color = RaizGreen,
         )
         is TreasuryAction.Failed -> Text(
-            action.message,
+            text = action.message,
             style = MaterialTheme.typography.bodyMedium,
             color = RaizError,
         )
     }
 }
 
-// ── Estados auxiliares ───────────────────────────────────────────────────────
+// ── Helpers de layout ────────────────────────────────────────────────────────
+
+@Composable
+private fun SectionLabel(texto: String) {
+    Text(
+        text = texto,
+        style = MaterialTheme.typography.labelLarge,
+        color = RaizBlack.copy(alpha = 0.6f),
+    )
+}
+
+// ── Estados loading / error ──────────────────────────────────────────────────
 
 @Composable
 private fun CenteredLoader() {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
-    ) { CircularProgressIndicator(color = RaizGreen) }
+    ) {
+        CircularProgressIndicator(color = RaizGreen)
+    }
 }
 
 @Composable
@@ -377,7 +478,7 @@ private fun ErrorBox(message: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "No pudimos cargar el vault.\n$message",
+            text = "No pudimos cargar el vault.\n$message",
             color = RaizBlack.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyMedium,
         )
