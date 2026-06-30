@@ -29,6 +29,8 @@ sealed interface PayUiState {
         val submitting: Boolean,
         /** Si true, confirmar el pago exige biometría/PIN (lock activado). */
         val requireBiometric: Boolean = false,
+        /** Si true, el monto vino pre-llenado desde un QR de orden de cobro. */
+        val esOrdenDeCobro: Boolean = false,
     ) : PayUiState
     data class Success(
         val merchantName: String,
@@ -53,7 +55,13 @@ class PayViewModel @Inject constructor(
     private val merchantAddress: String =
         savedStateHandle.get<String>("merchant_address").orEmpty().ifBlank { DEMO_MERCHANT_ADDR }
 
-    private val defaultAmountStroops = 50_000_000L  // 5 USDC
+    // Monto pre-llenado desde el QR de orden de cobro (stroops).
+    // 0 = no vino monto en la URL → usar el default de 5 USDC.
+    private val prefilledAmountStroops: Long =
+        savedStateHandle.get<Long>("amount_stroops")?.takeIf { it > 0L } ?: 0L
+
+    private val defaultAmountStroops: Long =
+        if (prefilledAmountStroops > 0L) prefilledAmountStroops else 50_000_000L  // 5 USDC demo
 
     private val _state = MutableStateFlow<PayUiState>(PayUiState.Loading)
     val state: StateFlow<PayUiState> = _state.asStateFlow()
@@ -82,6 +90,7 @@ class PayViewModel @Inject constructor(
         tipEnabled = true,
         submitting = false,
         requireBiometric = appLock.isActive(),
+        esOrdenDeCobro = prefilledAmountStroops > 0L,
     )
 
     fun toggleTip() {

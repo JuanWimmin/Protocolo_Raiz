@@ -140,6 +140,38 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Pool: get_vault_value (valor USDC actual del fondo en DeFindex) ──
+
+    /**
+     * Valor USDC actual (en stroops) de la posición del barrio en el vault
+     * DeFindex: shares del barrio × precio por share en el momento de la consulta.
+     * Lectura pura — usa el admin como source y signer = null.
+     * Devuelve 0 si el barrio no tiene shares o el vault no está configurado.
+     *
+     * Internamente el contrato llama a `vault.get_asset_amounts_per_shares`.
+     * Si las entradas del vault tienen TTL expirado (sin actividad >~1 mes),
+     * el RPC puede rechazar con "Signer required for write call"; en ese caso
+     * el resultado será RaizResult.Error(NETWORK_ERROR, ...).
+     */
+    suspend fun getVaultValue(barrioId: String): RaizResult<Long> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            poolClient().invoke<Long>(
+                functionName = "get_vault_value",
+                arguments = mapOf("barrio_id" to bytes),
+                source = deployments.admin,
+                signer = null,
+                parseResultXdrFn = { ScvalParse.asLong(it) },
+            )
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getVaultValue: ${e.message}")
+            },
+        )
+    }
+
     // ── Pool: list_barrios (RBAC dinámico) ───────────────────────────────
 
     /**

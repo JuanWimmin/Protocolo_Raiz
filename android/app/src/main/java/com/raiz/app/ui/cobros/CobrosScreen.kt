@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Refresh
@@ -28,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -125,7 +129,7 @@ fun CobrosScreen(
             when {
                 state.loading -> LoadingBox()
                 state.error != null -> ErrorBox(message = state.error!!)
-                else -> CobrosContent(state = state)
+                else -> CobrosContent(state = state, onMontoCambiado = viewModel::onMontoCambiado)
             }
         }
     }
@@ -136,17 +140,33 @@ fun CobrosScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CobrosContent(state: CobrosUiState) {
+private fun CobrosContent(
+    state: CobrosUiState,
+    onMontoCambiado: (String) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // QR grande del comerciante
+        // Campo de monto: el comerciante teclea cuánto quiere cobrar.
+        // Si está vacío, el QR codifica solo la dirección (cobro abierto).
+        item {
+            MontoCobroCard(
+                montoCobro = state.montoCobro,
+                onMontoChange = onMontoCambiado,
+                montoStroops = state.montoStroops,
+            )
+        }
+
+        // QR del comerciante — incluye el monto si se especificó
         item {
             QrCard(
-                content = state.accountId,
-                caption = "${state.accountId.take(12)}…${state.accountId.takeLast(8)}",
+                content = state.qrContent,
+                caption = if (state.montoStroops > 0L)
+                    "Cobro · ${state.montoStroops.formatUsdc()}"
+                else
+                    "${state.accountId.take(12)}…${state.accountId.takeLast(8)}",
                 sizeDp = 240,
             )
         }
@@ -265,6 +285,64 @@ private fun CobroRow(cobro: PaymentRecord) {
             text = "+${cobro.amountStroops.formatUsdc()}",
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             color = RaizGreen,
+        )
+    }
+}
+
+/**
+ * Card con el campo de monto a cobrar.
+ *
+ * El comerciante teclea el importe en USDC. El ViewModel sanea el texto y
+ * calcula los stroops. Cuando [montoStroops] > 0, el QR de arriba codifica
+ * la orden de cobro; si está vacío, el QR es solo la dirección (cobro abierto).
+ */
+@Composable
+private fun MontoCobroCard(
+    montoCobro: String,
+    onMontoChange: (String) -> Unit,
+    montoStroops: Long,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(RaizWhite)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "Monto a cobrar",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        OutlinedTextField(
+            value = montoCobro,
+            onValueChange = onMontoChange,
+            placeholder = { Text("0.00", color = RaizBlack.copy(alpha = 0.35f)) },
+            suffix = {
+                Text(
+                    text = "USDC",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = RaizGreen,
+                unfocusedBorderColor = RaizBlack.copy(alpha = 0.15f),
+            ),
+        )
+        // Texto instructivo adaptativo: vacío = cobro abierto, con monto = orden fija
+        Text(
+            text = if (montoStroops > 0L)
+                "El turista escanea y paga ${montoStroops.formatUsdc()}. El 2% va al barrio."
+            else
+                "Deja vacío para cobro abierto — el turista elige el monto.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (montoStroops > 0L) RaizGreen else RaizBlack.copy(alpha = 0.5f),
         )
     }
 }

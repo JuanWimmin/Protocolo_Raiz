@@ -381,8 +381,13 @@ private fun RaizApp(
 
         composable(Routes.WALLET) {
             WalletScreen(
+                // Flujo legacy: QR con solo la dirección G... (cobro abierto)
                 onPayMerchant = { merchantAddress ->
                     nav.navigate("${Routes.PAY_PREFIX}/$merchantAddress")
+                },
+                // Flujo orden de cobro: QR generado por CobrosScreen con monto fijo
+                onPayMerchantConMonto = { merchantAddress, amountStroops ->
+                    nav.navigate("${Routes.PAY_PREFIX}/$merchantAddress?amount=$amountStroops")
                 },
                 onNavigateProfile   = { goTo(Routes.PROFILE) },
                 onNavigateRewards   = { goTo(Routes.REWARDS) },
@@ -393,9 +398,18 @@ private fun RaizApp(
                 currentRole = currentRole,
             )
         }
+        // Ruta PAY: merchant_address obligatorio, amount_stroops opcional.
+        // Si amount_stroops > 0 llega desde un QR de orden de cobro.
+        // Si viene sin ?amount=... el navArgument usa defaultValue 0L (cobro abierto).
         composable(
-            route = "${Routes.PAY_PREFIX}/{merchant_address}",
-            arguments = listOf(navArgument("merchant_address") { type = NavType.StringType }),
+            route = "${Routes.PAY_PREFIX}/{merchant_address}?amount={amount_stroops}",
+            arguments = listOf(
+                navArgument("merchant_address") { type = NavType.StringType },
+                navArgument("amount_stroops") {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+            ),
         ) {
             PayScreen(onDone = { nav.popBackStack() })
         }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.Button
@@ -120,6 +121,11 @@ private fun PayEditing(
         )
 
         MerchantCard(preview = preview)
+
+        // Banner amarillo cuando el monto viene fijo desde el QR del comerciante
+        if (state.esOrdenDeCobro) {
+            OrdenDeCobroBanner(amountStroops = preview.baseAmountStroops)
+        }
 
         TipToggle(
             enabled = state.tipEnabled,
@@ -296,6 +302,41 @@ private fun BreakdownRow(
             ),
             color = accent,
         )
+    }
+}
+
+/**
+ * Banner amarillo que indica que el monto viene pre-definido en la orden de cobro
+ * generada por el comerciante. Aparece entre la card del merchant y el toggle de tip.
+ */
+@Composable
+private fun OrdenDeCobroBanner(amountStroops: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RaizYellow.copy(alpha = 0.15f))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.ReceiptLong,
+            contentDescription = null,
+            tint = RaizBlack,
+            modifier = Modifier.padding(end = 10.dp),
+        )
+        Column {
+            Text(
+                text = "Orden de cobro",
+                style = MaterialTheme.typography.labelLarge,
+                color = RaizBlack,
+            )
+            Text(
+                text = amountStroops.formatUsdc(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.7f),
+            )
+        }
     }
 }
 

@@ -80,6 +80,8 @@ import com.raiz.app.ui.theme.RaizYellow
 @Composable
 fun WalletScreen(
     onPayMerchant: (merchantAddress: String) -> Unit = {},
+    /** Llamado cuando el QR escaneado contiene una orden de cobro con monto fijo. */
+    onPayMerchantConMonto: (merchantAddress: String, amountStroops: Long) -> Unit = { _, _ -> },
     onNavigateProfile: () -> Unit = {},
     onNavigateRewards: () -> Unit = {},
     onNavigateMap: () -> Unit = {},
@@ -94,21 +96,26 @@ fun WalletScreen(
     val context = LocalContext.current
 
     // Launcher para el escáner de QR de zxing-android-embedded.
-    // Valida que el contenido sea una Stellar address G... antes de navegar
-    // a PayScreen. Si el contenido no es válido, muestra un Toast.
+    // Distingue dos formatos:
+    //   1. Orden de cobro RAÍZ: `raiz:pay?to=G...&amount=<stroops>` → onPayMerchantConMonto
+    //   2. Dirección Stellar pelada G... (legacy) → onPayMerchant (cobro abierto)
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents?.trim().orEmpty()
-        val addr = raw.takeIf { it.isStellarPublicKey() }
-        if (addr != null) {
-            onPayMerchant(addr)
-        } else if (raw.isNotEmpty()) {
-            Toast.makeText(
+        val ordenDeCobro = parsearQrRaizPay(raw)
+        when {
+            // Orden de cobro con monto fijo
+            ordenDeCobro != null ->
+                onPayMerchantConMonto(ordenDeCobro.first, ordenDeCobro.second)
+            // Dirección Stellar pelada (flujo legacy — cobro abierto)
+            raw.isStellarPublicKey() -> onPayMerchant(raw)
+            // QR no reconocido
+            raw.isNotEmpty() -> Toast.makeText(
                 context,
-                "QR inválido: se esperaba una cuenta G… de Stellar",
+                "QR inválido: se esperaba una cuenta G… de Stellar o una orden RAÍZ",
                 Toast.LENGTH_SHORT,
             ).show()
+            // raw vacío = el usuario canceló el escáner
         }
-        // Si raw está vacío, el usuario canceló — no hacemos nada.
     }
 
     Scaffold(
@@ -157,6 +164,28 @@ fun WalletScreen(
 /** Heurística: G... de 56 chars base32 = Stellar public key. */
 private fun String.isStellarPublicKey(): Boolean =
     length == 56 && startsWith("G") && all { it in 'A'..'Z' || it in '2'..'7' }
+
+/**
+ * Parsea una URL de orden de cobro RAÍZ.
+ *
+ * Formato esperado: `raiz:pay?to=<G...>&amount=<stroops>`
+ *
+ * @return Pair(address, stroops) si el formato es válido y la address es una
+ *   Stellar public key; null en cualquier otro caso (incluido monto = 0).
+ */
+private fun parsearQrRaizPay(raw: String): Pair<String, Long>? {
+    if (!raw.startsWith("raiz:pay?")) return null
+    val params = raw.removePrefix("raiz:pay?")
+        .split("&")
+        .mapNotNull { par ->
+            val kv = par.split("=", limit = 2)
+            if (kv.size == 2) kv[0] to kv[1] else null
+        }
+        .toMap()
+    val to = params["to"]?.takeIf { it.isStellarPublicKey() } ?: return null
+    val amount = params["amount"]?.toLongOrNull()?.takeIf { it > 0L } ?: return null
+    return to to amount
+}
 
 @Composable
 private fun WalletReady(
