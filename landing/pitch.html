@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAÍZ — Pitch</title>
+<meta name="description" content="RAÍZ — El turismo que echa raíces. Pagos turísticos sobre Stellar, 2% al fondo del barrio, gobernado on-chain." />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --negro:#1a1a1a; --amarillo:#FBBF24; --purpura:#534AB7; --verde:#0F6E56; --verde2:#1D9E75; --fondo:#FAFAF7; }
+  *{font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.disp{font-family:'Poppins',sans-serif;}
+  html,body{height:100%;margin:0;overflow:hidden;background:var(--fondo);color:var(--negro);}
+  .slide{position:fixed;inset:0;display:none;flex-direction:column;justify-content:center;padding:7vh 8vw;}
+  .slide.active{display:flex;animation:fade .45s ease both;}
+  @keyframes fade{from{opacity:0;transform:translateY(14px) scale(.995);}to{opacity:1;transform:none;}}
+  .kicker{display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:.3rem .8rem;border-radius:999px;}
+  .card{background:#fff;border:1px solid #ece9e1;border-radius:1.1rem;box-shadow:0 4px 24px rgba(26,26,26,.05);}
+  .dark{background:var(--negro);color:#fff;}
+  .grad-text{background:linear-gradient(110deg,#0F6E56,#1D9E75 50%,#534AB7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  /* nav */
+  .nav{position:fixed;bottom:18px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:14px;z-index:50;}
+  .nav button{width:40px;height:40px;border-radius:999px;border:1px solid #00000014;background:#fff;color:var(--negro);font-size:18px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.06);display:grid;place-items:center;}
+  .nav button:hover{background:var(--amarillo);}
+  .counter{font-size:.85rem;font-weight:600;color:#888;min-width:54px;text-align:center;}
+  .progress{position:fixed;top:0;left:0;height:4px;background:linear-gradient(90deg,var(--verde),var(--purpura));z-index:50;transition:width .4s;}
+  .mark{position:fixed;top:22px;right:26px;display:flex;align-items:center;gap:.5rem;z-index:40;}
+  .pill{display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .7rem;border-radius:999px;font-size:.8rem;font-weight:600;}
+  .flow b{font-weight:800;}
+  @media (max-width:640px){ .slide{padding:8vh 6vw;} }
+</style>
+</head>
+<body>
+
+<div class="progress" id="bar" style="width:7%"></div>
+<div class="mark">
+  <span class="w-8 h-8 rounded-full grid place-items-center" style="background:var(--verde)">
+    <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 22c0-6 0-9 3-12 0 0-5 0-7 3-1.5 2.2-1 6-1 9z" fill="#FBBF24"/></svg>
+  </span>
+  <span class="disp font-extrabold tracking-tight">RAÍZ</span>
+</div>
+
+<!-- 1 · PORTADA -->
+<section class="slide active items-center text-center">
+  <span class="w-24 h-24 rounded-3xl grid place-items-center mb-6" style="background:var(--verde)">
+    <svg width="56" height="56" viewBox="0 0 24 24"><path d="M12 22c0-6 0-9 3-12 0 0-5 0-7 3-1.5 2.2-1 6-1 9z" fill="#FBBF24"/></svg>
+  </span>
+  <h1 class="disp text-6xl sm:text-8xl font-black tracking-tight">RAÍZ</h1>
+  <p class="text-2xl sm:text-3xl mt-3 grad-text disp font-bold">El turismo que echa raíces.</p>
+  <p class="mt-6 text-lg text-[#555] max-w-2xl">Pagos turísticos sobre <b>Stellar</b> · 2% al fondo del barrio · gobernado <b>on-chain</b> por sus residentes.</p>
+  <div class="mt-7 flex flex-wrap gap-2 justify-center text-sm">
+    <span class="pill" style="background:#ede9fb;color:var(--purpura)">🌐 raizapp.xyz</span>
+    <span class="pill" style="background:#dff5ec;color:var(--verde)">📱 App Android nativa</span>
+    <span class="pill" style="background:#1a1a1a;color:#FBBF24">⛓️ 4 contratos Soroban en testnet</span>
+  </div>
+</section>
+
+<!-- 2 · PROBLEMA -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#fde8e8;color:#b91c1c">El problema</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">El barrio crea el valor.<br><span style="color:#b91c1c">No lo captura.</span></h2>
+  <div class="mt-8 grid sm:grid-cols-3 gap-4 max-w-5xl">
+    <div class="card p-5"><div class="text-3xl">📤</div><p class="mt-2 text-[#444]">El turismo <b>extrae</b>: plataformas y cadenas se llevan el margen.</p></div>
+    <div class="card p-5"><div class="text-3xl">🪙</div><p class="mt-2 text-[#444]">Residentes, artesanos y comercio de esquina ven una <b>fracción mínima</b>.</p></div>
+    <div class="card p-5"><div class="text-3xl">🔇</div><p class="mt-2 text-[#444]"><b>Cero voz</b> sobre cómo se reinvierte → gentrificación, opacidad.</p></div>
+  </div>
+  <p class="mt-8 text-xl text-[#666] max-w-3xl">El turismo mueve billones, pero el barrio que lo hace posible casi no ve un peso.</p>
+</section>
+
+<!-- 3 · SOLUCIÓN -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#dff5ec;color:var(--verde)">La solución</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">2% de cada pago vuelve al barrio.<br>Y el barrio <span class="grad-text">decide.</span></h2>
+  <div class="mt-8 grid sm:grid-cols-3 gap-5 max-w-5xl">
+    <div class="card p-6"><div class="text-4xl">🌱</div><h3 class="disp font-bold text-xl mt-3">Tip Barrio</h3><p class="mt-2 text-[#555]">2% automático de cada pago → fondo comunitario en USDC, on-chain.</p></div>
+    <div class="card p-6"><div class="text-4xl">🪪</div><h3 class="disp font-bold text-xl mt-3">Gobernanza soulbound</h3><p class="mt-2 text-[#555]">1 residente = 1 voto. Intransferible. No se compra.</p></div>
+    <div class="card p-6"><div class="text-4xl">🔓</div><h3 class="disp font-bold text-xl mt-3">Trustless + transparente</h3><p class="mt-2 text-[#555]">Ejecución sin que nadie tenga la llave + cada peso verificable.</p></div>
+  </div>
+</section>
+
+<!-- 4 · FLUJO -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#fef3d4;color:#92690a">Cómo funciona</span>
+  <h2 class="disp text-4xl sm:text-5xl font-extrabold mt-4">Turista → Comercio → Barrio → Decisión</h2>
+  <div class="mt-8 max-w-4xl flow space-y-3 text-lg">
+    <div class="card p-4 flex items-center gap-4"><span class="text-2xl">🧳</span><div>Turista paga <b>10 USDC</b> + 2% Tip Barrio <span class="text-[#888]">(opcional)</span></div></div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div class="card p-4 flex items-center gap-3"><span class="text-2xl">🏪</span><div><b>10 USDC</b> → Comercio <span class="text-[#888]">(cobra al instante)</span></div></div>
+      <div class="card p-4 flex items-center gap-3" style="border-color:#0F6E56"><span class="text-2xl">🌱</span><div><b>0.20</b> → Pool del Barrio</div></div>
+    </div>
+    <div class="card p-4 flex items-center gap-4"><span class="text-2xl">🗳️</span><div>Residentes <b>proponen y votan</b> (token soulbound)</div></div>
+    <div class="card p-4 flex items-center gap-4 dark"><span class="text-2xl">⚙️</span><div>Treasury <b>ejecuta trustless</b> si pasa quórum (30%) + mayoría → evento on-chain público</div></div>
+  </div>
+</section>
+
+<!-- 5 · YIELD -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#dff5ec;color:var(--verde)">DeFi · Composabilidad</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">El fondo del barrio <span class="grad-text">no duerme.</span></h2>
+  <p class="mt-3 text-2xl text-[#444]">Mientras el barrio decide, su fondo <b>crece</b>.</p>
+  <div class="mt-8 grid sm:grid-cols-3 gap-5 max-w-5xl">
+    <div class="card p-6"><div class="text-3xl">📈</div><p class="mt-2 text-[#555]">El Tip Barrio acumulado se deposita en un <b>vault de DeFindex</b> → genera <b>yield</b>.</p></div>
+    <div class="card p-6"><div class="text-3xl">🏦</div><p class="mt-2 text-[#555]">No es una alcancía estática: <b>trabaja</b> mientras se vota en qué invertirlo.</p></div>
+    <div class="card p-6"><div class="text-3xl">🧩</div><p class="mt-2 text-[#555]">RAÍZ se <b>para sobre</b> el ecosistema Stellar — no lo reinventa.</p></div>
+  </div>
+</section>
+
+<!-- 6 · PASSKEY -->
+<section class="slide dark">
+  <span class="kicker self-start" style="background:#FBBF24;color:#1a1a1a">El wow</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">Una wallet en 10 segundos.<br><span style="color:#FBBF24">Sin frase semilla. Con tu huella.</span></h2>
+  <div class="mt-8 grid sm:grid-cols-2 gap-5 max-w-5xl">
+    <div class="rounded-2xl p-6" style="background:#ffffff10;border:1px solid #ffffff22"><div class="text-3xl">🔐</div><p class="mt-2 text-[#ddd]"><b class="text-white">Smart wallets con passkey</b> (WebAuthn): cuenta con biometría, cero seed que perder.</p></div>
+    <div class="rounded-2xl p-6" style="background:#ffffff10;border:1px solid #ffffff22"><div class="text-3xl">⛽</div><p class="mt-2 text-[#ddd]"><b class="text-white">Fees patrocinados</b> por un relayer → el turista no necesita XLM para empezar.</p></div>
+    <div class="rounded-2xl p-6" style="background:#ffffff10;border:1px solid #ffffff22"><div class="text-3xl">⚡</div><p class="mt-2 text-[#ddd]"><b class="text-white">1 transacción</b> por compra — vs. 4 de una wallet clásica (crear + trustline + faucet + pago).</p></div>
+    <div class="rounded-2xl p-6" style="background:#ffffff10;border:1px solid #ffffff22"><div class="text-3xl">♻️</div><p class="mt-2 text-[#ddd]"><b class="text-white">Recuperable en cualquier dispositivo</b>: la cuenta vive en la cadena, no en el teléfono.</p></div>
+  </div>
+</section>
+
+<!-- 7 · DEMO -->
+<section class="slide items-center text-center">
+  <span class="kicker" style="background:#1a1a1a;color:#FBBF24">Demo en vivo</span>
+  <h2 class="disp text-5xl sm:text-7xl font-black mt-5 leading-none">Esto <span style="color:#b91c1c">no</span> es un mockup.</h2>
+  <p class="mt-4 text-2xl text-[#444]">Corre en <b>testnet de Stellar</b> ahora mismo.</p>
+  <div class="mt-7 flex flex-wrap gap-3 justify-center">
+    <span class="pill text-base" style="background:#dff5ec;color:var(--verde)">4 contratos desplegados</span>
+    <span class="pill text-base" style="background:#ede9fb;color:var(--purpura)">3 barrios</span>
+    <span class="pill text-base" style="background:#fef3d4;color:#92690a">comercios reales en el mapa</span>
+  </div>
+  <p class="mt-8 text-[#888]">→ Cambiar a la app (passkey · pago · voto · transparencia)</p>
+</section>
+
+<!-- 8 · ROLES -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#ede9fb;color:var(--purpura)">Una app, 3 roles</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4">Tres formas de participar</h2>
+  <div class="mt-8 grid sm:grid-cols-3 gap-5 max-w-5xl">
+    <div class="card p-6"><div class="text-4xl">🧳</div><h3 class="disp font-bold text-xl mt-3">Turista</h3><p class="mt-2 text-[#555]">Paga, deja Tip Barrio (opcional), gana puntos y <b>sellos</b> de barrios visitados.</p></div>
+    <div class="card p-6" style="border-color:#534AB7"><div class="text-4xl">🏠</div><h3 class="disp font-bold text-xl mt-3">Residente</h3><p class="mt-2 text-[#555]">Token soulbound de su barrio → propone y vota <b>solo en su barrio</b>.</p></div>
+    <div class="card p-6"><div class="text-4xl">🏪</div><h3 class="disp font-bold text-xl mt-3">Comercio</h3><p class="mt-2 text-[#555]">Cobra en USDC, <b>fija su local tocando el mapa</b>, aparece para los turistas.</p></div>
+  </div>
+</section>
+
+<!-- 9 · ARQUITECTURA -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#dff5ec;color:var(--verde)">Arquitectura</span>
+  <h2 class="disp text-4xl sm:text-5xl font-extrabold mt-4">4 contratos Soroban + Android nativo</h2>
+  <div class="mt-7 grid sm:grid-cols-2 gap-4 max-w-5xl">
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--verde)">Pool</h3><p class="text-[#555] mt-1">Pagos + custodia del Tip Barrio + integración DeFindex</p></div>
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--purpura)">Governance</h3><p class="text-[#555] mt-1">Token soulbound de residencia + votación por barrio</p></div>
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:#92690a">Treasury</h3><p class="text-[#555] mt-1">Ejecución trustless de propuestas aprobadas</p></div>
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:#1a1a1a">Rewards</h3><p class="text-[#555] mt-1">Puntos no transferibles + catálogo de premios</p></div>
+  </div>
+  <p class="mt-6 text-[#666] max-w-4xl">App: <b>Kotlin + Jetpack Compose</b> · SDK Soneso · <b>Mapbox</b> · <b>smart wallets passkey</b> + fallback semilla.</p>
+</section>
+
+<!-- 10 · STELLAR -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#1a1a1a;color:#fff">Por qué Stellar</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">La única cadena donde un<br>"tip de centavos" tiene sentido.</h2>
+  <div class="mt-8 grid sm:grid-cols-2 gap-4 max-w-5xl">
+    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">💸</span><div><b>Fees ~0</b> — el Tip Barrio no se lo come el gas.</div></div>
+    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">💵</span><div><b>USDC nativo</b> — turista y comercio piensan en dólares.</div></div>
+    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">🦀</span><div><b>Soroban</b> — gobernanza auditable en Rust + account abstraction (passkey).</div></div>
+    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">🧩</span><div><b>Componible</b> — DeFindex para yield, anchors SEP-24/38 para la rampa fiat.</div></div>
+  </div>
+</section>
+
+<!-- 11 · TRANSPARENCIA -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#ede9fb;color:var(--purpura)">Transparencia</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">Cada pago, cada voto:<br><span class="grad-text">verificable.</span></h2>
+  <div class="mt-7 grid sm:grid-cols-2 gap-4 max-w-5xl">
+    <div class="card p-5"><div class="text-2xl">⛓️</div><p class="mt-1 text-[#555]">El contrato <b>emite un evento on-chain</b> por acción: <code class="text-[#534AB7]">payment · vote · proposal · tally · execution</code>.</p></div>
+    <div class="card p-5"><div class="text-2xl">🔗</div><p class="mt-1 text-[#555]">En la app, <b>cada operación enlaza a Stellar Expert</b> con un toque.</p></div>
+    <div class="card p-5"><div class="text-2xl">🛂</div><p class="mt-1 text-[#555]"><code class="text-[#0F6E56]">/verificar-residente</code>: <b>cualquiera comprueba on-chain</b> el barrio de un residente y su derecho a voto.</p></div>
+    <div class="card p-5"><div class="text-2xl">🔍</div><p class="mt-1 text-[#555]">El barrio audita su fondo <b>sin confiar en nadie</b> — ni en nosotros.</p></div>
+  </div>
+</section>
+
+<!-- 12 · TRACCIÓN -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#dff5ec;color:var(--verde)">Tracción</span>
+  <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4">Lo que YA corre</h2>
+  <p class="text-[#888] -mt-1">No es promesa. Es código en producción.</p>
+  <div class="mt-6 grid sm:grid-cols-2 gap-3 max-w-5xl text-lg">
+    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>4 contratos desplegados + poblados en testnet, con <b>yield DeFindex real por barrio</b>.</div></div>
+    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div><b>Passkey operativo end-to-end</b>: crear wallet, pagar, votar y proponer <b>con la huella</b>.</div></div>
+    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>Verificado on-chain en dispositivo: pago+Tip, puntos, <b>sellos</b>, voto, ejecución, alta de comercio, residente.</div></div>
+    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>Landing pública (<b>raizapp.xyz</b>) + APK descargable + verificación on-chain en la web.</div></div>
+  </div>
+</section>
+
+<!-- 13 · ROADMAP -->
+<section class="slide">
+  <span class="kicker self-start" style="background:#fef3d4;color:#92690a">Roadmap & visión</span>
+  <h2 class="disp text-4xl sm:text-5xl font-extrabold mt-4">De MVP a red de barrios autogobernados</h2>
+  <div class="mt-8 space-y-3 max-w-4xl">
+    <div class="card p-4 flex gap-4 items-center"><span class="pill" style="background:#dff5ec;color:var(--verde)">Ahora</span><div>MVP funcional en testnet — pagos, gobernanza, yield y passkey, todo on-chain.</div></div>
+    <div class="card p-4 flex gap-4 items-center"><span class="pill" style="background:#fef3d4;color:#92690a">Próximo</span><div>KYC de residencia con documentos (SEP-12), backend de confianza, premios en IPFS.</div></div>
+    <div class="card p-4 flex gap-4 items-center"><span class="pill" style="background:#ede9fb;color:var(--purpura)">Después</span><div>Piloto en un barrio real de Cartagena con un <b>anchor local</b> (rampa fiat).</div></div>
+    <div class="card p-4 flex gap-4 items-center dark"><span class="pill" style="background:#FBBF24;color:#1a1a1a">Visión</span><div>Una red de barrios que capturan y gobiernan el valor del turismo que reciben — <b>replicable en cualquier ciudad</b>.</div></div>
+  </div>
+</section>
+
+<!-- 14 · CIERRE -->
+<section class="slide dark items-center text-center">
+  <span class="w-20 h-20 rounded-2xl grid place-items-center mb-5" style="background:var(--verde)">
+    <svg width="44" height="44" viewBox="0 0 24 24"><path d="M12 22c0-6 0-9 3-12 0 0-5 0-7 3-1.5 2.2-1 6-1 9z" fill="#FBBF24"/></svg>
+  </span>
+  <h2 class="disp text-4xl sm:text-6xl font-black leading-tight">El turismo siempre llega.<br><span style="color:#FBBF24">RAÍZ hace que se quede.</span></h2>
+  <p class="mt-5 text-xl text-[#ccc] max-w-3xl">2% de cada pago · gobernado por el barrio · verificable en la cadena.<br>Pago + gobernanza + yield + transparencia, en una app, sobre Stellar.</p>
+  <div class="mt-7 flex gap-3 flex-wrap justify-center">
+    <span class="pill text-base" style="background:#ffffff15;color:#fff">🌐 raizapp.xyz</span>
+    <span class="pill text-base" style="background:#FBBF24;color:#1a1a1a">Gracias — y el barrio agradece 🌱</span>
+  </div>
+</section>
+
+<!-- NAV -->
+<div class="nav">
+  <button id="prev" aria-label="Anterior">‹</button>
+  <span class="counter" id="counter">1 / 14</span>
+  <button id="next" aria-label="Siguiente">›</button>
+</div>
+
+<script>
+(function(){
+  const slides=[...document.querySelectorAll('.slide')];
+  const bar=document.getElementById('bar'), counter=document.getElementById('counter');
+  let i=0;
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,idx)=>s.classList.toggle('active',idx===i));
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    counter.textContent=(i+1)+' / '+slides.length;
+    location.hash=i+1;
+  }
+  document.getElementById('next').onclick=()=>show(i+1);
+  document.getElementById('prev').onclick=()=>show(i-1);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ')show(i+1);
+    if(e.key==='ArrowLeft'||e.key==='PageUp')show(i-1);
+    if(e.key==='Home')show(0); if(e.key==='End')show(slides.length-1);
+    if(e.key==='f'||e.key==='F'){ if(!document.fullscreenElement)document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  });
+  // click derecha/izquierda + swipe
+  document.addEventListener('click',e=>{ if(e.target.closest('.nav')||e.target.closest('a'))return; show(e.clientX>innerWidth/2?i+1:i-1); });
+  let x0=null;
+  document.addEventListener('touchstart',e=>x0=e.touches[0].clientX,{passive:true});
+  document.addEventListener('touchend',e=>{ if(x0===null)return; const dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>50)show(dx<0?i+1:i-1); x0=null; });
+  const start=parseInt(location.hash.replace('#',''))||1; show(start-1);
+})();
+</script>
+</body>
+</html>
