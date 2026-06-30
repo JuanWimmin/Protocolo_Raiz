@@ -30,7 +30,13 @@ sealed interface PayUiState {
         /** Si true, confirmar el pago exige biometría/PIN (lock activado). */
         val requireBiometric: Boolean = false,
     ) : PayUiState
-    data class Success(val merchantName: String, val totalStroops: Long, val pointsEarned: Long) : PayUiState
+    data class Success(
+        val merchantName: String,
+        val totalStroops: Long,
+        val pointsEarned: Long,
+        /** Stroops del Tip Barrio; 0 si el tip estaba desactivado al confirmar. */
+        val tipStroops: Long = 0L,
+    ) : PayUiState
     data class Error(val code: RaizErrorCode, val message: String) : PayUiState
 }
 
@@ -122,6 +128,7 @@ class PayViewModel @Inject constructor(
                         merchantName = editing.preview.merchant.name,
                         totalStroops = editing.preview.totalStroops,
                         pointsEarned = editing.preview.pointsToEarn,
+                        tipStroops = editing.preview.tipStroops,
                     )
                 }
                 is RaizResult.Error -> {

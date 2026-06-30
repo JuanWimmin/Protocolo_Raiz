@@ -6,14 +6,42 @@ import androidx.activity.enableEdgeToEdge
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Eco
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.raiz.app.ui.theme.RaizBlack
+import com.raiz.app.ui.theme.RaizWhite
+import com.raiz.app.ui.theme.RaizYellow
+import kotlinx.coroutines.delay
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -64,29 +92,55 @@ class MainActivity : FragmentActivity() {
     /** true = la app está bloqueada y requiere desbloqueo ahora. */
     private var locked by mutableStateOf(false)
 
+    /** true = mostrar la intro de arranque (se auto-descarta ~1.2 s después). */
+    private var showIntro by mutableStateOf(true)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         locked = appLock.isActive() && walletManager.hasUsableWallet()
         setContent {
             RaizTheme {
-                if (locked) {
-                    LockScreen(onUnlock = ::requestUnlock)
-                    LaunchedEffect(Unit) { requestUnlock() }
-                } else {
-                    RaizApp(
-                        initiallyHasWallet = walletManager.hasUsableWallet(),
-                        // Rol persistido en reaperturas (null → default TOURIST).
-                        initialRole = if (walletManager.hasUsableWallet()) {
-                            walletManager.preferredRole() ?: UserRole.TOURIST
-                        } else {
-                            UserRole.TOURIST
-                        },
-                        isDemoMode = walletManager.isDemoMode,
-                        onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
-                        onLogout = { walletManager.logout() },
-                        passkeyEnabled = passkeyManager.isAvailable,
-                    )
+                Box(modifier = Modifier.fillMaxSize()) {
+
+                    // App principal + gate de lock (lógica intacta)
+                    if (locked) {
+                        LockScreen(onUnlock = ::requestUnlock)
+                        LaunchedEffect(Unit) { requestUnlock() }
+                    } else {
+                        RaizApp(
+                            initiallyHasWallet = walletManager.hasUsableWallet(),
+                            // Rol persistido en reaperturas (null → default TOURIST).
+                            initialRole = if (walletManager.hasUsableWallet()) {
+                                walletManager.preferredRole() ?: UserRole.TOURIST
+                            } else {
+                                UserRole.TOURIST
+                            },
+                            isDemoMode = walletManager.isDemoMode,
+                            onSetPreferredRole = { role -> walletManager.setPreferredRole(role) },
+                            onLogout = { walletManager.logout() },
+                            passkeyEnabled = passkeyManager.isAvailable,
+                        )
+                    }
+
+                    // Intro de arranque: overlay encima de RaizApp, no encima del lock.
+                    // El contenido (SplashIntro) maneja su propio fade-in y scale-in;
+                    // el AnimatedVisibility maneja el fade-out al descartarse.
+                    AnimatedVisibility(
+                        visible = showIntro && !locked,
+                        enter = EnterTransition.None,
+                        exit = fadeOut(animationSpec = tween(durationMillis = 300)),
+                    ) {
+                        SplashIntro()
+                    }
+
+                    // Temporizador del intro: descarta después de 1.2 s (solo fuera del lock)
+                    if (!locked) {
+                        LaunchedEffect(Unit) {
+                            delay(1_200L)
+                            showIntro = false
+                        }
+                    }
                 }
             }
         }
@@ -107,6 +161,7 @@ class MainActivity : FragmentActivity() {
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    showIntro = false  // No mostrar la intro después de un desbloqueo
                     locked = false
                 }
                 // En error/cancelación queda bloqueado; el botón de LockScreen reintenta.
@@ -401,6 +456,70 @@ private fun RaizApp(
         }
         composable(Routes.YIELD) {
             YieldScreen(onBack = { nav.popBackStack() })
+        }
+    }
+}
+
+/**
+ * Pantalla de intro de arranque (~1.2 s + 300 ms de fade-out).
+ *
+ * El [AnimatedVisibility] padre (en MainActivity.setContent) gestiona el fade-out.
+ * Este composable gestiona el fade-in + scale-in del contenido logo/tagline.
+ *
+ * Diseño:
+ *   - Fondo negro [RaizBlack] — contraste máximo con el ícono amarillo.
+ *   - Ícono hoja [Icons.Outlined.Eco] en [RaizYellow] (64 dp).
+ *   - Texto "RAÍZ" en displayLarge + letter spacing amplio, color [RaizYellow].
+ *   - Tagline "Tu paga, el barrio crece" en blanco suave.
+ *   - Todo el bloque escala de 0.75→1.0 con spring y aparece con fadeIn (400 ms).
+ */
+@Composable
+private fun SplashIntro() {
+    // Dispara la animación de entrada en el primer frame
+    var logoVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { logoVisible = true }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(RaizBlack),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedVisibility(
+            visible = logoVisible,
+            enter = fadeIn(animationSpec = tween(durationMillis = 400)) +
+                scaleIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow,
+                    ),
+                    initialScale = 0.75f,
+                ),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Eco,
+                    contentDescription = null,
+                    tint = RaizYellow,
+                    modifier = Modifier.size(64.dp),
+                )
+                Text(
+                    text = "RAÍZ",
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 6.sp,
+                    ),
+                    color = RaizYellow,
+                )
+                Text(
+                    text = "Tu paga, el barrio crece",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizWhite.copy(alpha = 0.75f),
+                )
+            }
         }
     }
 }

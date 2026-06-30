@@ -36,6 +36,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.data.model.PaymentPreview
 import com.raiz.app.data.model.formatUsdc
+import com.raiz.app.ui.components.RaizSuccessAnimation
 import com.raiz.app.ui.security.biometricConfirm
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGrayLight
@@ -82,6 +83,7 @@ fun PayScreen(
             is PayUiState.Success -> PaySuccess(
                 merchantName = s.merchantName,
                 totalStroops = s.totalStroops,
+                tipStroops = s.tipStroops,
                 pointsEarned = s.pointsEarned,
                 onDone = onDone,
                 contentPadding = padding,
@@ -297,10 +299,17 @@ private fun BreakdownRow(
     }
 }
 
+/**
+ * Estado de éxito del pago con animación nativa RAÍZ.
+ *
+ * Delega el checkmark animado y la cápsula "Tip Barrio" a [RaizSuccessAnimation].
+ * Añade los puntos ganados (color púrpura) y el botón de retorno al inicio.
+ */
 @Composable
 private fun PaySuccess(
     merchantName: String,
     totalStroops: Long,
+    tipStroops: Long,
     pointsEarned: Long,
     onDone: () -> Unit,
     contentPadding: PaddingValues,
@@ -309,39 +318,36 @@ private fun PaySuccess(
         modifier = Modifier
             .fillMaxSize()
             .padding(contentPadding)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Verified,
-            contentDescription = null,
-            tint = RaizGreen,
-            modifier = Modifier.height(80.dp),
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Animación principal: círculo + check + texto + cápsula barrio
+        RaizSuccessAnimation(
+            titulo = "¡Pago exitoso!",
+            subtitulo = "${totalStroops.formatUsdc()} a $merchantName",
+            // Solo muestra la cápsula si el Tip Barrio estaba activado
+            tipBarrioUsdc = if (tipStroops > 0L) tipStroops.formatUsdc() else null,
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "¡Pago confirmado!",
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            color = RaizBlack,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "${totalStroops.formatUsdc()} a $merchantName",
-            style = MaterialTheme.typography.bodyMedium,
-            color = RaizBlack.copy(alpha = 0.7f),
-        )
-        if (pointsEarned > 0) {
-            Spacer(modifier = Modifier.height(8.dp))
+
+        // Puntos ganados — aparece bajo la animación solo si hay tip activo
+        if (pointsEarned > 0L) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "+$pointsEarned puntos",
                 style = MaterialTheme.typography.headlineMedium,
                 color = RaizPurple,
             )
         }
-        Spacer(modifier = Modifier.height(32.dp))
+
+        Spacer(modifier = Modifier.weight(1f))
+
         Button(
             onClick = onDone,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = RaizGreen,
                 contentColor = RaizWhite,
