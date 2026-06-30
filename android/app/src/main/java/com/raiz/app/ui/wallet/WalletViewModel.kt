@@ -82,6 +82,22 @@ class WalletViewModel @Inject constructor(
     private fun refreshSetupStep() {
         viewModelScope.launch {
             val accountId = walletManager.currentAccountId() ?: return@launch
+
+            // Las wallets passkey son SMART ACCOUNTS (C...): el relayer de Soneso ya
+            // las despliega y fondea con XLM al crearlas, y un contrato NO usa
+            // friendbot ni trustline clásica (su USDC vive vía SAC). Saltamos el
+            // onboarding de wallet clásica; si no, friendbot devuelve 400
+            // "account already funded" sobre una cuenta que ya está lista.
+            if (walletManager.isPasskeyWallet()) {
+                Log.i(TAG, "Wallet passkey (smart account): onboarding clásico no aplica → DONE")
+                _state.update { current ->
+                    if (current is WalletUiState.Ready)
+                        current.copy(setupStep = AccountSetupStep.DONE, setupError = null)
+                    else current
+                }
+                return@launch
+            }
+
             val step = when {
                 !horizonStream.accountExists(accountId) -> AccountSetupStep.FUND_XLM
                 !horizonStream.hasUsdcTrustline(accountId) -> AccountSetupStep.ACTIVATE_TRUSTLINE

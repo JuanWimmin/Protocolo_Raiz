@@ -317,6 +317,14 @@ class HorizonStream @Inject constructor(
                 ?.bufferedReader()?.use { it.readText() } ?: ""
             conn.disconnect()
             if (code !in 200..299) {
+                // Si la cuenta YA existe, friendbot responde 400 con "already funded"
+                // / "op_already_exists". NO es un fallo: la cuenta ya está fondeada,
+                // lo tratamos como éxito para no mostrar un error confuso.
+                val low = body.lowercase()
+                if ("already funded" in low || "already exists" in low || "op_already_exists" in low) {
+                    Log.i(TAG, "Friendbot: $accountId ya estaba fondeada (tratado como OK)")
+                    return@runCatching
+                }
                 throw RuntimeException("friendbot HTTP $code: ${body.take(200)}")
             }
             Log.i(TAG, "Friendbot fondeó $accountId")
