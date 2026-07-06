@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es" class="scroll-smooth">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,302 +12,706 @@
   <meta property="og:description" content="El 2% de cada pago turístico se queda en el barrio y lo gobiernan sus residentes. On-chain, sobre Stellar." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://raizapp.xyz" />
+  <meta property="og:image" content="https://raizapp.xyz/og.png" />
 
   <!-- Favicon: el logo RAÍZ en SVG inline -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='24' r='15' fill='%230F6E56'/%3E%3Ccircle cx='19' cy='29' r='9' fill='%230F6E56'/%3E%3Ccircle cx='45' cy='29' r='9' fill='%230F6E56'/%3E%3Ccircle cx='32' cy='19' r='3' fill='%23FBBF24'/%3E%3Ccircle cx='24' cy='27' r='2.6' fill='%23FBBF24'/%3E%3Ccircle cx='40' cy='26' r='2.6' fill='%23FBBF24'/%3E%3Crect x='29' y='36' width='6' height='13' rx='3' fill='%230B5644'/%3E%3C/svg%3E" />
 
-  <!-- Google Fonts: Poppins (display) + Inter (texto) -->
+  <!-- Google Fonts: Bricolage Grotesque (display) + Instrument Sans (texto) + Space Mono (datos on-chain) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet" />
-
-  <!-- Tailwind vía CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            verde: '#0F6E56',
-            'verde-claro': '#1D9E75',
-            amarillo: '#FBBF24',
-            purpura: '#534AB7',
-            negro: '#1a1a1a',
-            crema: '#FAFAF7',
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            display: ['Poppins', 'system-ui', 'sans-serif'],
-          },
-        },
-      },
-    };
-  </script>
+  <!-- Carga no bloqueante: si la red del venue cuelga esta petición, la página
+       renderiza igual con system-ui/monospace y las fuentes llegan después -->
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" /></noscript>
 
   <style>
-    html { scroll-behavior: smooth; }
-    body { background: #FAFAF7; color: #1a1a1a; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-    section { scroll-margin-top: 84px; }
-    ::selection { background: #FBBF24; color: #1a1a1a; }
+    /* ============================================================
+       RAÍZ V2 — "El recibo del barrio"
+       Brutalismo cálido: bloques planos de la paleta, bordes duros,
+       sombras desplazadas sin blur, tipografía display con ink-traps
+       y una raíz que crece por el margen izquierdo de la página.
+       Paleta (no negociable): negro #1a1a1a · amarillo #FBBF24 ·
+       púrpura #534AB7 · verde #0F6E56 · crema #FAFAF7.
+       ============================================================ */
 
-    .font-display { font-family: 'Poppins', sans-serif; }
-
-    /* ---- Scroll reveal ---- */
-    .reveal { opacity: 0; transform: translateY(30px); transition: opacity .8s cubic-bezier(.21,.7,.25,1), transform .8s cubic-bezier(.21,.7,.25,1); }
-    .reveal.in { opacity: 1; transform: none; }
-
-    /* ---- Texto gradiente ---- */
-    .text-gradient {
-      background: linear-gradient(110deg, #0F6E56 0%, #1D9E75 45%, #534AB7 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
+    :root {
+      --negro: #1a1a1a;
+      --amarillo: #FBBF24;
+      --purpura: #534AB7;
+      --verde: #0F6E56;
+      --verde-claro: #1D9E75;
+      --crema: #FAFAF7;
+      --blanco: #ffffff;
     }
 
-    /* ---- Blobs flotantes del hero ---- */
-    @keyframes floaty { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-22px) } }
-    @keyframes floaty2 { 0%,100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(18px) rotate(6deg) } }
-    .floaty { animation: floaty 8s ease-in-out infinite; }
-    .floaty2 { animation: floaty2 10s ease-in-out infinite; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--crema);
+      color: var(--negro);
+      font-family: 'Instrument Sans', system-ui, sans-serif;
+      font-size: 17px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    ::selection { background: var(--amarillo); color: var(--negro); }
+    section { scroll-margin-top: 84px; }
+    a { color: inherit; }
+    img, svg { max-width: 100%; }
 
-    /* ---- Brillo animado del wordmark ---- */
-    @keyframes shimmer { to { background-position: 200% center; } }
+    .display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-optical-sizing: auto; }
+    .mono { font-family: 'Space Mono', ui-monospace, monospace; }
 
-    /* ---- Fondo con puntos (grano sutil) ---- */
-    .dot-grid { background-image: radial-gradient(rgba(15,110,86,.10) 1px, transparent 1px); background-size: 22px 22px; }
+    .wrap { max-width: 1160px; margin-inline: auto; padding-inline: clamp(20px, 5vw, 48px); }
 
-    /* ---- Línea del timeline que “crece” ---- */
-    .loop-line { background: linear-gradient(180deg, #0F6E56, #1D9E75, #534AB7); }
+    /* ---- Kicker de sección: nódulo + índice en mono ---- */
+    .kicker {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: 'Space Mono', monospace; font-weight: 700;
+      font-size: .75rem; letter-spacing: .14em; text-transform: uppercase;
+    }
+    .kicker .nodo-k {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--amarillo); border: 2px solid currentColor; flex-shrink: 0;
+    }
 
-    /* ---- Cards con hover ---- */
-    .feature-card { transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, border-color .35s ease; }
-    .feature-card:hover { transform: translateY(-6px); box-shadow: 0 24px 50px -24px rgba(15,110,86,.35); border-color: rgba(15,110,86,.35); }
+    /* ---- Botones brutalistas ---- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700;
+      font-size: 1rem; text-transform: uppercase; letter-spacing: .02em;
+      text-decoration: none; padding: 16px 28px;
+      border: 2px solid var(--negro); border-radius: 0;
+      transition: transform .12s ease-out, box-shadow .12s ease-out;
+      cursor: pointer;
+    }
+    .btn--amarillo { background: var(--amarillo); color: var(--negro); box-shadow: 4px 4px 0 var(--negro); }
+    .btn--negro    { background: var(--negro); color: var(--amarillo); box-shadow: 4px 4px 0 rgba(26,26,26,.35); }
+    .btn--purpura  { background: var(--purpura); color: var(--blanco); box-shadow: 4px 4px 0 var(--negro); }
+    .btn--borde    { background: transparent; color: var(--negro); }
+    .btn:hover { transform: translate(-2px, -2px); }
+    .btn--amarillo:hover, .btn--purpura:hover { box-shadow: 6px 6px 0 var(--negro); }
+    .btn:active { transform: translate(0, 0); }
 
-    /* ---- Mockup teléfono flotando ---- */
-    @keyframes phonefloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
-    .phone-float { animation: phonefloat 6s ease-in-out infinite; }
+    .link-mono {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .875rem;
+      text-transform: uppercase; letter-spacing: .04em;
+      text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px;
+      transition: text-underline-offset .12s ease;
+    }
+    .link-mono:hover { text-underline-offset: 6px; }
 
-    /* ---- Botón con micro-interacción ---- */
-    .btn { transition: transform .15s ease, box-shadow .25s ease, background-color .2s ease; }
-    .btn:hover { transform: translateY(-2px); }
-    .btn:active { transform: translateY(0); }
+    /* ---- Chips mono ---- */
+    .chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .72rem;
+      text-transform: uppercase; letter-spacing: .08em;
+      border: 2px solid currentColor; border-radius: 2px; padding: 6px 12px;
+    }
 
-    /* ---- Pulso “en vivo” ---- */
-    @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(29,158,117,.55) } 70% { box-shadow: 0 0 0 10px rgba(29,158,117,0) } 100% { box-shadow: 0 0 0 0 rgba(29,158,117,0) } }
-    .live-dot { animation: pulse-ring 2s infinite; }
+    /* ---- Punto "en vivo" (único loop infinito permitido; anima transform,
+            no box-shadow, para no forzar repaints en móviles de gama baja) ---- */
+    @keyframes pulse-ring {
+      0% { transform: scale(1); opacity: .55; }
+      70%, 100% { transform: scale(2.4); opacity: 0; }
+    }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: var(--verde-claro); position: relative;
+    }
+    .live-dot::after {
+      content: ''; position: absolute; inset: 0; border-radius: 50%;
+      background: var(--verde-claro); animation: pulse-ring 2s infinite;
+    }
 
+    /* ---- Scroll reveal ---- */
+    .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s cubic-bezier(.2,.8,.2,1), transform .45s cubic-bezier(.2,.8,.2,1); }
+    .reveal.in { opacity: 1; transform: none; }
+
+    /* ---- La Raíz Madre: paths que crecen ---- */
+    .grow path { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .9s cubic-bezier(.6,0,.2,1); }
+    .grow path:nth-of-type(2) { transition-delay: .18s; }
+    .grow path:nth-of-type(3) { transition-delay: .36s; }
+    .grow path:nth-of-type(4) { transition-delay: .54s; }
+    .grow.in path { stroke-dashoffset: 0; }
+    .grow .nodo { transform: scale(0); transform-origin: center; transform-box: fill-box; transition: transform .25s ease .55s; }
+    .grow .nodo:nth-of-type(2) { transition-delay: .7s; }
+    .grow.in .nodo { transform: scale(1); }
+
+    /* ============ HEADER ============ */
+    .hdr {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+      background: var(--crema);
+      border-bottom: 2px solid transparent;
+      transition: border-color .2s ease;
+    }
+    .hdr.scrolled { border-bottom-color: var(--negro); }
+    .hdr-bar { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .hdr-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .hdr-logo .wordmark { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 1.35rem; letter-spacing: -.02em; }
+    .hdr-nav { display: none; align-items: center; gap: 22px; }
+    .hdr-nav a {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .72rem;
+      letter-spacing: .1em; text-transform: uppercase; text-decoration: none;
+      border-bottom: 2px solid transparent; padding-bottom: 2px;
+    }
+    .hdr-nav a:hover { border-bottom-color: var(--negro); }
+    .hdr-nav a.nav-purpura { color: var(--purpura); }
+    .hdr-nav a.nav-purpura:hover { border-bottom-color: var(--purpura); }
+    .hdr-apk {
+      display: none; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700;
+      font-size: .82rem; text-transform: uppercase; text-decoration: none;
+      background: var(--amarillo); color: var(--negro);
+      border: 2px solid var(--negro); box-shadow: 3px 3px 0 var(--negro);
+      padding: 9px 16px; transition: transform .12s, box-shadow .12s;
+    }
+    .hdr-apk:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--negro); }
+    .menu-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 42px; height: 42px; background: var(--crema);
+      border: 2px solid var(--negro); cursor: pointer;
+    }
+    @media (min-width: 1024px) {
+      .hdr-nav { display: flex; }
+      .hdr-apk { display: inline-flex; }
+      .menu-btn { display: none; }
+    }
+    .menu-movil {
+      display: none; border-top: 2px solid var(--negro); border-bottom: 2px solid var(--negro);
+      background: var(--crema);
+    }
+    .menu-movil.open { display: block; }
+    .menu-movil a {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .8rem;
+      letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+      padding: 15px 0; border-bottom: 1px solid rgba(26,26,26,.15);
+    }
+    .menu-movil a:last-child { border-bottom: none; }
+    .menu-movil a.nav-purpura { color: var(--purpura); }
+
+    /* ============ HERO ============ */
+    .hero { padding: 128px 0 72px; }
+    .hero-grid { display: grid; gap: 48px; align-items: start; }
+    @media (min-width: 900px) { .hero-grid { grid-template-columns: 1.08fr .92fr; } }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .72rem;
+      letter-spacing: .1em; text-transform: uppercase;
+      border: 2px solid var(--negro); border-radius: 2px; padding: 8px 14px;
+    }
+    .hero-coords {
+      font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: .08em;
+      text-transform: uppercase; color: rgba(26,26,26,.55); margin-top: 12px;
+    }
+    .hero h1 {
+      font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800;
+      font-size: clamp(3rem, 12vw, 7rem); line-height: 1.0; letter-spacing: -.03em;
+      text-transform: uppercase; margin-top: 26px;
+      /* aire para que las raicillas del sprout crezcan sin cruzar el párrafo */
+      padding-bottom: 78px;
+    }
+    .hero h1 .linea { display: block; }
+    .hero h1 .raices { color: var(--verde); position: relative; display: inline-block; }
+    .sprout { position: absolute; left: 12%; top: 96%; width: 34px; height: 92px; color: var(--verde); }
+    .hero-lead { font-size: 1.22rem; font-weight: 500; max-width: 46ch; margin-top: 0; }
+    .hero-lead strong {
+      font-weight: 600;
+      text-decoration: underline; text-decoration-color: var(--amarillo); text-decoration-thickness: 4px; text-underline-offset: 3px;
+    }
+    .hero-tagline {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .82rem;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--verde); margin-top: 18px;
+    }
+    .hero-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 34px; }
+    .hero-meta {
+      font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: .06em;
+      text-transform: uppercase; color: rgba(26,26,26,.5); margin-top: 18px;
+    }
+    @media (max-width: 560px) {
+      .hero-ctas .btn { width: 100%; }
+    }
+
+    /* ---- EL RECIBO ---- */
+    /* La sombra vive en el wrapper: si estuviera en .receipt, el clip-path
+       del zigzag la recortaría (el filtro se aplica antes del recorte) */
+    .receipt-wrap { display: flex; justify-content: center; padding-top: 8px; filter: drop-shadow(6px 6px 0 var(--negro)); }
+    @media (min-width: 900px) { .receipt-wrap { justify-content: flex-end; padding-right: 12px; } }
+    .receipt {
+      width: min(360px, 100%);
+      background: var(--blanco);
+      border: 2px solid var(--negro); border-bottom: none;
+      padding: 22px 20px 30px;
+      font-family: 'Space Mono', monospace; font-size: .8rem; line-height: 1.5;
+      transform: rotate(-1.5deg);
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), 95% 100%, 90% calc(100% - 10px), 85% 100%, 80% calc(100% - 10px), 75% 100%, 70% calc(100% - 10px), 65% 100%, 60% calc(100% - 10px), 55% 100%, 50% calc(100% - 10px), 45% 100%, 40% calc(100% - 10px), 35% 100%, 30% calc(100% - 10px), 25% 100%, 20% calc(100% - 10px), 15% 100%, 10% calc(100% - 10px), 5% 100%, 0 calc(100% - 10px));
+    }
+    .receipt .r-head { text-align: center; font-weight: 700; letter-spacing: .06em; }
+    .receipt .r-sub { text-align: center; font-size: .7rem; color: rgba(26,26,26,.6); letter-spacing: .04em; }
+    .receipt .r-rule { border: none; border-top: 2px dashed rgba(26,26,26,.35); margin: 12px 0; }
+    .receipt .r-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+    .receipt .r-row .dots { flex: 1; border-bottom: 2px dotted rgba(26,26,26,.4); transform: translateY(-4px); }
+    .receipt .r-row .val { font-weight: 700; white-space: nowrap; }
+    .receipt .r-row--hero { background: var(--amarillo); font-weight: 700; margin: 4px -8px; padding: 6px 8px; }
+    .receipt .r-row--hero .dots { border-color: rgba(26,26,26,.55); }
+    .receipt .r-foot { text-align: center; font-weight: 700; font-size: .74rem; letter-spacing: .04em; margin-top: 4px; }
+    .receipt .r-live {
+      text-align: center; font-size: .68rem; letter-spacing: .03em; color: var(--verde);
+      display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
+    }
+    .receipt .r-barcode {
+      margin: 14px auto 0; height: 30px; width: 72%;
+      background: repeating-linear-gradient(90deg,
+        var(--negro) 0 3px, transparent 3px 6px,
+        var(--negro) 6px 7px, transparent 7px 12px,
+        var(--negro) 12px 16px, transparent 16px 19px,
+        var(--negro) 19px 21px, transparent 21px 26px);
+    }
+
+    /* ============ TICKER ============ */
+    .ticker { background: var(--negro); overflow: hidden; border-block: 2px solid var(--negro); }
+    .ticker-track {
+      display: inline-flex; white-space: nowrap; padding: 15px 0;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .8rem;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--crema);
+      animation: marquee 38s linear infinite; will-change: transform;
+    }
+    .ticker:hover .ticker-track { animation-play-state: paused; }
+    .ticker-track .sep { color: var(--amarillo); margin: 0 18px; }
+    @keyframes marquee { to { transform: translateX(-50%); } }
+
+    /* ============ SECCIONES + RAIL DE LA RAÍZ ============ */
+    .sec { padding-block: clamp(64px, 9vw, 104px); position: relative; }
+    .sec--negro { background: var(--negro); color: var(--crema); }
+    .sec--verde { background: var(--verde); color: var(--crema); }
+    .sec--amarillo { background: var(--amarillo); color: var(--negro); }
+
+    .rail-grid { display: grid; grid-template-columns: 26px 1fr; gap: 0 14px; }
+    @media (min-width: 900px) { .rail-grid { grid-template-columns: 56px 1fr; gap: 0 28px; } }
+    /* Evitar grid blowout: sin esto, contenido con min-content ancho
+       (el 2% gigante, chips mono) empuja la columna más allá del viewport en móvil */
+    .rail-grid > *, .sol-grid > *, .hero-grid > *, .hym > *, .manifiesto > *, .ledger-row > *, .anat-row > * { min-width: 0; }
+    .rail { position: relative; }
+    .rail::before {
+      content: ''; position: absolute; left: 10px; top: 0; bottom: 0;
+      width: 3px; background: var(--negro);
+    }
+    .sec--negro .rail::before, .sec--verde .rail::before { background: rgba(250,250,247,.3); }
+    .rail .branch { position: absolute; left: 0; top: 4px; color: var(--negro); }
+    .sec--negro .rail .branch, .sec--verde .rail .branch { color: rgba(250,250,247,.65); }
+    .rail-label {
+      display: none; position: sticky; top: 96px;
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .68rem;
+      letter-spacing: .18em; text-transform: uppercase;
+      margin-top: 150px; margin-left: 1px; color: rgba(26,26,26,.5);
+    }
+    .sec--negro .rail-label, .sec--verde .rail-label { color: rgba(250,250,247,.5); }
+    @media (min-width: 900px) { .rail-label { display: block; } }
+
+    .sec h2 {
+      font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800;
+      font-size: clamp(2.1rem, 6.5vw, 3.6rem); line-height: 1.05; letter-spacing: -.02em;
+      margin-top: 18px; max-width: 22ch;
+    }
+    .sec .sub { font-size: 1.15rem; max-width: 52ch; margin-top: 16px; color: rgba(26,26,26,.75); }
+    .sec--negro .sub, .sec--verde .sub { color: rgba(250,250,247,.75); }
+
+    h3.item-t { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1.3rem; line-height: 1.25; }
+    .item-p { color: rgba(26,26,26,.7); margin-top: 6px; max-width: 60ch; }
+
+    /* ---- Iconos de línea heredados de la V1 (flechas, ojo, QR, escudo…) ---- */
+    .t-row { display: flex; align-items: center; gap: 12px; }
+    .t-ico {
+      flex-shrink: 0; width: 38px; height: 38px;
+      border: 2px solid currentColor; border-radius: 2px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .sec--negro .item-p, .sec--verde .item-p { color: rgba(250,250,247,.7); }
+
+    /* ---- Filas de ledger (mueren las cards) ---- */
+    .ledger { margin-top: 40px; border-top: 2px solid var(--negro); }
+    .ledger-row {
+      display: grid; grid-template-columns: 72px 1fr; gap: 18px; align-items: start;
+      padding: 26px 8px; border-bottom: 2px solid var(--negro);
+      transition: background .08s linear, color .08s linear;
+    }
+    .ledger-row .num {
+      font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800;
+      font-size: 2.6rem; line-height: 1; letter-spacing: -.03em;
+    }
+    @media (hover: hover) {
+      .ledger-row:hover { background: var(--negro); color: var(--crema); }
+      .ledger-row:hover .item-p { color: rgba(250,250,247,.75); }
+    }
+
+    /* ============ PROBLEMA ============ */
+    .tachado {
+      text-decoration: line-through; text-decoration-color: var(--amarillo); text-decoration-thickness: 6px;
+    }
+
+    /* ============ SOLUCIÓN ============ */
+    .sol-grid { display: grid; gap: 40px; align-items: start; margin-top: 8px; }
+    @media (min-width: 960px) { .sol-grid { grid-template-columns: 1.05fr .95fr; } }
+
+    /* ---- El teléfono: la UI real de la app, recreada en HTML ---- */
+    .phone-wrap { position: relative; display: flex; justify-content: center; padding: 30px 0 14px; }
+    .phone {
+      width: min(300px, 86%); background: #000;
+      border: 2px solid rgba(250,250,247,.3); border-radius: 34px; padding: 10px;
+      transform: rotate(1.5deg);
+      box-shadow: 10px 10px 0 rgba(250,250,247,.12);
+    }
+    .phone-screen { background: var(--crema); color: var(--negro); border-radius: 26px; padding: 16px; }
+    .ph-label { font-family: 'Space Mono', monospace; font-size: .6rem; text-transform: uppercase; letter-spacing: .08em; color: rgba(26,26,26,.55); }
+    .ph-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .ph-hola { font-size: .95rem; font-weight: 600; }
+    .ph-avatar {
+      width: 34px; height: 34px; border-radius: 50%; background: rgba(83,74,183,.15); color: var(--purpura);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .7rem;
+    }
+    .ph-balance { background: var(--negro); color: #fff; border-radius: 6px; padding: 14px; margin-bottom: 12px; }
+    .ph-balance .ph-label { color: var(--amarillo); }
+    .ph-amount { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 1.9rem; line-height: 1.15; }
+    .ph-amount .usdc { font-family: 'Space Mono', monospace; font-size: .7rem; color: var(--amarillo); vertical-align: middle; }
+    .ph-cop { font-family: 'Space Mono', monospace; font-size: .62rem; opacity: .6; }
+    .ph-stats { display: flex; gap: 10px; margin-bottom: 12px; }
+    .ph-stat { flex: 1; text-align: center; border-radius: 6px; padding: 8px 4px; font-family: 'Space Mono', monospace; }
+    .ph-stat b { display: block; font-size: 1.05rem; }
+    .ph-stat span { font-size: .58rem; text-transform: uppercase; letter-spacing: .05em; }
+    .ph-stat--verde { background: rgba(15,110,86,.1); color: var(--verde); }
+    .ph-stat--purpura { background: rgba(83,74,183,.1); color: var(--purpura); }
+    .ph-tip { display: flex; gap: 10px; align-items: center; background: rgba(251,191,36,.28); border-radius: 6px; padding: 10px; margin-bottom: 12px; }
+    .ph-toggle { width: 34px; height: 18px; border-radius: 999px; background: var(--verde); position: relative; flex-shrink: 0; }
+    .ph-toggle::after { content: ''; position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+    .ph-tip .t1 { font-size: .74rem; font-weight: 700; color: #854F0B; line-height: 1.3; }
+    .ph-tip .t2 { font-size: .66rem; color: #854F0B; line-height: 1.3; }
+    .ph-cta {
+      width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--amarillo); color: var(--negro); border: 2px solid var(--negro); border-radius: 6px;
+      font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: .85rem;
+      text-transform: uppercase; padding: 11px; cursor: default;
+    }
+    .ph-nav { display: flex; justify-content: space-around; border-top: 1px solid rgba(26,26,26,.12); padding-top: 10px; margin-top: 12px; }
+    .ph-nav div {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-family: 'Space Mono', monospace; font-size: .52rem; text-transform: uppercase;
+      letter-spacing: .04em; color: rgba(26,26,26,.45);
+    }
+    .ph-nav div:first-child { color: var(--negro); }
+    .phone-badge {
+      position: absolute; z-index: 2;
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--crema); color: var(--negro);
+      border: 2px solid var(--negro); border-radius: 2px; box-shadow: 3px 3px 0 var(--negro);
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .6rem;
+      letter-spacing: .06em; text-transform: uppercase; padding: 7px 10px;
+    }
+    .pb-top { top: 8px; left: 0; }
+    .pb-bottom { bottom: -2px; right: 0; background: var(--verde); color: var(--crema); }
+
+    .sol-chips { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    .sol-chips .chip { color: var(--crema); border-color: rgba(250,250,247,.5); }
+    .sol-chips .chip b { color: var(--amarillo); }
+    .split-svg { width: 100%; height: auto; display: block; margin-top: 34px; }
+    .split-note {
+      font-family: 'Space Mono', monospace; font-size: .7rem; letter-spacing: .02em;
+      color: rgba(250,250,247,.55); margin-top: 14px; max-width: 62ch;
+    }
+
+    /* ============ CÓMO FUNCIONA ============ */
+    .loop { margin-top: 44px; max-width: 780px; }
+    .loop ol { list-style: none; border-left: 3px solid var(--negro); padding-left: 34px; }
+    .loop li { position: relative; padding-block: 20px; }
+    .loop li + li { border-top: 1px solid rgba(26,26,26,.15); }
+    .loop .nodo-paso {
+      position: absolute; left: -52px; top: 22px;
+      width: 34px; height: 34px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .8rem;
+      border: 2px solid var(--negro); background: var(--amarillo); color: var(--negro);
+    }
+    .loop li:nth-child(2) .nodo-paso { background: var(--verde); color: var(--crema); }
+    .loop li:nth-child(3) .nodo-paso { background: var(--purpura); color: var(--blanco); }
+    .loop li:nth-child(4) .nodo-paso { background: var(--negro); color: var(--amarillo); }
+    .loop li:nth-child(5) .nodo-paso { background: var(--verde-claro); color: var(--crema); }
+    .loop li:nth-child(6) .nodo-paso { background: var(--crema); color: var(--negro); }
+    .loop-cierre {
+      margin-top: 34px; padding-block: 16px;
+      border-top: 2px solid var(--negro); border-bottom: 2px solid var(--negro);
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .8rem;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--verde);
+    }
+
+    /* ============ ANATOMÍA (features + ecosistema) ============ */
+    .anat { margin-top: 42px; border-top: 2px solid var(--negro); }
+    .anat-row {
+      display: grid; grid-template-columns: 1fr; gap: 6px 20px;
+      padding: 22px 8px; border-bottom: 1.5px solid var(--negro);
+      transition: background .08s linear, color .08s linear;
+    }
+    @media (min-width: 820px) { .anat-row { grid-template-columns: 130px 250px 1fr; align-items: baseline; } }
+    .anat-tag {
+      justify-self: start;
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .66rem;
+      letter-spacing: .1em; text-transform: uppercase;
+      padding: 4px 9px; border-radius: 2px;
+    }
+    .tag-soroban { background: var(--negro); color: var(--amarillo); }
+    .tag-defindex { background: var(--verde); color: var(--crema); }
+    .tag-passkey { background: var(--purpura); color: var(--blanco); }
+    .tag-usdc { background: var(--negro); color: var(--crema); }
+    .tag-mapbox { background: var(--verde-claro); color: var(--crema); }
+    .tag-sep { background: transparent; color: var(--purpura); border: 2px solid var(--purpura); padding: 2px 7px; }
+    @media (hover: hover) {
+      .anat-row:hover { background: var(--negro); color: var(--crema); }
+      .anat-row:hover .item-p { color: rgba(250,250,247,.75); }
+    }
+
+    /* ============ DEMO / PRUEBA ON-CHAIN ============ */
+    .video-frame {
+      margin-top: 40px; border: 3px solid var(--negro);
+      box-shadow: 8px 8px 0 var(--negro); background: #000;
+    }
+    .video-frame .ratio { position: relative; padding-top: 56.25%; }
+    .video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .video-note {
+      font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: .06em;
+      text-transform: uppercase; color: rgba(250,250,247,.65); margin-top: 14px;
+      display: flex; flex-wrap: wrap; gap: 6px 18px;
+    }
+    .video-note a { color: var(--amarillo); text-decoration: underline; text-underline-offset: 3px; }
+
+    .contratos-grid { display: grid; gap: 14px; margin-top: 34px; grid-template-columns: 1fr; }
+    @media (min-width: 560px) { .contratos-grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1000px) { .contratos-grid { grid-template-columns: repeat(4, 1fr); } }
+    .mini-recibo {
+      background: var(--crema); color: var(--negro);
+      border: 2px solid var(--negro); box-shadow: 4px 4px 0 var(--negro);
+      padding: 16px; text-decoration: none; display: block;
+      font-family: 'Space Mono', monospace;
+      transition: transform .12s ease-out, box-shadow .12s ease-out;
+    }
+    .mini-recibo:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--negro); }
+    .mini-recibo .mr-name { font-weight: 700; font-size: .9rem; letter-spacing: .06em; }
+    .mini-recibo .mr-addr { font-size: .7rem; color: rgba(26,26,26,.55); margin-top: 4px; }
+    .mini-recibo .mr-link { font-size: .7rem; font-weight: 700; color: var(--verde); margin-top: 10px; display: block; }
+
+    .live-chips { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .live-chips .chip { border-color: rgba(250,250,247,.55); color: var(--crema); }
+    /* contraste sobre verde: crema sólida por defecto, amarillo cuando está en vivo */
+    .live-chips .chip .estado { color: rgba(250,250,247,.85); }
+    .live-chips .chip .estado.vivo { color: var(--amarillo); }
+
+    .demo-ctas { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
+    .btn--crema-borde { background: transparent; color: var(--crema); border-color: var(--crema); }
+    .btn--crema-borde:hover { box-shadow: 4px 4px 0 rgba(250,250,247,.35); }
+
+    /* ============ POR QUÉ GANAMOS ============ */
+    .manifiesto { display: grid; gap: 0 48px; margin-top: 26px; }
+    @media (min-width: 860px) { .manifiesto { grid-template-columns: 1fr 1fr; } }
+    .man-item { padding: 24px 0; border-bottom: 1px solid rgba(26,26,26,.2); }
+    .man-item .idx {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .72rem;
+      color: var(--purpura); letter-spacing: .14em;
+    }
+    .acc-purpura { color: var(--purpura); }
+
+    /* ============ HOY Y MAÑANA ============ */
+    .hym { display: grid; gap: 48px; margin-top: 44px; }
+    @media (min-width: 900px) {
+      .hym { grid-template-columns: 1fr 1fr; gap: 0; }
+      .hym > div:first-child { padding-right: 48px; border-right: 2px solid var(--negro); }
+      .hym > div:last-child { padding-left: 48px; }
+    }
+    .check-row { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid rgba(26,26,26,.15); }
+    .check-ico {
+      flex-shrink: 0; width: 24px; height: 24px; border: 2px solid var(--verde);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--verde); font-family: 'Space Mono', monospace; font-weight: 700; font-size: .8rem;
+      background: rgba(15,110,86,.08); margin-top: 2px;
+    }
+    .hito-row { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid rgba(26,26,26,.15); }
+    .hito-ico {
+      flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+      border: 2px solid var(--negro); background: var(--crema); margin-top: 2px;
+    }
+    .hito-k {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .66rem;
+      letter-spacing: .12em; text-transform: uppercase; color: rgba(26,26,26,.5);
+    }
+    .chip--verde { color: var(--verde); background: rgba(15,110,86,.08); }
+
+    /* ============ CTA FINAL ============ */
+    .cta-final { position: relative; overflow: hidden; }
+    .cta-final h2 { max-width: 24ch; font-size: clamp(2.4rem, 7.5vw, 4.6rem); }
+    .cta-final .raices-inv {
+      position: absolute; bottom: -6px; right: clamp(8px, 6vw, 80px);
+      transform: scaleY(-1); color: var(--negro); opacity: .8; pointer-events: none;
+    }
+
+    /* ============ FOOTER ============ */
+    .footer { background: var(--negro); color: rgba(250,250,247,.7); }
+    .footer-grid { display: grid; gap: 40px; padding-block: 64px 40px; }
+    @media (min-width: 860px) { .footer-grid { grid-template-columns: 1.4fr 1fr 1.4fr; } }
+    .footer h4 {
+      font-family: 'Space Mono', monospace; font-weight: 700; font-size: .72rem;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--crema); margin-bottom: 18px;
+    }
+    .footer a { text-decoration: none; }
+    .footer .f-link { display: block; padding: 6px 0; font-size: .95rem; }
+    .footer .f-link:hover { color: var(--amarillo); }
+    .footer .f-contrato {
+      display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+      font-family: 'Space Mono', monospace; font-size: .78rem;
+      padding: 9px 0; border-bottom: 1px solid rgba(250,250,247,.12);
+    }
+    .footer .f-contrato:hover { color: var(--amarillo); }
+    .footer .f-contrato .addr { color: rgba(250,250,247,.4); }
+    .footer-base {
+      display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between;
+      border-top: 1px solid rgba(250,250,247,.15); padding-block: 22px 30px;
+      font-family: 'Space Mono', monospace; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .footer-base a { color: var(--amarillo); text-decoration: none; }
+    .footer-tagline { font-family: 'Space Mono', monospace; font-size: .78rem; color: var(--amarillo); margin-top: 16px; }
+
+    /* ============ REDUCED MOTION ============ */
     @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
       .reveal { opacity: 1 !important; transform: none !important; transition: none; }
-      .floaty, .floaty2, .phone-float, .live-dot { animation: none; }
+      .grow path { stroke-dashoffset: 0 !important; transition: none; }
+      .grow .nodo { transform: scale(1) !important; transition: none; }
+      .ticker-track { animation: none; }
+      .live-dot { animation: none; }
+      .btn, .mini-recibo { transition: none; }
     }
   </style>
 </head>
 
-<body class="font-sans antialiased">
+<body>
 
   <!-- ============================ HEADER ============================ -->
-  <header id="top" class="fixed top-0 inset-x-0 z-50 transition-all duration-300" data-header>
-    <div class="mx-auto max-w-7xl px-4 sm:px-6">
-      <div data-headerbar class="mt-3 flex items-center justify-between rounded-2xl border border-transparent px-3 sm:px-5 py-2.5 transition-all duration-300">
-        <!-- Logo -->
-        <a href="#top" class="flex items-center gap-2.5 shrink-0">
-          <span class="block">
-            <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true">
-              <circle cx="32" cy="24" r="15" fill="#0F6E56"/>
-              <circle cx="19" cy="29" r="9" fill="#0F6E56"/>
-              <circle cx="45" cy="29" r="9" fill="#0F6E56"/>
-              <circle cx="32" cy="19" r="3" fill="#FBBF24"/>
-              <circle cx="24" cy="27" r="2.6" fill="#FBBF24"/>
-              <circle cx="40" cy="26" r="2.6" fill="#FBBF24"/>
-              <rect x="29" y="36" width="6" height="13" rx="3" fill="#0B5644"/>
-              <path d="M32 49c-1 4-5 5-8 8M32 49c1 4 5 5 8 8" stroke="#0B5644" stroke-width="3" stroke-linecap="round" fill="none"/>
-            </svg>
-          </span>
-          <span class="font-display text-xl font-extrabold tracking-tight text-negro">RAÍZ</span>
+  <header id="top" class="hdr" data-header>
+    <div class="wrap">
+      <div class="hdr-bar">
+        <a href="#top" class="hdr-logo" aria-label="RAÍZ — inicio">
+          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="24" r="15" fill="#0F6E56"/>
+            <circle cx="19" cy="29" r="9" fill="#0F6E56"/>
+            <circle cx="45" cy="29" r="9" fill="#0F6E56"/>
+            <circle cx="32" cy="19" r="3.2" fill="#FBBF24"/>
+            <circle cx="24" cy="27" r="2.8" fill="#FBBF24"/>
+            <circle cx="40" cy="26" r="2.8" fill="#FBBF24"/>
+            <rect x="29" y="36" width="6" height="13" rx="3" fill="#0B5644"/>
+            <path d="M32 49c-1 4-5 5-8 8M32 49c1 4 5 5 8 8" stroke="#0B5644" stroke-width="3" stroke-linecap="round" fill="none"/>
+          </svg>
+          <span class="wordmark">RAÍZ</span>
         </a>
 
-        <!-- Nav desktop -->
-        <nav class="hidden md:flex items-center gap-1 text-sm font-medium text-negro/70">
-          <a href="#como-funciona" class="px-3 py-2 rounded-lg hover:text-verde hover:bg-verde/5 transition">Cómo funciona</a>
-          <a href="#features" class="px-3 py-2 rounded-lg hover:text-verde hover:bg-verde/5 transition">Features</a>
-          <a href="#demo" class="px-3 py-2 rounded-lg hover:text-verde hover:bg-verde/5 transition">Demo</a>
-          <a href="#roadmap" class="px-3 py-2 rounded-lg hover:text-verde hover:bg-verde/5 transition">Roadmap</a>
-          <a href="verificar-residente.html" class="px-3 py-2 rounded-lg text-purpura font-semibold hover:bg-purpura/5 transition">Verificar residente</a>
-          <a href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-verde/30 text-verde font-semibold hover:bg-verde/5 transition">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-            Enlace a entrevistas
-          </a>
+        <nav class="hdr-nav" aria-label="Navegación principal">
+          <a href="#como-funciona">Cómo funciona</a>
+          <a href="#features">Features</a>
+          <a href="#demo">Demo</a>
+          <a href="#roadmap">Roadmap</a>
+          <a href="verificar-residente.html" class="nav-purpura">Verificar residente</a>
+          <a href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener">Entrevistas&nbsp;↗</a>
         </nav>
 
-        <!-- CTA + hamburguesa -->
-        <div class="flex items-center gap-2">
-          <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk"
-             class="btn hidden sm:inline-flex items-center gap-2 rounded-xl bg-negro text-amarillo font-semibold text-sm px-4 py-2.5 shadow-lg shadow-negro/10">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            Descargar APK
-          </a>
-          <button data-menu-btn aria-label="Abrir menú" class="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl border border-negro/10 bg-white/70 text-negro">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <a class="hdr-apk" href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk">Descargar APK</a>
+          <button class="menu-btn" data-menu-btn aria-label="Abrir menú" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
         </div>
       </div>
 
       <!-- Menú móvil -->
-      <div data-menu class="md:hidden hidden mt-2 rounded-2xl border border-negro/10 bg-white shadow-xl shadow-negro/5 p-2">
-        <a href="#como-funciona" class="block px-4 py-3 rounded-xl text-negro/80 font-medium hover:bg-verde/5">Cómo funciona</a>
-        <a href="#features" class="block px-4 py-3 rounded-xl text-negro/80 font-medium hover:bg-verde/5">Features</a>
-        <a href="#demo" class="block px-4 py-3 rounded-xl text-negro/80 font-medium hover:bg-verde/5">Demo</a>
-        <a href="#roadmap" class="block px-4 py-3 rounded-xl text-negro/80 font-medium hover:bg-verde/5">Roadmap</a>
-        <a href="verificar-residente.html" class="block px-4 py-3 rounded-xl text-purpura font-semibold hover:bg-purpura/5">Verificar residente</a>
-        <a href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener" class="flex items-center gap-2 px-4 py-3 rounded-xl text-verde font-semibold hover:bg-verde/5">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-          Enlace a entrevistas
-        </a>
-        <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk" class="mt-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-negro text-amarillo font-semibold">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          Descargar APK
-        </a>
+      <div class="menu-movil" data-menu>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#features">Features</a>
+        <a href="#demo">Demo</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="verificar-residente.html" class="nav-purpura">Verificar residente</a>
+        <a href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener">Enlace a entrevistas <span>↗</span></a>
+        <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk" style="color:var(--verde)">Descargar APK <span>↓</span></a>
       </div>
     </div>
   </header>
 
   <!-- ============================ HERO ============================ -->
-  <section class="relative overflow-hidden pt-32 sm:pt-36 pb-20 sm:pb-28">
-    <!-- Fondo -->
-    <div class="absolute inset-0 -z-10 dot-grid"></div>
-    <div class="absolute inset-0 -z-10 bg-gradient-to-b from-verde/[0.07] via-crema to-crema"></div>
-    <div class="absolute -z-10 -top-24 -left-24 w-[28rem] h-[28rem] rounded-full bg-verde/20 blur-3xl floaty"></div>
-    <div class="absolute -z-10 top-20 -right-20 w-[26rem] h-[26rem] rounded-full bg-purpura/15 blur-3xl floaty2"></div>
-    <div class="absolute -z-10 bottom-0 left-1/3 w-72 h-72 rounded-full bg-amarillo/20 blur-3xl floaty"></div>
-
-    <div class="mx-auto max-w-7xl px-4 sm:px-6">
-      <div class="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
 
         <!-- Columna texto -->
-        <div class="text-center lg:text-left">
-          <div class="reveal inline-flex items-center gap-2 rounded-full border border-verde/20 bg-verde/5 px-4 py-1.5 text-xs font-semibold text-verde">
-            <span class="relative flex h-2 w-2"><span class="live-dot absolute inline-flex h-2 w-2 rounded-full bg-verde-claro"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-verde-claro"></span></span>
-            Stellar PULSO Hackathon 2026 · 4 contratos vivos en testnet
+        <div>
+          <div class="reveal hero-badge">
+            <span class="live-dot" aria-hidden="true"></span>
+            Stellar PULSO 2026 · 4 contratos vivos en testnet
           </div>
+          <div class="reveal hero-coords">10.42°N&nbsp;&nbsp;75.55°W — Cartagena de Indias, Colombia</div>
 
-          <!-- Logo grande + wordmark -->
-          <div class="reveal mt-7 flex items-center justify-center lg:justify-start gap-3">
-            <svg width="58" height="58" viewBox="0 0 64 64" aria-hidden="true" class="drop-shadow">
-              <circle cx="32" cy="24" r="15" fill="#0F6E56"/>
-              <circle cx="19" cy="29" r="9" fill="#0F6E56"/>
-              <circle cx="45" cy="29" r="9" fill="#0F6E56"/>
-              <circle cx="32" cy="19" r="3.2" fill="#FBBF24"/>
-              <circle cx="24" cy="27" r="2.8" fill="#FBBF24"/>
-              <circle cx="40" cy="26" r="2.8" fill="#FBBF24"/>
-              <rect x="29" y="36" width="6" height="13" rx="3" fill="#0B5644"/>
-              <path d="M32 49c-1 4-5 5-8 8M32 49c1 4 5 5 8 8" stroke="#0B5644" stroke-width="3" stroke-linecap="round" fill="none"/>
-            </svg>
-            <span class="font-display text-5xl sm:text-6xl font-extrabold tracking-tight text-negro">RAÍZ</span>
-          </div>
-
-          <!-- Slogan -->
-          <h1 class="reveal mt-6 font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.05] tracking-tight">
-            El turismo que<br class="hidden sm:block" /> <span class="text-gradient">echa raíces.</span>
+          <h1 class="reveal">
+            <span class="linea">El turismo</span>
+            <span class="linea">que echa</span>
+            <span class="linea"><span class="raices">raíces.
+              <svg class="sprout grow" viewBox="0 0 34 92" fill="none" aria-hidden="true">
+                <path pathLength="1" d="M17 0 V34" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                <path pathLength="1" d="M17 34 C 17 56, 5 58, 4 78" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                <path pathLength="1" d="M17 34 C 17 60, 28 62, 30 86" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                <circle class="nodo" cx="4" cy="78" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+                <circle class="nodo" cx="30" cy="86" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </span></span>
           </h1>
 
-          <!-- Propuesta de valor -->
-          <p class="reveal mt-6 text-lg text-negro/70 max-w-xl mx-auto lg:mx-0">
-            La red de pagos turísticos donde el <strong class="text-negro font-semibold">2% de cada pago</strong> va a un fondo comunitario que <strong class="text-negro font-semibold">gobiernan los residentes</strong> del barrio. On-chain, transparente y sin intermediarios — sobre Stellar.
+          <p class="reveal hero-lead">
+            La red de pagos turísticos donde <strong>el 2% de cada pago</strong> va a un fondo
+            comunitario que <strong>gobiernan los residentes</strong> del barrio.
+            On-chain, transparente y sin intermediarios — sobre Stellar.
           </p>
 
-          <!-- Tagline pill -->
-          <div class="reveal mt-5 inline-flex items-center gap-2 rounded-full bg-amarillo/20 px-4 py-1.5 text-sm font-semibold text-[#854F0B]">
-            <span aria-hidden="true">🌱</span> Tu paga, el barrio crece.
-          </div>
+          <p class="reveal hero-tagline">&gt;&gt; Tu paga, el barrio crece.</p>
 
-          <!-- CTAs -->
-          <div class="reveal mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3">
-            <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk"
-               class="btn w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-amarillo text-negro font-bold px-6 py-3.5 shadow-xl shadow-amarillo/30">
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          <div class="reveal hero-ctas">
+            <a class="btn btn--amarillo" href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
               Descargar APK
             </a>
-            <a href="#demo" class="btn w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-negro text-white font-semibold px-6 py-3.5">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              Ver demo
-            </a>
-            <a href="https://github.com/JuanWimmin/Protocolo_Raiz" class="btn w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-negro/15 bg-white text-negro font-semibold px-6 py-3.5 hover:border-negro/30">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48A10.01 10.01 0 0 0 22 12c0-5.52-4.48-10-10-10z"/></svg>
-              GitHub
-            </a>
+            <a class="btn btn--borde" href="#demo">Ver demo&nbsp;→</a>
+            <a class="link-mono" href="https://github.com/JuanWimmin/Protocolo_Raiz">GitHub&nbsp;↗</a>
           </div>
 
-          <p class="reveal mt-4 text-xs text-negro/45">Android · minSdk 26 · v0.1.0 · self-custodial</p>
+          <p class="reveal hero-meta">Android · minSdk 26 · v0.1.0 · self-custodial</p>
         </div>
 
-        <!-- Columna mockup -->
-        <div class="reveal relative flex justify-center lg:justify-end">
-          <!-- Badge flotante on-chain -->
-          <div class="floaty2 absolute -left-2 sm:left-6 top-10 z-20 hidden sm:flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-2xl shadow-negro/10 border border-negro/5">
-            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-verde/10 text-verde">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
-            </span>
-            <div class="leading-tight">
-              <div class="text-[11px] text-negro/50">100% verificable</div>
-              <div class="text-sm font-semibold text-negro">on-chain</div>
+        <!-- EL RECIBO DEL BARRIO -->
+        <div class="reveal receipt-wrap">
+          <div class="receipt" role="img" aria-label="Recibo de un pago RAÍZ: de una compra de 20 USDC, el comercio recibe 19.90, la red cobra 0.10 y el fondo del barrio recibe 0.40 del Tip Barrio del 2% que aporta el turista.">
+            <div class="r-head">RAÍZ ✶ RECIBO DEL BARRIO</div>
+            <div class="r-sub">CENTRO HISTÓRICO — CARTAGENA</div>
+            <div class="r-sub"><span data-fecha>2026</span> · TESTNET DE STELLAR</div>
+            <hr class="r-rule" />
+            <div class="r-row"><span>ARTESANÍA + CAFÉ</span><span class="dots"></span><span class="val">20.00</span></div>
+            <div class="r-row"><span>TIP BARRIO (2%)</span><span class="dots"></span><span class="val">+0.40</span></div>
+            <div class="r-row"><span><b>TOTAL TURISTA</b></span><span class="dots"></span><span class="val">20.40&nbsp;USDC</span></div>
+            <hr class="r-rule" />
+            <div class="r-row"><span>AL COMERCIO</span><span class="dots"></span><span class="val">19.90</span></div>
+            <div class="r-row"><span>FEE DE PROTOCOLO (0.5%)</span><span class="dots"></span><span class="val">0.10</span></div>
+            <div class="r-row r-row--hero"><span>AL FONDO DEL BARRIO</span><span class="dots"></span><span class="val">0.40</span></div>
+            <div class="r-row"><span>PUNTOS VIAJERO</span><span class="dots"></span><span class="val">+40</span></div>
+            <hr class="r-rule" />
+            <div class="r-foot">EL 2% SE QUEDA. EL BARRIO DECIDE.</div>
+            <div class="r-live">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span>FONDO DEL BARRIO HOY: <b data-live-pool>0.40</b> USDC · <span data-live-tag>snapshot</span></span>
             </div>
-          </div>
-
-          <!-- Badge flotante tip -->
-          <div class="floaty absolute -right-1 sm:right-2 bottom-12 z-20 flex items-center gap-2 rounded-2xl bg-verde px-3.5 py-2.5 shadow-2xl shadow-verde/30">
-            <div class="leading-tight text-white">
-              <div class="text-[11px] opacity-80">Tip Barrio</div>
-              <div class="text-sm font-bold">+2% al fondo</div>
-            </div>
-          </div>
-
-          <!-- Teléfono -->
-          <div class="phone-float relative w-[290px] sm:w-[320px] rounded-[2.4rem] bg-negro p-3 shadow-2xl shadow-negro/30">
-            <div class="rounded-[1.9rem] bg-crema p-4 min-h-[560px]">
-              <!-- topbar -->
-              <div class="flex items-center justify-between mb-4">
-                <div>
-                  <div class="text-[11px] text-negro/50">RAÍZ Pass</div>
-                  <div class="text-[15px] font-semibold">Hola, viajero</div>
-                </div>
-                <div class="w-9 h-9 rounded-full bg-purpura/15 flex items-center justify-center text-purpura font-semibold text-xs">JV</div>
-              </div>
-              <!-- balance -->
-              <div class="rounded-2xl bg-negro text-white p-4 mb-4">
-                <div class="text-[11px] text-amarillo mb-1">Saldo disponible</div>
-                <div class="text-3xl font-semibold">142.50 <span class="text-xs text-amarillo align-middle">USDC</span></div>
-                <div class="text-[11px] opacity-60 mt-1">≈ 588,000 COP</div>
-              </div>
-              <!-- stats -->
-              <div class="flex gap-2.5 mb-4">
-                <div class="flex-1 rounded-xl bg-verde/10 p-2.5 text-center">
-                  <div class="text-lg font-semibold text-verde">1,240</div>
-                  <div class="text-[11px] text-verde">puntos</div>
-                </div>
-                <div class="flex-1 rounded-xl bg-purpura/10 p-2.5 text-center">
-                  <div class="text-lg font-semibold text-purpura">8.04</div>
-                  <div class="text-[11px] text-purpura">aportado</div>
-                </div>
-              </div>
-              <!-- tip toggle -->
-              <div class="flex items-center gap-2.5 rounded-xl bg-amarillo/20 p-3 mb-4">
-                <div class="relative w-9 h-5 rounded-full bg-[#BA7517] shrink-0"><span class="absolute right-0.5 top-0.5 w-4 h-4 rounded-full bg-white"></span></div>
-                <div class="leading-tight">
-                  <div class="text-[12px] font-semibold text-[#854F0B]">Tip Barrio · 2%</div>
-                  <div class="text-[11px] text-[#854F0B]">aporta al fondo del barrio</div>
-                </div>
-              </div>
-              <!-- cta -->
-              <button class="w-full rounded-xl bg-amarillo text-negro font-semibold py-3 flex items-center justify-center gap-2 text-sm">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M20 14v3M14 20h3M20 20v.01"/></svg>
-                Escanear y pagar
-              </button>
-              <!-- nav -->
-              <div class="flex justify-around border-t border-negro/10 pt-3 mt-4 text-[10px] text-negro/40">
-                <div class="flex flex-col items-center gap-1 text-negro"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Inicio</div>
-                <div class="flex flex-col items-center gap-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Mapa</div>
-                <div class="flex flex-col items-center gap-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4 7 7 12 7zM12 7s3-5 5.5-3-1 3-5.5 3z"/></svg>Premios</div>
-                <div class="flex flex-col items-center gap-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Perfil</div>
-              </div>
-            </div>
+            <div class="r-barcode" aria-hidden="true"></div>
           </div>
         </div>
 
@@ -315,213 +719,218 @@
     </div>
   </section>
 
-  <!-- ============================ STATS ============================ -->
-  <section class="relative -mt-6 pb-4">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden rounded-3xl border border-negro/5 bg-negro/5 shadow-xl shadow-negro/5">
-        <div class="bg-white p-6 text-center">
-          <div class="font-display text-4xl font-extrabold text-verde"><span data-count="2">0</span>%</div>
-          <div class="mt-1 text-sm text-negro/55">Tip Barrio en cada pago</div>
-        </div>
-        <div class="bg-white p-6 text-center">
-          <div class="font-display text-4xl font-extrabold text-purpura"><span data-count="4">0</span></div>
-          <div class="mt-1 text-sm text-negro/55">Contratos Soroban en testnet</div>
-        </div>
-        <div class="bg-white p-6 text-center">
-          <div class="font-display text-4xl font-extrabold text-[#BA7517]"><span data-count="30">0</span>%</div>
-          <div class="mt-1 text-sm text-negro/55">Quórum de residentes</div>
-        </div>
-        <div class="bg-white p-6 text-center">
-          <div class="font-display text-4xl font-extrabold text-negro"><span data-count="100">0</span>%</div>
-          <div class="mt-1 text-sm text-negro/55">On-chain y verificable</div>
+  <!-- ============================ TICKER ============================ -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>2% Tip Barrio en cada pago<span class="sep">✶</span>4 contratos Soroban en testnet<span class="sep">✶</span>Quórum 30%<span class="sep">✶</span>1 residente = 1 voto<span class="sep">✶</span>100% on-chain y verificable<span class="sep">✶</span>El fondo rinde en DeFindex<span class="sep">✶</span><span data-ledger>Ledger testnet · consultando…</span><span class="sep">✶</span></span>
+      <span>2% Tip Barrio en cada pago<span class="sep">✶</span>4 contratos Soroban en testnet<span class="sep">✶</span>Quórum 30%<span class="sep">✶</span>1 residente = 1 voto<span class="sep">✶</span>100% on-chain y verificable<span class="sep">✶</span>El fondo rinde en DeFindex<span class="sep">✶</span><span data-ledger>Ledger testnet · consultando…</span><span class="sep">✶</span></span>
+    </div>
+  </div>
+
+  <!-- ============================ 01 / EL PROBLEMA ============================ -->
+  <section id="problema" class="sec">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">01 / El problema</span>
+      </div>
+      <div>
+        <div class="reveal kicker"><span class="nodo-k"></span>01 / El problema</div>
+        <h2 class="reveal">El turismo <span class="tachado">extrae</span>. El barrio que lo hace posible casi no ve un peso.</h2>
+        <p class="reveal sub">Viajas a un barrio con encanto y pagas por esa magia. Pero ¿a dónde va tu dinero? Casi nunca al barrio que lo creó.</p>
+
+        <div class="ledger">
+          <div class="reveal ledger-row">
+            <div class="num display">01</div>
+            <div>
+              <div class="t-row">
+                <span class="t-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+                <h3 class="item-t">El dinero se va</h3>
+              </div>
+              <p class="item-p">Plataformas, cadenas e intermediarios se quedan con el margen. El valor que crea el barrio sale del barrio.</p>
+            </div>
+          </div>
+          <div class="reveal ledger-row">
+            <div class="num display">02</div>
+            <div>
+              <div class="t-row">
+                <span class="t-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+                <h3 class="item-t">Quien crea, no decide</h3>
+              </div>
+              <p class="item-p">Residentes, artesanos y el comercio de esquina capturan una fracción mínima y no deciden nada sobre cómo se reinvierte.</p>
+            </div>
+          </div>
+          <div class="reveal ledger-row">
+            <div class="num display">03</div>
+            <div>
+              <div class="t-row">
+                <span class="t-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span>
+                <h3 class="item-t">Cero transparencia</h3>
+              </div>
+              <p class="item-p">Gentrificación, barrios vaciados de su gente y ninguna forma de saber a dónde fue realmente el dinero.</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============================ PROBLEMA ============================ -->
-  <section id="problema" class="py-20 sm:py-28">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal max-w-3xl">
-        <span class="text-sm font-semibold uppercase tracking-wider text-[#993C1D]">El problema</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">
-          El turismo <span class="text-[#993C1D]">extrae</span>. El barrio que lo hace posible casi no ve un peso.
-        </h2>
-        <p class="mt-4 text-lg text-negro/65">
-          Viajas a un barrio con encanto y pagas por esa magia. Pero ¿a dónde va tu dinero? Casi nunca al barrio que lo creó.
+  <!-- ============================ 02 / LA SOLUCIÓN ============================ -->
+  <section id="solucion" class="sec sec--negro">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">02 / La solución</span>
+      </div>
+      <div>
+        <div class="reveal kicker" style="color:var(--amarillo)"><span class="nodo-k" style="border-color:var(--amarillo)"></span>02 / La solución</div>
+
+        <div class="sol-grid">
+          <div>
+            <h2 class="reveal">El 2% se queda en el barrio. <span style="color:var(--amarillo)">Y el barrio decide.</span></h2>
+            <p class="reveal sub">
+              Cada pago de un turista activa el <b style="color:var(--crema)">Tip Barrio</b>: un 2% automático que va a un
+              <b style="color:var(--crema)">fondo comunitario on-chain</b>. No lo controla una empresa ni una ONG —
+              lo gobiernan los residentes con un token de residencia intransferible.
+            </p>
+            <div class="reveal sol-chips">
+              <span class="chip"><b>1 = 1</b>&nbsp;residente = voto · soulbound</span>
+              <span class="chip"><b>Trustless</b>&nbsp;· nadie tiene la llave</span>
+            </div>
+          </div>
+          <!-- La app real, recreada en HTML (heredada de la V1, cifras coherentes con la demo) -->
+          <div class="reveal phone-wrap">
+            <div class="phone-badge pb-top">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+              100% verificable · on-chain
+            </div>
+            <div class="phone">
+              <div class="phone-screen">
+                <div class="ph-top">
+                  <div>
+                    <div class="ph-label">RAÍZ Pass</div>
+                    <div class="ph-hola">Hola, viajero</div>
+                  </div>
+                  <div class="ph-avatar">JV</div>
+                </div>
+                <div class="ph-balance">
+                  <div class="ph-label">Saldo disponible</div>
+                  <div class="ph-amount">20.00 <span class="usdc">USDC</span></div>
+                  <div class="ph-cop">≈ 82,500 COP</div>
+                </div>
+                <div class="ph-stats">
+                  <div class="ph-stat ph-stat--verde"><b>40</b><span>puntos</span></div>
+                  <div class="ph-stat ph-stat--purpura"><b>0.40</b><span>aportado</span></div>
+                </div>
+                <div class="ph-tip">
+                  <span class="ph-toggle" aria-hidden="true"></span>
+                  <div>
+                    <div class="t1">Tip Barrio · 2%</div>
+                    <div class="t2">aporta al fondo del barrio</div>
+                  </div>
+                </div>
+                <div class="ph-cta">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M20 14v3M14 20h3M20 20v.01"/></svg>
+                  Escanear y pagar
+                </div>
+                <div class="ph-nav">
+                  <div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Inicio</div>
+                  <div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Mapa</div>
+                  <div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4 7 7 12 7zM12 7s3-5 5.5-3-1 3-5.5 3z"/></svg>Premios</div>
+                  <div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Perfil</div>
+                </div>
+              </div>
+            </div>
+            <div class="phone-badge pb-bottom">Tip Barrio · +2% al fondo</div>
+          </div>
+        </div>
+
+        <!-- El split del pago, dibujado como raíz -->
+        <svg class="reveal split-svg grow" viewBox="0 0 640 330" fill="none" aria-hidden="true">
+          <text x="30" y="44" fill="rgba(250,250,247,.6)" font-family="Space Mono, monospace" font-size="12" letter-spacing="2">TURISTA PAGA 100% + TIP 2%</text>
+          <path pathLength="1" d="M30 70 H300" stroke="#FAFAF7" stroke-width="12" stroke-linecap="round"/>
+          <path pathLength="1" d="M300 70 H610" stroke="#FAFAF7" stroke-width="10" stroke-linecap="round"/>
+          <path pathLength="1" d="M304 76 C 344 120, 362 160, 362 208" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M362 240 C 362 278, 420 288, 470 292" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 7"/>
+          <text x="380" y="52" fill="rgba(250,250,247,.85)" font-family="Space Mono, monospace" font-size="13" font-weight="bold" letter-spacing="2">100% → AL COMERCIO*</text>
+          <text x="392" y="160" fill="#FBBF24" font-family="Space Mono, monospace" font-size="13" font-weight="bold" letter-spacing="2">+2% → TIP BARRIO</text>
+          <circle class="nodo" cx="362" cy="224" r="14" fill="#0F6E56" stroke="#FAFAF7" stroke-width="2.5"/>
+          <text x="388" y="230" fill="#1D9E75" font-family="Space Mono, monospace" font-size="13" font-weight="bold" letter-spacing="2">FONDO DEL BARRIO</text>
+          <text x="330" y="318" fill="#b8b0ee" font-family="Space Mono, monospace" font-size="12" letter-spacing="2">GOBERNANZA · 1 RESIDENTE = 1 VOTO</text>
+        </svg>
+        <p class="reveal split-note">
+          * Matemática exacta del contrato: del monto, el protocolo descuenta un fee del 0.5%;
+          el Tip Barrio del 2% lo aporta el turista además de su pago. Está en el recibo de arriba — y en la cadena.
         </p>
       </div>
-
-      <div class="mt-12 grid md:grid-cols-3 gap-5">
-        <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#993C1D]/10 text-[#993C1D]">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">El dinero se va</h3>
-          <p class="mt-2 text-negro/60">Plataformas, cadenas e intermediarios se quedan con el margen. El valor que crea el barrio sale del barrio.</p>
-        </div>
-        <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#993C1D]/10 text-[#993C1D]">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Quien crea, no decide</h3>
-          <p class="mt-2 text-negro/60">Residentes, artesanos y el comercio de esquina capturan una fracción mínima y no deciden nada sobre cómo se reinvierte.</p>
-        </div>
-        <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#993C1D]/10 text-[#993C1D]">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
-          </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Cero transparencia</h3>
-          <p class="mt-2 text-negro/60">Gentrificación, barrios vaciados de su gente y ninguna forma de saber a dónde fue realmente el dinero.</p>
-        </div>
-      </div>
     </div>
   </section>
 
-  <!-- ============================ SOLUCIÓN ============================ -->
-  <section id="solucion" class="relative py-20 sm:py-28 bg-negro text-white overflow-hidden">
-    <div class="absolute -top-32 left-1/4 w-96 h-96 rounded-full bg-verde/30 blur-3xl"></div>
-    <div class="absolute -bottom-32 right-1/4 w-96 h-96 rounded-full bg-purpura/30 blur-3xl"></div>
-    <div class="relative mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="grid lg:grid-cols-2 gap-12 items-center">
-        <div>
-          <span class="reveal inline-block text-sm font-semibold uppercase tracking-wider text-amarillo">La solución</span>
-          <h2 class="reveal mt-3 font-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
-            El 2% se queda en el barrio.<br /><span class="text-amarillo">Y el barrio decide.</span>
-          </h2>
-          <p class="reveal mt-5 text-lg text-white/70">
-            Cada pago de un turista activa el <strong class="text-white">Tip Barrio</strong>: un 2% automático que va a un <strong class="text-white">fondo comunitario on-chain</strong>. No lo controla una empresa ni una ONG — lo gobiernan los residentes con un token de residencia intransferible.
-          </p>
-          <div class="reveal mt-7 grid grid-cols-2 gap-3 max-w-md">
-            <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div class="font-display text-2xl font-bold text-amarillo">1 = 1</div>
-              <div class="text-sm text-white/60">residente = voto (soulbound)</div>
-            </div>
-            <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div class="font-display text-2xl font-bold text-verde-claro">Trustless</div>
-              <div class="text-sm text-white/60">nadie tiene la llave del fondo</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Diagrama flujo -->
-        <div class="reveal">
-          <div class="rounded-3xl bg-white/5 border border-white/10 p-6 backdrop-blur">
-            <div class="flex items-center gap-4">
-              <div class="flex-1 rounded-2xl bg-white/10 p-4 text-center">
-                <div class="text-xs text-white/50">Turista paga</div>
-                <div class="font-display text-xl font-bold">100%</div>
-              </div>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              <div class="flex-1 space-y-2">
-                <div class="rounded-xl bg-verde/20 border border-verde/40 p-2.5 text-center">
-                  <div class="text-xs text-verde-claro">al comercio</div>
-                  <div class="font-semibold">98%</div>
-                </div>
-                <div class="rounded-xl bg-amarillo/20 border border-amarillo/40 p-2.5 text-center">
-                  <div class="text-xs text-amarillo">Tip Barrio</div>
-                  <div class="font-semibold">2%</div>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 flex justify-center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
-            <div class="mt-4 rounded-2xl bg-gradient-to-r from-verde/30 to-purpura/30 border border-white/10 p-4 text-center">
-              <div class="text-xs text-white/60">Fondo comunitario del barrio</div>
-              <div class="font-display text-lg font-bold">gobernado por residentes · on-chain</div>
-            </div>
-          </div>
-        </div>
+  <!-- ============================ 03 / CÓMO FUNCIONA ============================ -->
+  <section id="como-funciona" class="sec">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">03 / El loop</span>
       </div>
-    </div>
-  </section>
+      <div>
+        <div class="reveal kicker"><span class="nodo-k"></span>03 / El loop</div>
+        <h2 class="reveal">Cómo funciona, paso a paso.</h2>
+        <p class="reveal sub">Un ciclo virtuoso, todo verificable en la cadena. Cada pago lo hace girar.</p>
 
-  <!-- ============================ CÓMO FUNCIONA (LOOP) ============================ -->
-  <section id="como-funciona" class="py-20 sm:py-28">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal text-center max-w-2xl mx-auto">
-        <span class="text-sm font-semibold uppercase tracking-wider text-verde">El loop</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">Cómo funciona, paso a paso</h2>
-        <p class="mt-4 text-lg text-negro/65">Un ciclo virtuoso, todo verificable en la cadena. Cada pago lo hace girar.</p>
-      </div>
-
-      <!-- Timeline -->
-      <div class="relative mt-16 max-w-3xl mx-auto">
-        <!-- línea vertical -->
-        <div class="loop-line absolute left-6 sm:left-1/2 top-2 bottom-16 w-1 sm:-translate-x-1/2 rounded-full opacity-30"></div>
-
-        <ol class="space-y-10 sm:space-y-2">
-          <!-- paso 1 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="pl-20 sm:pl-0 sm:text-right sm:pr-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm inline-block text-left sm:text-right">
-                <div class="font-display text-lg font-semibold">Turista paga en USDC</div>
-                <p class="mt-1 text-negro/60 text-[15px]">Escanea el QR del comercio y paga al instante en dólar digital. El comercio cobra completo.</p>
-              </div>
-            </div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-verde text-white font-display font-bold shadow-lg shadow-verde/30 ring-4 ring-crema">1</div>
-            <div class="hidden sm:block"></div>
-          </li>
-          <!-- paso 2 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="hidden sm:block"></div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amarillo text-negro font-display font-bold shadow-lg shadow-amarillo/30 ring-4 ring-crema">2</div>
-            <div class="pl-20 sm:pl-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm">
-                <div class="font-display text-lg font-semibold">Salta el Tip Barrio (2%)</div>
-                <p class="mt-1 text-negro/60 text-[15px]">El contrato Pool desvía automáticamente un 2% al fondo del barrio. Sin intermediarios, sin confianza ciega.</p>
-              </div>
-            </div>
-          </li>
-          <!-- paso 3 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="pl-20 sm:pl-0 sm:text-right sm:pr-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm inline-block text-left sm:text-right">
-                <div class="font-display text-lg font-semibold">Los residentes proponen y votan</div>
-                <p class="mt-1 text-negro/60 text-[15px]">Con su token soulbound (1 voto, intransferible) deciden en qué invertir: una plaza, becas, un mural. Quórum del 30%.</p>
-              </div>
-            </div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-purpura text-white font-display font-bold shadow-lg shadow-purpura/30 ring-4 ring-crema">3</div>
-            <div class="hidden sm:block"></div>
-          </li>
-          <!-- paso 4 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="hidden sm:block"></div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-negro text-amarillo font-display font-bold shadow-lg shadow-negro/30 ring-4 ring-crema">4</div>
-            <div class="pl-20 sm:pl-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm">
-                <div class="font-display text-lg font-semibold">El treasury ejecuta solo</div>
-                <p class="mt-1 text-negro/60 text-[15px]">Si pasa quórum y mayoría, el contrato libera los fondos. Trustless: nadie tiene la llave, ni siquiera nosotros.</p>
-              </div>
-            </div>
-          </li>
-          <!-- paso 5 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="pl-20 sm:pl-0 sm:text-right sm:pr-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm inline-block text-left sm:text-right">
-                <div class="font-display text-lg font-semibold">El fondo rinde en DeFindex</div>
-                <p class="mt-1 text-negro/60 text-[15px]">Mientras el barrio decide, el dinero ocioso genera rendimiento on-chain. El fondo no duerme: crece.</p>
-              </div>
-            </div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-verde-claro text-white font-display font-bold shadow-lg shadow-verde-claro/30 ring-4 ring-crema">5</div>
-            <div class="hidden sm:block"></div>
-          </li>
-          <!-- paso 6 -->
-          <li class="reveal relative sm:grid sm:grid-cols-2 sm:gap-8 items-center">
-            <div class="hidden sm:block"></div>
-            <div class="absolute left-0 sm:left-1/2 top-4 sm:-translate-x-1/2 flex h-12 w-12 items-center justify-center rounded-2xl bg-verde text-white font-display font-bold shadow-lg shadow-verde/30 ring-4 ring-crema">6</div>
-            <div class="pl-20 sm:pl-12">
-              <div class="rounded-2xl border border-negro/5 bg-white p-5 shadow-sm">
-                <div class="font-display text-lg font-semibold">Todo en un dashboard público</div>
-                <p class="mt-1 text-negro/60 text-[15px]">Cada pago, voto y ejecución se lee directo de la cadena. Transparencia total, abierta a cualquiera.</p>
-              </div>
-            </div>
-          </li>
-        </ol>
-
-        <!-- loop back -->
-        <div class="reveal relative mt-10 flex justify-center">
-          <div class="inline-flex items-center gap-2 rounded-full bg-verde/10 border border-verde/20 px-5 py-2.5 text-sm font-semibold text-verde">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
+        <div class="loop">
+          <ol>
+            <li class="reveal">
+              <span class="nodo-paso">1</span>
+              <h3 class="item-t">Turista paga en USDC</h3>
+              <p class="item-p">Escanea el QR del comercio y paga al instante en dólar digital, con fees de fracciones de centavo.</p>
+            </li>
+            <li class="reveal">
+              <span class="nodo-paso">2</span>
+              <h3 class="item-t">Salta el Tip Barrio (2%)</h3>
+              <p class="item-p">El contrato Pool desvía automáticamente un 2% al fondo del barrio. Sin intermediarios, sin confianza ciega.</p>
+            </li>
+            <li class="reveal">
+              <span class="nodo-paso">3</span>
+              <h3 class="item-t">Los residentes proponen y votan</h3>
+              <p class="item-p">Con su token soulbound (1 voto, intransferible) deciden en qué invertir: una plaza, becas, un mural. Quórum del 30%.</p>
+            </li>
+            <li class="reveal">
+              <span class="nodo-paso">4</span>
+              <h3 class="item-t">El treasury ejecuta solo</h3>
+              <p class="item-p">Si pasa quórum y mayoría, el contrato libera los fondos. Trustless: nadie tiene la llave, ni siquiera nosotros.</p>
+            </li>
+            <li class="reveal">
+              <span class="nodo-paso">5</span>
+              <h3 class="item-t">El fondo rinde en DeFindex</h3>
+              <p class="item-p">Mientras el barrio decide, el dinero ocioso genera rendimiento on-chain. El fondo no duerme: crece.</p>
+            </li>
+            <li class="reveal">
+              <span class="nodo-paso">6</span>
+              <h3 class="item-t">Todo en un dashboard público</h3>
+              <p class="item-p">Cada pago, voto y ejecución se lee directo de la cadena. Transparencia total, abierta a cualquiera.</p>
+            </li>
+          </ol>
+          <div class="reveal loop-cierre">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
             Y el ciclo vuelve a empezar — cada pago hace crecer el fondo
           </div>
         </div>
@@ -529,346 +938,357 @@
     </div>
   </section>
 
-  <!-- ============================ FEATURES ============================ -->
-  <section id="features" class="py-20 sm:py-28 bg-white">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal text-center max-w-2xl mx-auto">
-        <span class="text-sm font-semibold uppercase tracking-wider text-purpura">Features</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">Todo lo que hace funcionar a RAÍZ</h2>
-        <p class="mt-4 text-lg text-negro/65">Pagos, gobernanza, rendimiento y transparencia — en una sola app, sobre Stellar.</p>
+  <!-- ============================ 04 / ANATOMÍA (features + ecosistema) ============================ -->
+  <section id="features" class="sec">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">04 / Anatomía</span>
       </div>
+      <div>
+        <div class="reveal kicker"><span class="nodo-k"></span>04 / Anatomía del protocolo</div>
+        <h2 class="reveal">Todo lo que hace funcionar a RAÍZ.</h2>
+        <p class="reveal sub">Construido sobre el <b>ecosistema</b> Stellar, no solo sobre Stellar: piezas reales y auditadas, compuestas para resolver un problema real.</p>
 
-      <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <!-- 1 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amarillo/20 text-[#854F0B]">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M20 14v3M14 20h3M20 20v.01"/></svg>
+        <div class="anat">
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-usdc">USDC</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M20 14v3M14 20h3M20 20v.01"/></svg></span>
+              <h3 class="item-t">Pagos con Tip Barrio</h3>
+            </div>
+            <p class="item-p">Cobro instantáneo en dólar digital; el 2% va al barrio automáticamente. Turista y comercio piensan en dólares, no en un token volátil.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Pagos USDC con Tip Barrio</h3>
-          <p class="mt-2 text-negro/60">Cobro instantáneo en dólar digital; el 2% va al barrio automáticamente. El comercio recibe completo.</p>
-        </div>
-        <!-- 2 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-verde/10 text-verde">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-soroban">Soroban</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <h3 class="item-t">4 contratos en Rust</h3>
+            </div>
+            <p class="item-p">Pool, Governance, Treasury y Rewards, con llamadas cross-contract. Desplegados y poblados en testnet.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Gobernanza on-chain</h3>
-          <p class="mt-2 text-negro/60">Token de residencia <em>soulbound</em>. 1 residente = 1 voto. No se compra, no se transfiere.</p>
-        </div>
-        <!-- 3 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-purpura/10 text-purpura">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z"/></svg>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-soroban">Soroban</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+              <h3 class="item-t">Gobernanza soulbound</h3>
+            </div>
+            <p class="item-p">Token de residencia intransferible. 1 residente = 1 voto. No se compra, no se transfiere, no se acumula.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Ejecución trustless</h3>
-          <p class="mt-2 text-negro/60">Las propuestas aprobadas se ejecutan solas. Nadie custodia la llave del fondo del barrio.</p>
-        </div>
-        <!-- 4 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-verde-claro/15 text-verde-claro">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M7 15l3-4 3 2 4-6M17 7h2v2"/></svg>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-soroban">Soroban</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z"/></svg></span>
+              <h3 class="item-t">Ejecución trustless</h3>
+            </div>
+            <p class="item-p">Las propuestas aprobadas se ejecutan solas. Nadie custodia la llave del fondo del barrio.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">El fondo rinde (DeFindex)</h3>
-          <p class="mt-2 text-negro/60">El dinero ocioso genera yield mientras se vota. Protocolo auditado por OtterSec.</p>
-        </div>
-        <!-- 5 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-negro/10 text-negro">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11a2 2 0 0 1 2 2c0 2 .3 3.5 1 5M8.5 13c0-2 1.5-3.5 3.5-3.5M6 11a6 6 0 0 1 10-4.5M5 16c-.6-1.2-1-2.5-1-4a8 8 0 0 1 14-5.3"/></svg>
+          <span id="ecosistema" aria-hidden="true" style="scroll-margin-top:84px"></span>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-defindex">DeFindex</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M7 15l3-4 3 2 4-6M17 7h2v2"/></svg></span>
+              <h3 class="item-t">El fondo rinde</h3>
+            </div>
+            <p class="item-p">El dinero ocioso genera yield en vaults de DeFindex mientras se vota. Protocolo auditado por OtterSec.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Passkey smart accounts</h3>
-          <p class="mt-2 text-negro/60">Wallet con huella o Face ID. Sin frase semilla que perder. Onboarding en segundos.</p>
-        </div>
-        <!-- 6 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amarillo/20 text-[#854F0B]">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2zM19 15h2v2h-2zM15 19h2v2h-2zM19 19h2v2h-2z"/></svg>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-passkey">Passkey</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11a2 2 0 0 1 2 2c0 2 .3 3.5 1 5M8.5 13c0-2 1.5-3.5 3.5-3.5M6 11a6 6 0 0 1 10-4.5M5 16c-.6-1.2-1-2.5-1-4a8 8 0 0 1 14-5.3"/></svg></span>
+              <h3 class="item-t">Smart accounts</h3>
+            </div>
+            <p class="item-p">Wallet con huella o Face ID: firmas secp256r1 sobre contratos de OpenZeppelin. Sin frase semilla que perder.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Orden de cobro por QR</h3>
-          <p class="mt-2 text-negro/60">Cualquier comercio se registra en 20 segundos, aparece en el mapa y genera su QR de cobro.</p>
-        </div>
-        <!-- 7 -->
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-crema p-7 sm:col-span-2 lg:col-span-1">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-verde/10 text-verde">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-usdc">QR</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2zM19 15h2v2h-2zM15 19h2v2h-2zM19 19h2v2h-2z"/></svg></span>
+              <h3 class="item-t">Orden de cobro por QR</h3>
+            </div>
+            <p class="item-p">Cualquier comercio se registra en 20 segundos, aparece en el mapa y genera su QR de cobro.</p>
           </div>
-          <h3 class="mt-5 font-display text-lg font-semibold">Transparencia verificable</h3>
-          <p class="mt-2 text-negro/60">Todo on-chain, abierto en Stellar Expert. Confía, pero verifica: cada pago, voto y ejecución es público.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ ECOSISTEMA STELLAR ============================ -->
-  <section id="ecosistema" class="py-20 sm:py-28">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal text-center max-w-3xl mx-auto">
-        <span class="text-sm font-semibold uppercase tracking-wider text-verde">Ecosistema Stellar</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">
-          Construido sobre el <span class="text-gradient">ecosistema Stellar</span>, no solo sobre Stellar.
-        </h2>
-        <p class="mt-4 text-lg text-negro/65">RAÍZ compone piezas reales y auditadas del ecosistema para resolver un problema real.</p>
-      </div>
-
-      <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-negro px-2.5 py-1 text-xs font-bold text-amarillo">Soroban</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">4 contratos en Rust</h3>
-          <p class="mt-2 text-negro/60">Pool, Governance, Treasury y Rewards, con llamadas <em>cross-contract</em>. Desplegados y poblados en testnet.</p>
-        </div>
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-verde px-2.5 py-1 text-xs font-bold text-white">DeFindex</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">El fondo rinde</h3>
-          <p class="mt-2 text-negro/60">El fondo del barrio genera yield en vaults de DeFindex. Protocolo auditado por OtterSec.</p>
-        </div>
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-purpura px-2.5 py-1 text-xs font-bold text-white">Passkey</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">Smart accounts</h3>
-          <p class="mt-2 text-negro/60">Cuentas inteligentes con firmas secp256r1, basadas en contratos de OpenZeppelin. Sin frase semilla.</p>
-        </div>
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-[#BA7517] px-2.5 py-1 text-xs font-bold text-white">Mapbox</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">Mapa del barrio</h3>
-          <p class="mt-2 text-negro/60">Los comercios reales del barrio en el mapa, con su aporte acumulado al fondo comunitario.</p>
-        </div>
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-verde-claro px-2.5 py-1 text-xs font-bold text-white">Anchors SEP</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">Rampa fiat ↔ cripto <span class="text-xs text-negro/40 font-normal">(roadmap)</span></h3>
-          <p class="mt-2 text-negro/60">SEP-24 para recargar/retirar en efectivo, SEP-10/38 para auth y cotización. Usable en el mundo real.</p>
-        </div>
-        <div class="reveal feature-card rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-          <div class="inline-flex items-center rounded-lg bg-negro px-2.5 py-1 text-xs font-bold text-white">USDC</div>
-          <h3 class="mt-4 font-display text-lg font-semibold">Dólar digital nativo</h3>
-          <p class="mt-2 text-negro/60">Turista y comercio piensan en dólares, no en un token volátil. Fees de fracciones de centavo.</p>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-mapbox">Mapbox</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg></span>
+              <h3 class="item-t">Mapa del barrio</h3>
+            </div>
+            <p class="item-p">Los comercios reales del barrio en el mapa, con su aporte acumulado al fondo comunitario.</p>
+          </div>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-sep">SEP · roadmap</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+              <h3 class="item-t">Rampa fiat ↔ cripto</h3>
+            </div>
+            <p class="item-p">SEP-24 para recargar y retirar en efectivo, SEP-10/38 para auth y cotización. Usable en el mundo real.</p>
+          </div>
+          <div class="reveal anat-row">
+            <span class="anat-tag tag-usdc">On-chain</span>
+            <div class="t-row">
+              <span class="t-ico" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+              <h3 class="item-t">Transparencia verificable</h3>
+            </div>
+            <p class="item-p">Todo on-chain, abierto en Stellar Expert. Confía, pero verifica: cada pago, voto y ejecución es público.</p>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============================ DEMO ============================ -->
-  <section id="demo" class="py-20 sm:py-28 bg-negro text-white">
-    <div class="mx-auto max-w-5xl px-4 sm:px-6">
-      <div class="reveal text-center max-w-2xl mx-auto">
-        <span class="text-sm font-semibold uppercase tracking-wider text-amarillo">Demo</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">Míralo funcionar</h2>
-        <p class="mt-4 text-lg text-white/65">No es un mockup: la app lee y escribe contra cuatro contratos desplegados en la testnet de Stellar ahora mismo.</p>
+  <!-- ============================ 05 / LA PRUEBA (demo + contratos) ============================ -->
+  <section id="demo" class="sec sec--verde">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">05 / La prueba</span>
       </div>
+      <div>
+        <div class="reveal kicker" style="color:var(--amarillo)"><span class="nodo-k" style="border-color:var(--amarillo)"></span>05 / La prueba</div>
+        <h2 class="reveal">No nos creas. Verifícalo.</h2>
+        <p class="reveal sub">No es un mockup: la app lee y escribe contra cuatro contratos desplegados en la testnet de Stellar ahora mismo.</p>
 
-      <div class="reveal mt-12 overflow-hidden rounded-3xl border border-white/10 shadow-2xl shadow-black/40 ring-1 ring-white/5">
-        <div class="aspect-video bg-black">
-          <iframe class="h-full w-full" src="https://www.youtube.com/embed/y-9pglgVnnA"
-                  title="Demo de RAÍZ" frameborder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+        <div class="reveal video-frame">
+          <div class="ratio">
+            <iframe src="https://www.youtube.com/embed/y-9pglgVnnA"
+                    title="Demo de RAÍZ"
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+          </div>
         </div>
-      </div>
-      <p class="reveal mt-4 text-center text-xs text-white/40">¿No carga el video? Verifica el ID de YouTube en el <code class="text-amarillo">&lt;iframe&gt;</code>.</p>
-    </div>
-  </section>
+        <p class="reveal video-note">
+          <span>Grabado contra los 4 contratos de abajo.</span>
+          <a href="https://www.youtube.com/watch?v=y-9pglgVnnA" target="_blank" rel="noopener">Ver en YouTube ↗</a>
+        </p>
 
-  <!-- ============================ INVERSORES / POR QUÉ GANAMOS ============================ -->
-  <section id="inversores" class="py-20 sm:py-28">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="grid lg:grid-cols-2 gap-12 items-start">
-        <div class="reveal lg:sticky lg:top-28">
-          <span class="text-sm font-semibold uppercase tracking-wider text-purpura">Por qué ganamos</span>
-          <h2 class="mt-3 font-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
-            Inclusión financiera con <span class="text-gradient">impacto real</span> en LatAm.
-          </h2>
-          <p class="mt-5 text-lg text-negro/65">
-            RAÍZ no es una promesa: es código corriendo que encaja exactamente con la misión de Stellar — acceso equitativo, transparencia e impacto en las comunidades que más lo necesitan.
-          </p>
-          <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk"
-             class="btn mt-7 inline-flex items-center gap-2 rounded-xl bg-amarillo text-negro font-bold px-6 py-3.5 shadow-xl shadow-amarillo/30">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            Pruébalo tú mismo
+        <div class="contratos-grid">
+          <a class="reveal mini-recibo" href="https://stellar.expert/explorer/testnet/contract/CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK" target="_blank" rel="noopener">
+            <span class="mr-name">POOL</span>
+            <span class="mr-addr">CAKYU…N2FK</span>
+            <span class="mr-link">stellar.expert ↗</span>
+          </a>
+          <a class="reveal mini-recibo" href="https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE" target="_blank" rel="noopener">
+            <span class="mr-name">GOVERNANCE</span>
+            <span class="mr-addr">CAENX…7PVE</span>
+            <span class="mr-link">stellar.expert ↗</span>
+          </a>
+          <a class="reveal mini-recibo" href="https://stellar.expert/explorer/testnet/contract/CDGGFSV74EGBEUQWLZ5OMQZJUPXBI7BYCNZJRMCGYEKZEPN3QBWQGPXA" target="_blank" rel="noopener">
+            <span class="mr-name">TREASURY</span>
+            <span class="mr-addr">CDGGF…GPXA</span>
+            <span class="mr-link">stellar.expert ↗</span>
+          </a>
+          <a class="reveal mini-recibo" href="https://stellar.expert/explorer/testnet/contract/CD5OET7FPJAWPID5DCBYRHDJXNICXAPLAWDRDA3NCS5IIBACEW2I6PPT" target="_blank" rel="noopener">
+            <span class="mr-name">REWARDS</span>
+            <span class="mr-addr">CD5OE…6PPT</span>
+            <span class="mr-link">stellar.expert ↗</span>
           </a>
         </div>
 
-        <div class="grid gap-4">
-          <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-            <div class="flex items-start gap-4">
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-verde/10 text-verde">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
-              </div>
-              <div>
-                <h3 class="font-display text-lg font-semibold">Alineado con la misión de Stellar</h3>
-                <p class="mt-1 text-negro/60">Inclusión financiera, acceso equitativo e impacto en LatAm. Eso es RAÍZ, ejecutándose hoy.</p>
-              </div>
-            </div>
-          </div>
-          <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-            <div class="flex items-start gap-4">
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purpura/10 text-purpura">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>
-              </div>
-              <div>
-                <h3 class="font-display text-lg font-semibold">Un mercado enorme</h3>
-                <p class="mt-1 text-negro/60">El turismo mueve billones en LatAm. Capturar el 2% de forma transparente abre un mercado nuevo.</p>
-              </div>
-            </div>
-          </div>
-          <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-            <div class="flex items-start gap-4">
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amarillo/20 text-[#854F0B]">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9l8-6 8 6v10M9 19v-6h6v6"/></svg>
-              </div>
-              <div>
-                <h3 class="font-display text-lg font-semibold">Escalable a cualquier barrio</h3>
-                <p class="mt-1 text-negro/60">El mismo contrato, otra comunidad. De un barrio de Cartagena a cualquier barrio del mundo.</p>
-              </div>
-            </div>
-          </div>
-          <div class="reveal rounded-3xl border border-negro/5 bg-white p-7 shadow-sm">
-            <div class="flex items-start gap-4">
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-negro/10 text-negro">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-              </div>
-              <div>
-                <h3 class="font-display text-lg font-semibold">Self-custodial, sin intermediarios</h3>
-                <p class="mt-1 text-negro/60">El barrio es dueño de su fondo, on-chain. Nadie puede tocarlo sin pasar por la gobernanza.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ ROADMAP ============================ -->
-  <section id="roadmap" class="py-20 sm:py-28 bg-white">
-    <div class="mx-auto max-w-5xl px-4 sm:px-6">
-      <div class="reveal text-center max-w-2xl mx-auto">
-        <span class="text-sm font-semibold uppercase tracking-wider text-verde">Roadmap</span>
-        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-bold leading-tight">Hacia dónde va RAÍZ</h2>
-        <p class="mt-4 text-lg text-negro/65">Del MVP de hackathon a un piloto real en un barrio de Cartagena.</p>
-      </div>
-
-      <div class="relative mt-14 pl-8 sm:pl-0">
-        <!-- línea -->
-        <div class="absolute left-[11px] sm:left-1/2 top-2 bottom-2 w-0.5 sm:-translate-x-1/2 bg-negro/10"></div>
-
-        <div class="space-y-8">
-          <div class="reveal relative sm:grid sm:grid-cols-2 sm:gap-10">
-            <span class="absolute -left-8 sm:left-1/2 top-1.5 sm:-translate-x-1/2 h-5 w-5 rounded-full bg-verde ring-4 ring-white"></span>
-            <div class="sm:text-right sm:pr-10">
-              <div class="text-xs font-semibold uppercase tracking-wide text-verde">Siguiente</div>
-              <h3 class="mt-1 font-display text-lg font-semibold">Mainnet</h3>
-              <p class="mt-1 text-negro/60">Migración del admin a un backend y despliegue de contratos a la mainnet de Stellar.</p>
-            </div>
-            <div class="hidden sm:block"></div>
-          </div>
-          <div class="reveal relative sm:grid sm:grid-cols-2 sm:gap-10">
-            <span class="absolute -left-8 sm:left-1/2 top-1.5 sm:-translate-x-1/2 h-5 w-5 rounded-full bg-purpura ring-4 ring-white"></span>
-            <div class="hidden sm:block"></div>
-            <div class="sm:pl-10">
-              <div class="text-xs font-semibold uppercase tracking-wide text-purpura">Rampa fiat</div>
-              <h3 class="mt-1 font-display text-lg font-semibold">Anchors SEP-24</h3>
-              <p class="mt-1 text-negro/60">Recarga y retiro en efectivo vía MoneyGram y anchors locales. El turista entra con tarjeta; el comercio sale a su banco.</p>
-            </div>
-          </div>
-          <div class="reveal relative sm:grid sm:grid-cols-2 sm:gap-10">
-            <span class="absolute -left-8 sm:left-1/2 top-1.5 sm:-translate-x-1/2 h-5 w-5 rounded-full bg-amarillo ring-4 ring-white"></span>
-            <div class="sm:text-right sm:pr-10">
-              <div class="text-xs font-semibold uppercase tracking-wide text-[#854F0B]">Confianza</div>
-              <h3 class="mt-1 font-display text-lg font-semibold">KYC de residentes</h3>
-              <p class="mt-1 text-negro/60">Verificación de residencia con documentos (SEP-12), en vez del mint manual del MVP.</p>
-            </div>
-            <div class="hidden sm:block"></div>
-          </div>
-          <div class="reveal relative sm:grid sm:grid-cols-2 sm:gap-10">
-            <span class="absolute -left-8 sm:left-1/2 top-1.5 sm:-translate-x-1/2 h-5 w-5 rounded-full bg-verde-claro ring-4 ring-white"></span>
-            <div class="hidden sm:block"></div>
-            <div class="sm:pl-10">
-              <div class="text-xs font-semibold uppercase tracking-wide text-verde-claro">Onboarding</div>
-              <h3 class="mt-1 font-display text-lg font-semibold">Login social</h3>
-              <p class="mt-1 text-negro/60">Entrar en segundos, sin fricción, combinando passkey con login social.</p>
-            </div>
-          </div>
-          <div class="reveal relative sm:grid sm:grid-cols-2 sm:gap-10">
-            <span class="absolute -left-8 sm:left-1/2 top-1.5 sm:-translate-x-1/2 h-5 w-5 rounded-full bg-negro ring-4 ring-white"></span>
-            <div class="sm:text-right sm:pr-10">
-              <div class="text-xs font-semibold uppercase tracking-wide text-negro/50">Descentralización</div>
-              <h3 class="mt-1 font-display text-lg font-semibold">Premios en IPFS</h3>
-              <p class="mt-1 text-negro/60">Catálogo de artesanías locales descentralizado, con imágenes en IPFS.</p>
-            </div>
-            <div class="hidden sm:block"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ NOTAS DE VERSIÓN ============================ -->
-  <section id="notas" class="py-20 sm:py-28">
-    <div class="mx-auto max-w-5xl px-4 sm:px-6">
-      <div class="reveal rounded-[2rem] border border-negro/5 bg-white p-8 sm:p-12 shadow-xl shadow-negro/5">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <span class="text-sm font-semibold uppercase tracking-wider text-verde">Notas de versión</span>
-            <h2 class="mt-2 font-display text-3xl font-bold">Qué incluye v0.1.0</h2>
-          </div>
-          <span class="inline-flex items-center gap-2 rounded-full bg-verde/10 px-4 py-2 text-sm font-bold text-verde">
-            <span class="h-2 w-2 rounded-full bg-verde-claro"></span> v0.1.0 · estable
+        <div class="reveal live-chips">
+          <span class="chip">
+            <span class="live-dot" aria-hidden="true"></span>
+            Fondo Centro · <b data-live-pool>0.40</b>&nbsp;USDC · <span class="estado" data-live-tag>snapshot</span>
           </span>
+          <span class="chip"><span data-ledger>Ledger testnet · consultando…</span></span>
+          <span class="chip">4 contratos · desplegados 29·jun·2026</span>
         </div>
 
-        <ul class="mt-8 grid sm:grid-cols-2 gap-x-8 gap-y-4">
-          <li class="reveal flex items-start gap-3">
-            <svg class="mt-0.5 shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong class="font-semibold">Pagos + Tip Barrio.</strong> <span class="text-negro/60">El 2% va automático al fondo del barrio en cada pago.</span></span>
-          </li>
-          <li class="reveal flex items-start gap-3">
-            <svg class="mt-0.5 shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong class="font-semibold">Gobernanza in-app.</strong> <span class="text-negro/60">Crear propuestas, votar y quórum del 30%.</span></span>
-          </li>
-          <li class="reveal flex items-start gap-3">
-            <svg class="mt-0.5 shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong class="font-semibold">Passkey smart wallet.</strong> <span class="text-negro/60">Sin frase semilla; firma con huella o Face ID.</span></span>
-          </li>
-          <li class="reveal flex items-start gap-3">
-            <svg class="mt-0.5 shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong class="font-semibold">DeFindex per-barrio.</strong> <span class="text-negro/60">El fondo de cada barrio genera rendimiento on-chain.</span></span>
-          </li>
-          <li class="reveal flex items-start gap-3 sm:col-span-2">
-            <svg class="mt-0.5 shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong class="font-semibold">Orden de cobro por QR.</strong> <span class="text-negro/60">Los comercios generan su QR y aparecen en el mapa del barrio.</span></span>
-          </li>
-        </ul>
+        <div class="demo-ctas">
+          <a class="btn btn--purpura" href="verificar-residente.html">Verificar residente</a>
+          <a class="btn btn--crema-borde" href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener">Enlace a entrevistas&nbsp;↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 06 / POR QUÉ GANAMOS ============================ -->
+  <section id="inversores" class="sec">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">06 / Por qué ganamos</span>
+      </div>
+      <div>
+        <div class="reveal kicker" style="color:var(--purpura)"><span class="nodo-k" style="border-color:var(--purpura)"></span>06 / Por qué ganamos</div>
+        <h2 class="reveal">Inclusión financiera con <span class="acc-purpura">impacto real</span> en LatAm.</h2>
+        <p class="reveal sub">RAÍZ no es una promesa: es código corriendo que encaja exactamente con la misión de Stellar — acceso equitativo, transparencia e impacto en las comunidades que más lo necesitan.</p>
+
+        <div class="manifiesto">
+          <div class="reveal man-item">
+            <div class="idx">— 01</div>
+            <div class="t-row" style="margin-top:8px">
+              <span class="t-ico" style="color:var(--purpura)" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+              <h3 class="item-t">Alineado con la misión de Stellar</h3>
+            </div>
+            <p class="item-p">Inclusión financiera, acceso equitativo e impacto en LatAm. Eso es RAÍZ, ejecutándose hoy.</p>
+          </div>
+          <div class="reveal man-item">
+            <div class="idx">— 02</div>
+            <div class="t-row" style="margin-top:8px">
+              <span class="t-ico" style="color:var(--purpura)" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg></span>
+              <h3 class="item-t">Un mercado enorme</h3>
+            </div>
+            <p class="item-p">El turismo mueve billones en LatAm. Capturar el 2% de forma transparente abre un mercado nuevo.</p>
+          </div>
+          <div class="reveal man-item">
+            <div class="idx">— 03</div>
+            <div class="t-row" style="margin-top:8px">
+              <span class="t-ico" style="color:var(--purpura)" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9l8-6 8 6v10M9 19v-6h6v6"/></svg></span>
+              <h3 class="item-t">Escalable a cualquier barrio</h3>
+            </div>
+            <p class="item-p">El mismo contrato, otra comunidad. De un barrio de Cartagena a cualquier barrio del mundo.</p>
+          </div>
+          <div class="reveal man-item">
+            <div class="idx">— 04</div>
+            <div class="t-row" style="margin-top:8px">
+              <span class="t-ico" style="color:var(--purpura)" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+              <h3 class="item-t">Self-custodial, sin intermediarios</h3>
+            </div>
+            <p class="item-p">El barrio es dueño de su fondo, on-chain. Nadie puede tocarlo sin pasar por la gobernanza.</p>
+          </div>
+        </div>
+
+        <a class="reveal btn btn--amarillo" style="margin-top:34px" href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Pruébalo tú mismo
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 07 / HOY Y MAÑANA (notas + roadmap) ============================ -->
+  <section id="roadmap" class="sec">
+    <div class="wrap rail-grid">
+      <div class="rail">
+        <svg class="branch grow" width="56" height="140" viewBox="0 0 56 140" fill="none" aria-hidden="true">
+          <path pathLength="1" d="M12 0 V48" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 78, 30 74, 44 96" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path pathLength="1" d="M12 48 C 12 92, 20 100, 24 126" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="nodo" cx="44" cy="96" r="4.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+          <circle class="nodo" cx="24" cy="126" r="3.5" fill="#FBBF24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span class="rail-label">07 / Hoy y mañana</span>
+      </div>
+      <div>
+        <div class="reveal kicker"><span class="nodo-k"></span>07 / Hoy y mañana</div>
+        <h2 class="reveal">Lo que ya corre. Lo que viene.</h2>
+        <p class="reveal sub">Del MVP de hackathon a un piloto real en un barrio de Cartagena.</p>
+
+        <div class="hym">
+          <!-- HOY -->
+          <div id="notas">
+            <span class="reveal chip chip--verde" style="border-color:var(--verde)">
+              <span class="live-dot" aria-hidden="true"></span> v0.1.0 · estable
+            </span>
+            <div style="margin-top:18px">
+              <div class="reveal check-row">
+                <span class="check-ico">✓</span>
+                <div><h3 class="item-t" style="font-size:1.1rem">Pagos + Tip Barrio</h3><p class="item-p">El 2% va automático al fondo del barrio en cada pago.</p></div>
+              </div>
+              <div class="reveal check-row">
+                <span class="check-ico">✓</span>
+                <div><h3 class="item-t" style="font-size:1.1rem">Gobernanza in-app</h3><p class="item-p">Crear propuestas, votar y quórum del 30%.</p></div>
+              </div>
+              <div class="reveal check-row">
+                <span class="check-ico">✓</span>
+                <div><h3 class="item-t" style="font-size:1.1rem">Passkey smart wallet</h3><p class="item-p">Sin frase semilla; firma con huella o Face ID.</p></div>
+              </div>
+              <div class="reveal check-row">
+                <span class="check-ico">✓</span>
+                <div><h3 class="item-t" style="font-size:1.1rem">DeFindex per-barrio</h3><p class="item-p">El fondo de cada barrio genera rendimiento on-chain.</p></div>
+              </div>
+              <div class="reveal check-row" style="border-bottom:none">
+                <span class="check-ico">✓</span>
+                <div><h3 class="item-t" style="font-size:1.1rem">Orden de cobro por QR</h3><p class="item-p">Los comercios generan su QR y aparecen en el mapa del barrio.</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MAÑANA -->
+          <div>
+            <span class="reveal chip" style="color:rgba(26,26,26,.6)">Por levantar</span>
+            <div style="margin-top:18px">
+              <div class="reveal hito-row">
+                <span class="hito-ico"></span>
+                <div><div class="hito-k">Siguiente</div><h3 class="item-t" style="font-size:1.1rem">Mainnet</h3><p class="item-p">Migración del admin a un backend y despliegue de contratos a la mainnet de Stellar.</p></div>
+              </div>
+              <div class="reveal hito-row">
+                <span class="hito-ico"></span>
+                <div><div class="hito-k">Rampa fiat</div><h3 class="item-t" style="font-size:1.1rem">Anchors SEP-24</h3><p class="item-p">Recarga y retiro en efectivo vía MoneyGram y anchors locales. El turista entra con tarjeta; el comercio sale a su banco.</p></div>
+              </div>
+              <div class="reveal hito-row">
+                <span class="hito-ico"></span>
+                <div><div class="hito-k">Confianza</div><h3 class="item-t" style="font-size:1.1rem">KYC de residentes</h3><p class="item-p">Verificación de residencia con documentos (SEP-12), en vez del mint manual del MVP.</p></div>
+              </div>
+              <div class="reveal hito-row">
+                <span class="hito-ico"></span>
+                <div><div class="hito-k">Onboarding</div><h3 class="item-t" style="font-size:1.1rem">Login social</h3><p class="item-p">Entrar en segundos, sin fricción, combinando passkey con login social.</p></div>
+              </div>
+              <div class="reveal hito-row" style="border-bottom:none">
+                <span class="hito-ico"></span>
+                <div><div class="hito-k">Descentralización</div><h3 class="item-t" style="font-size:1.1rem">Premios en IPFS</h3><p class="item-p">Catálogo de artesanías locales descentralizado, con imágenes en IPFS.</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ============================ CTA FINAL ============================ -->
-  <section class="py-16">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6">
-      <div class="reveal relative overflow-hidden rounded-[2.5rem] bg-verde p-10 sm:p-16 text-center text-white shadow-2xl shadow-verde/30">
-        <div class="absolute -top-20 -right-16 w-72 h-72 rounded-full bg-white/10 blur-2xl"></div>
-        <div class="absolute -bottom-24 -left-16 w-72 h-72 rounded-full bg-amarillo/20 blur-2xl"></div>
-        <h2 class="relative font-display text-3xl sm:text-5xl font-extrabold leading-tight">El barrio siempre va a recibir turismo.<br class="hidden sm:block" /> Hagamos que decida qué hacer con él.</h2>
-        <p class="relative mt-4 text-lg text-white/80 max-w-2xl mx-auto">Descarga RAÍZ y mira, en una sola app, cómo el pago, la gobernanza y la transparencia viven on-chain sobre Stellar.</p>
-        <div class="relative mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk" class="btn w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-amarillo text-negro font-bold px-7 py-4 shadow-xl shadow-black/20">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            Descargar APK
-          </a>
-          <a href="https://github.com/JuanWimmin/Protocolo_Raiz" class="btn w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 border border-white/30 text-white font-semibold px-7 py-4 hover:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48A10.01 10.01 0 0 0 22 12c0-5.52-4.48-10-10-10z"/></svg>
-            Ver el código
-          </a>
-        </div>
+  <section class="sec sec--amarillo cta-final">
+    <svg class="raices-inv grow" width="120" height="150" viewBox="0 0 120 150" fill="none" aria-hidden="true">
+      <path pathLength="1" d="M60 0 V52" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <path pathLength="1" d="M60 52 C 60 90, 22 86, 14 126" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <path pathLength="1" d="M60 52 C 60 96, 92 98, 100 140" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <circle class="nodo" cx="14" cy="126" r="5" fill="#FAFAF7" stroke="currentColor" stroke-width="2.5"/>
+      <circle class="nodo" cx="100" cy="140" r="5" fill="#FAFAF7" stroke="currentColor" stroke-width="2.5"/>
+    </svg>
+    <div class="wrap">
+      <div class="reveal kicker"><span class="nodo-k" style="background:var(--negro)"></span>La invitación</div>
+      <h2 class="reveal display">El barrio siempre va a recibir turismo. Hagamos que decida qué hacer con él.</h2>
+      <p class="reveal sub" style="color:rgba(26,26,26,.75)">Descarga RAÍZ y mira, en una sola app, cómo el pago, la gobernanza y la transparencia viven on-chain sobre Stellar.</p>
+      <div class="reveal hero-ctas" style="margin-top:30px">
+        <a class="btn btn--negro" href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Descargar APK
+        </a>
+        <a class="btn btn--borde" href="https://github.com/JuanWimmin/Protocolo_Raiz">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48A10.01 10.01 0 0 0 22 12c0-5.52-4.48-10-10-10z"/></svg>
+          Ver el código
+        </a>
       </div>
     </div>
   </section>
 
   <!-- ============================ FOOTER ============================ -->
-  <footer class="bg-negro text-white/70">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6 py-16">
-      <div class="grid gap-10 md:grid-cols-12">
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
         <!-- marca -->
-        <div class="md:col-span-5">
-          <div class="flex items-center gap-2.5">
-            <svg width="32" height="32" viewBox="0 0 64 64" aria-hidden="true">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
               <circle cx="32" cy="24" r="15" fill="#1D9E75"/>
               <circle cx="19" cy="29" r="9" fill="#1D9E75"/>
               <circle cx="45" cy="29" r="9" fill="#1D9E75"/>
@@ -877,54 +1297,46 @@
               <circle cx="40" cy="26" r="2.6" fill="#FBBF24"/>
               <rect x="29" y="36" width="6" height="13" rx="3" fill="#0F6E56"/>
             </svg>
-            <span class="font-display text-xl font-extrabold text-white">RAÍZ</span>
+            <span class="display" style="font-weight:800; font-size:1.3rem; color:var(--crema)">RAÍZ</span>
           </div>
-          <p class="mt-4 max-w-xs text-white/55">El turismo que echa raíces. El 2% de cada pago, gobernado por el barrio, verificable en la cadena.</p>
-          <p class="mt-5 inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1.5 text-xs font-semibold text-amarillo">Tu paga, el barrio crece.</p>
+          <p style="max-width:34ch; margin-top:16px; font-size:.95rem">El turismo que echa raíces. El 2% de cada pago, gobernado por el barrio, verificable en la cadena.</p>
+          <p class="footer-tagline">&gt;&gt; Tu paga, el barrio crece.</p>
         </div>
 
-        <!-- enlaces -->
-        <div class="md:col-span-3">
-          <h4 class="font-display text-sm font-semibold text-white">Producto</h4>
-          <ul class="mt-4 space-y-2.5 text-sm">
-            <li><a href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk" class="hover:text-amarillo transition">Descargar APK</a></li>
-            <li><a href="https://github.com/JuanWimmin/Protocolo_Raiz" class="hover:text-amarillo transition">GitHub</a></li>
-            <li><a href="#demo" class="hover:text-amarillo transition">Ver demo</a></li>
-            <li><a href="#como-funciona" class="hover:text-amarillo transition">Cómo funciona</a></li>
-            <li><a href="#roadmap" class="hover:text-amarillo transition">Roadmap</a></li>
-          </ul>
+        <!-- producto -->
+        <div>
+          <h4>Producto</h4>
+          <a class="f-link" href="https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.1.0/RAIZ-v0.1.0.apk">Descargar APK</a>
+          <a class="f-link" href="https://github.com/JuanWimmin/Protocolo_Raiz">GitHub</a>
+          <a class="f-link" href="#demo">Ver demo</a>
+          <a class="f-link" href="#como-funciona">Cómo funciona</a>
+          <a class="f-link" href="#roadmap">Roadmap</a>
+          <a class="f-link" href="verificar-residente.html" style="color:#b8b0ee">Verificar residente</a>
+          <a class="f-link" href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener">Enlace a entrevistas ↗</a>
         </div>
 
         <!-- contratos -->
-        <div class="md:col-span-4">
-          <h4 class="font-display text-sm font-semibold text-white">Contratos en testnet</h4>
-          <ul class="mt-4 space-y-2.5 text-sm">
-            <li><a href="https://stellar.expert/explorer/testnet/contract/CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK" class="group flex items-center justify-between gap-3 hover:text-amarillo transition">
-              <span><span class="font-medium text-white/85 group-hover:text-amarillo">Pool</span> <span class="text-white/35">· CAKYU…N2FK</span></span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
-            </a></li>
-            <li><a href="https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE" class="group flex items-center justify-between gap-3 hover:text-amarillo transition">
-              <span><span class="font-medium text-white/85 group-hover:text-amarillo">Governance</span> <span class="text-white/35">· CAENX…7PVE</span></span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
-            </a></li>
-            <li><a href="https://stellar.expert/explorer/testnet/contract/CDGGFSV74EGBEUQWLZ5OMQZJUPXBI7BYCNZJRMCGYEKZEPN3QBWQGPXA" class="group flex items-center justify-between gap-3 hover:text-amarillo transition">
-              <span><span class="font-medium text-white/85 group-hover:text-amarillo">Treasury</span> <span class="text-white/35">· CDGGF…GPXA</span></span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
-            </a></li>
-            <li><a href="https://stellar.expert/explorer/testnet/contract/CD5OET7FPJAWPID5DCBYRHDJXNICXAPLAWDRDA3NCS5IIBACEW2I6PPT" class="group flex items-center justify-between gap-3 hover:text-amarillo transition">
-              <span><span class="font-medium text-white/85 group-hover:text-amarillo">Rewards</span> <span class="text-white/35">· CD5OE…6PPT</span></span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
-            </a></li>
-          </ul>
+        <div>
+          <h4>Contratos en testnet</h4>
+          <a class="f-contrato" href="https://stellar.expert/explorer/testnet/contract/CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK" target="_blank" rel="noopener">
+            <span style="color:var(--crema)">Pool</span><span class="addr">CAKYU…N2FK ↗</span>
+          </a>
+          <a class="f-contrato" href="https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE" target="_blank" rel="noopener">
+            <span style="color:var(--crema)">Governance</span><span class="addr">CAENX…7PVE ↗</span>
+          </a>
+          <a class="f-contrato" href="https://stellar.expert/explorer/testnet/contract/CDGGFSV74EGBEUQWLZ5OMQZJUPXBI7BYCNZJRMCGYEKZEPN3QBWQGPXA" target="_blank" rel="noopener">
+            <span style="color:var(--crema)">Treasury</span><span class="addr">CDGGF…GPXA ↗</span>
+          </a>
+          <a class="f-contrato" href="https://stellar.expert/explorer/testnet/contract/CD5OET7FPJAWPID5DCBYRHDJXNICXAPLAWDRDA3NCS5IIBACEW2I6PPT" target="_blank" rel="noopener">
+            <span style="color:var(--crema)">Rewards</span><span class="addr">CD5OE…6PPT ↗</span>
+          </a>
         </div>
       </div>
 
-      <div class="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-white/10 pt-7 text-sm text-white/45">
-        <p>© 2026 RAÍZ · <a href="https://raizapp.xyz" class="hover:text-amarillo transition">raizapp.xyz</a></p>
-        <p class="inline-flex items-center gap-2">
-          <span class="h-1.5 w-1.5 rounded-full bg-amarillo"></span>
-          Stellar PULSO Hackathon 2026
-        </p>
+      <div class="footer-base">
+        <span>© 2026 RAÍZ · <a href="https://raizapp.xyz">raizapp.xyz</a></span>
+        <span data-ledger>Testnet de Stellar</span>
+        <span>Stellar PULSO Hackathon 2026</span>
       </div>
     </div>
   </footer>
@@ -934,62 +1346,38 @@
     (function () {
       'use strict';
 
-      // ---- Scroll reveal con IntersectionObserver + stagger ----
-      var revealEls = document.querySelectorAll('.reveal');
+      // ---- Fecha real del recibo ----
+      var f = document.querySelector('[data-fecha]');
+      if (f) {
+        try {
+          f.textContent = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+        } catch (_) {}
+      }
+
+      // ---- Scroll reveal + crecimiento de raíces (un solo IntersectionObserver) ----
+      var animEls = document.querySelectorAll('.reveal, .grow');
       if ('IntersectionObserver' in window) {
         var io = new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
-            if (entry.isIntersecting) {
-              var el = entry.target;
-              // stagger entre hermanos
+            if (!entry.isIntersecting) return;
+            var el = entry.target;
+            if (el.classList.contains('reveal')) {
               var sibs = Array.prototype.slice.call(el.parentElement.children).filter(function (c) { return c.classList.contains('reveal'); });
               var idx = sibs.indexOf(el);
-              el.style.transitionDelay = (Math.max(0, idx) * 80) + 'ms';
-              el.classList.add('in');
-              io.unobserve(el);
+              el.style.transitionDelay = (Math.max(0, idx) * 60) + 'ms';
             }
+            el.classList.add('in');
+            io.unobserve(el);
           });
-        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-        revealEls.forEach(function (el) { io.observe(el); });
+        }, { threshold: 0.15, rootMargin: '0px 0px -6% 0px' });
+        animEls.forEach(function (el) { io.observe(el); });
       } else {
-        revealEls.forEach(function (el) { el.classList.add('in'); });
+        animEls.forEach(function (el) { el.classList.add('in'); });
       }
 
-      // ---- Contadores animados ----
-      var counters = document.querySelectorAll('[data-count]');
-      function animateCount(el) {
-        var target = parseInt(el.getAttribute('data-count'), 10);
-        var dur = 1400, start = null;
-        function step(ts) {
-          if (!start) start = ts;
-          var p = Math.min((ts - start) / dur, 1);
-          var eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
-          el.textContent = Math.round(eased * target);
-          if (p < 1) requestAnimationFrame(step);
-          else el.textContent = target;
-        }
-        requestAnimationFrame(step);
-      }
-      if ('IntersectionObserver' in window) {
-        var co = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) {
-            if (e.isIntersecting) { animateCount(e.target); co.unobserve(e.target); }
-          });
-        }, { threshold: 0.6 });
-        counters.forEach(function (el) { co.observe(el); });
-      } else {
-        counters.forEach(function (el) { el.textContent = el.getAttribute('data-count'); });
-      }
-
-      // ---- Header: sombra/fondo al hacer scroll ----
-      var bar = document.querySelector('[data-headerbar]');
-      function onScroll() {
-        if (window.scrollY > 16) {
-          bar.classList.add('bg-white/80', 'backdrop-blur-xl', 'border-negro/5', 'shadow-lg', 'shadow-negro/5');
-        } else {
-          bar.classList.remove('bg-white/80', 'backdrop-blur-xl', 'border-negro/5', 'shadow-lg', 'shadow-negro/5');
-        }
-      }
+      // ---- Header: borde inferior al hacer scroll ----
+      var hdr = document.querySelector('[data-header]');
+      function onScroll() { hdr.classList.toggle('scrolled', window.scrollY > 16); }
       window.addEventListener('scroll', onScroll, { passive: true });
       onScroll();
 
@@ -997,11 +1385,103 @@
       var menuBtn = document.querySelector('[data-menu-btn]');
       var menu = document.querySelector('[data-menu]');
       if (menuBtn && menu) {
-        menuBtn.addEventListener('click', function () { menu.classList.toggle('hidden'); });
+        menuBtn.addEventListener('click', function () {
+          var open = menu.classList.toggle('open');
+          menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
         menu.querySelectorAll('a').forEach(function (a) {
-          a.addEventListener('click', function () { menu.classList.add('hidden'); });
+          a.addEventListener('click', function () { menu.classList.remove('open'); });
         });
       }
+
+      /* ============================================================
+         DATOS EN VIVO desde testnet — con red de seguridad total:
+         los valores estáticos ya están en el HTML (snapshot) y solo
+         se reemplazan si la lectura llega. Nunca un hueco ni un spinner.
+         ============================================================ */
+      var RPC_URL  = 'https://soroban-testnet.stellar.org';
+      var POOL     = 'CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK';
+      var SOURCE   = 'GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P';
+      var CENTRO   = 'ce47120000000000000000000000000000000000000000000000000000000001';
+
+      function conTimeout(promesa, ms) {
+        return Promise.race([
+          promesa,
+          new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, ms); })
+        ]);
+      }
+
+      // (1) Latido del ledger vía Horizon — fetch simple, sin SDK.
+      function latidoLedger() {
+        var ctrl = ('AbortController' in window) ? new AbortController() : null;
+        if (ctrl) setTimeout(function () { ctrl.abort(); }, 4000);
+        fetch('https://horizon-testnet.stellar.org/ledgers?order=desc&limit=1', ctrl ? { signal: ctrl.signal } : {})
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var seq = j && j._embedded && j._embedded.records && j._embedded.records[0] && j._embedded.records[0].sequence;
+            if (!seq) return;
+            document.querySelectorAll('[data-ledger]').forEach(function (el) {
+              el.textContent = 'Ledger #' + seq + ' · testnet · en vivo';
+            });
+          })
+          .catch(function () { /* silencio: queda el texto estático */ });
+      }
+
+      // (2) Saldo real del fondo del barrio Centro — carga perezosa del SDK
+      //     (mismo patrón que verificar-residente.html, solo lectura pura).
+      function hexABytes(hex) {
+        return new Uint8Array(hex.match(/.{1,2}/g).map(function (h) { return parseInt(h, 16); }));
+      }
+      function leerFondo() {
+        if (window.StellarSdk) { ejecutarLectura(); return; }
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@13.3.0/dist/stellar-sdk.min.js';
+        s.onload = ejecutarLectura;
+        s.onerror = function () { /* sin CDN: queda el snapshot */ };
+        document.head.appendChild(s);
+      }
+      function ejecutarLectura() {
+          try {
+            var SDK = window.StellarSdk;
+            var RpcNS = SDK.rpc || SDK.SorobanRpc;
+            var server = new RpcNS.Server(RPC_URL, { allowHttp: false });
+            var lectura = server.getAccount(SOURCE).then(function (account) {
+              var contract = new SDK.Contract(POOL);
+              var arg = SDK.nativeToScVal(hexABytes(CENTRO), { type: 'bytes' });
+              var tx = new SDK.TransactionBuilder(account, {
+                  fee: SDK.BASE_FEE,
+                  networkPassphrase: SDK.Networks.TESTNET,
+                })
+                .addOperation(contract.call('get_pool_balance', arg))
+                .setTimeout(30)
+                .build();
+              return server.simulateTransaction(tx);
+            }).then(function (sim) {
+              if (RpcNS.Api.isSimulationError(sim)) throw new Error(sim.error || 'sim');
+              return SDK.scValToNative(sim.result.retval);
+            });
+            conTimeout(lectura, 8000).then(function (stroops) {
+              var usdc = (Number(stroops) / 1e7).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              document.querySelectorAll('[data-live-pool]').forEach(function (el) { el.textContent = usdc; });
+              document.querySelectorAll('[data-live-tag]').forEach(function (el) {
+                el.textContent = 'en vivo ●';
+                el.classList.add('vivo');
+              });
+            }).catch(function () { /* silencio: queda el snapshot */ });
+          } catch (_) { /* silencio */ }
+      }
+
+      // Arranque diferido: nada de esto bloquea el primer render.
+      window.addEventListener('load', function () {
+        setTimeout(latidoLedger, 400);
+        setInterval(latidoLedger, 20000);
+        setTimeout(leerFondo, 1500);
+        // reintento único si a los 30s seguimos en snapshot (RPC flaky en ráfaga)
+        setTimeout(function () {
+          var tag = document.querySelector('[data-live-tag]');
+          if (tag && !tag.classList.contains('vivo')) leerFondo();
+        }, 30000);
+      });
     })();
   </script>
 </body>
