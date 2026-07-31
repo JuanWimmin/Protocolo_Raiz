@@ -17,6 +17,7 @@
 | KYC (cuando aplique) | SEP-12 | Solo para montos altos / off-ramp |
 | Puntos de recompensa | Dentro de contrato Soroban (Rewards) | Unificado on-chain, no especulable |
 | Gobernanza | Soulbound tokens en Soroban | Voto no comprable |
+| Yield del fondo (F1) | **Blend v2 directo tras `YieldAdapter` propio** (muere el vault DeFindex) | Sin intermediario ni API key; la fuente de yield se vuelve intercambiable (`set_yield_adapter`) y a futuro gobernada por los residentes |
 
 ---
 
@@ -31,10 +32,13 @@ pub enum DataKey {
     Merchant(Address),              // comercio -> MerchantData
     UsdcToken,                      // Address del token USDC (SAC)
     ProtocolFeeBps,                 // fee del protocolo en basis points (50 = 0.5%)
-    DefindexVault,                  // Address del vault DeFindex (instance)
+    YieldAdapter,                   // Address del contrato yield_adapter (instance). F1: antes DefindexVault
+    CushionBps,                     // colchón líquido no invertido en bps (instance, default 2000 = 20%)
     BarrioMerchants(BytesN<32>),    // índice de comercios por barrio (para list_merchants)
     TouristSeen(BytesN<32>, Address), // flag de turista único por barrio
-    VaultShares(BytesN<32>),        // shares del vault por barrio (persistent)
+    // F1: la clave VaultShares(BytesN<32>) desaparece de Pool — la contabilidad
+    // de shares por barrio vive en el yield_adapter (única fuente de verdad).
+    // get_vault_shares/get_vault_value delegan en el adapter.
     // Índice global de barrios (persistent Vec<BytesN<32>>).
     // Alimentado por register_barrio; permite RBAC dinámico desde la app.
     // NOTA: barrios registrados antes de añadir esta clave no aparecen
@@ -98,32 +102,56 @@ pub fn list_merchants(env: Env, barrio_id: BytesN<32>) -> Vec<MerchantData>;  //
 // aparecen aquí hasta re-seed. La app debe tener fallback en deployments.json.
 pub fn list_barrios(env: Env) -> Vec<BytesN<32>>;
 
-// ── Vault DeFindex (yield sobre fondos ociosos) ──────────────────────────────
+// ── Yield sobre fondos ociosos (F1: vía YieldAdapter, muere DeFindex) ────────
+//
+// NOTA DE COMPATIBILIDAD: los nombres deposit_idle_to_vault / redeem_from_vault /
+// get_vault_shares / get_vault_value y los eventos vault_dep / vault_red SE
+// CONSERVAN aunque ya no exista "el vault DeFindex" — "vault" pasa a significar
+// "la fuente de yield tras el adapter". Así Treasury, la app y el dashboard de
+// transparencia no cambian de ABI ni de parser de eventos.
 
-// BREAKING CHANGE en initialize: añade defindex_vault como 5° parámetro.
+// BREAKING CHANGE en initialize (re-deploy F1): el 5° parámetro pasa a ser el
+// contrato yield_adapter (antes era defindex_vault).
 pub fn initialize(env: Env, admin: Address, usdc_token: Address, rewards_contract: Address,
-    protocol_fee_bps: u32, defindex_vault: Address) -> Result<(), Error>;
+    protocol_fee_bps: u32, yield_adapter: Address) -> Result<(), Error>;
 
-// Cambia el vault en caliente sin re-desplegar Pool. Solo admin.
-pub fn set_defindex_vault(env: Env, admin: Address, vault: Address) -> Result<(), Error>;
+// Cambia el adapter en caliente sin re-desplegar Pool. Solo admin (v-actual);
+// cuando la gobernanza pueda invocarlo, será una propuesta votable ("¿el fondo
+// va conservador o 70/30?"). GUARDA: solo permitido si adapter.total_shares() == 0
+// (sin posiciones activas) — migrar con posiciones exige rescatar todo antes.
+pub fn set_yield_adapter(env: Env, admin: Address, adapter: Address) -> Result<(), Error>;
 
-// Deposita fondos ociosos al vault para generar yield.
+// Colchón líquido gobernable (default 2000 bps = 20%): fracción del fondo del
+// barrio que NUNCA se invierte, para que las ejecuciones de Treasury se sirvan
+// primero del colchón. Solo admin (futuro: gobernanza).
+pub fn set_cushion_bps(env: Env, admin: Address, bps: u32) -> Result<(), Error>;  // bps <= 10_000
+
+// Deposita fondos ociosos en la fuente de yield vía el adapter.
 // caller debe ser admin O treasury_contract del barrio.
-// Requiere pre-autorizar usdc.transfer(pool, vault, amount) vía authorize_as_current_contract.
-// Evento: (symbol_short!("vault_dep"), barrio_id), (amount, shares)
+// Flujo: usdc.transfer(pool → adapter, amount) [invocación directa, invoker auth]
+//        + adapter.deposit(pool, barrio_id, amount) -> shares.
+// (El authorize_as_current_contract para la sub-invocación a Blend vive ahora
+//  DENTRO del adapter, no en Pool.)
+// VALIDA el colchón: tras depositar, pool_balance restante * 10_000 >=
+//   (pool_balance + adapter.value_of(barrio_id)) * cushion_bps
+//   → error InsufficientLiquidity si lo rompe.
+// Evento: (symbol_short!("vault_dep"), barrio_id), (amount, shares)   [sin cambio]
 pub fn deposit_idle_to_vault(env: Env, caller: Address, barrio_id: BytesN<32>, amount: i128)
     -> Result<(), Error>;
 
-// Rescata shares del vault de vuelta a pool_balance (realiza el yield).
+// Rescata shares vía el adapter de vuelta a pool_balance (realiza el yield).
 // caller debe ser admin O treasury_contract del barrio.
-// NO necesita authorize_as_current_contract (el vault transfiere sus propios fondos).
-// Evento: (symbol_short!("vault_red"), barrio_id), (shares, got)
+// Flujo: adapter.withdraw(pool, barrio_id, shares, to = pool) -> got;
+//        pool_balance += got.
+// El adapter valida shares <= shares_of(barrio_id) — corrige el bug pre-F1 de
+// rescatar shares contablemente ajenas (VaultShares podía quedar negativo).
+// Evento: (symbol_short!("vault_red"), barrio_id), (shares, got)      [sin cambio]
 pub fn redeem_from_vault(env: Env, caller: Address, barrio_id: BytesN<32>, shares: i128)
     -> Result<(), Error>;
 
-// Lecturas del vault
-pub fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128;
-pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128;  // llama vault.get_asset_amounts_per_shares
+// Lecturas (delegan en el adapter; Pool ya no guarda shares propias)
+pub fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128;  // = adapter.shares_of(barrio_id)
+pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128;   // = adapter.value_of(barrio_id)
 ```
 
 ---
@@ -234,8 +262,10 @@ pub fn execute_proposal(env: Env, proposal_id: u64) -> Result<(), Error>;
 // → consulta Governance.tally(proposal_id) [cross-contract]
 // → solo si status == Passed
 // → consulta Governance.get_proposal para amount y recipient
-// NUEVO: si pool.get_vault_shares(barrio_id) > 0, llama pool.redeem_from_vault
-//        para rescatar todo el yield de vuelta al pool antes del retiro
+// Si pool.get_vault_shares(barrio_id) > 0, llama pool.redeem_from_vault
+//        para rescatar todo el yield de vuelta al pool antes del retiro.
+//        (F1: misma ABI — por debajo Pool delega en el yield_adapter; Treasury
+//         no cambia de código.)
 // → llama a Pool.withdraw_to para transferir del pool al recipient
 // → registra Execution; marca proposal como Executed en Governance
 // → emite evento: execution(proposal_id, barrio_id, amount, recipient)
@@ -302,6 +332,88 @@ pub fn redeem(env: Env, tourist: Address, reward_id: u64) -> Result<u64, Error>;
 
 pub fn claim_redemption(env: Env, artisan: Address, redemption_id: u64) -> Result<(), Error>;
 // → artisan.require_auth(); marca claimed=true cuando entrega el premio físico
+```
+
+---
+
+## Contrato 5: `yield_adapter` — la fuente de yield tras una interfaz propia (F1)
+
+> Referencia de diseño: paper `docs/NuevaPropuesta/raiz_paper.tex` §4.2 y propuesta §3.2.
+> El Pool no conoce a Blend: conoce ESTA interfaz. Cambiar de fuente de yield
+> (RWA, renta fija, estrategia mixta) es desplegar otro adapter y un
+> `set_yield_adapter` — no un re-deploy de Pool.
+
+### Interfaz estándar (toda implementación la expone con estas firmas exactas)
+
+```rust
+// Deposita `amount` (USDC stroops) en la fuente de yield, contabilizado al barrio.
+// caller.require_auth() + caller == PoolContract almacenado (mismo patrón que
+// Rewards.accrue_points). El USDC ya debe estar en el balance del adapter
+// (Pool hace usdc.transfer(pool → adapter, amount) justo antes, invocación
+// directa = invoker auth; sin auth anidada en Pool).
+// Devuelve las shares acreditadas al barrio.
+pub fn deposit(env: Env, caller: Address, barrio_id: BytesN<32>, amount: i128) -> Result<i128, Error>;
+
+// Retira `shares` del barrio y envía el USDC resultante a `to`.
+// caller.require_auth() + caller == PoolContract.
+// VALIDA shares > 0 && shares <= shares_of(barrio_id)  → InsufficientShares.
+// Devuelve el USDC (stroops) efectivamente enviado a `to`.
+pub fn withdraw(env: Env, caller: Address, barrio_id: BytesN<32>, shares: i128, to: Address)
+    -> Result<i128, Error>;
+
+// Lecturas puras (sin auth)
+pub fn shares_of(env: Env, barrio_id: BytesN<32>) -> i128;   // shares del barrio
+pub fn total_shares(env: Env) -> i128;                        // suma de todos los barrios (invariante)
+pub fn value_of(env: Env, barrio_id: BytesN<32>) -> i128;     // valor actual en USDC stroops
+pub fn apy_hint(env: Env) -> u32;                             // APY estimado en bps (informativo)
+```
+
+### Implementación 1: `BlendAdapter` (Blend v2 testnet, prestamista puro)
+
+```rust
+#[contracttype]
+pub enum DataKey {
+    Admin,                 // Address admin del protocolo (instance)
+    PoolContract,          // Address del Pool de RAÍZ — único autorizado a deposit/withdraw (instance)
+    BlendPool,             // Address del pool USDC de Blend v2 (instance)
+    UsdcToken,             // Address del USDC SAC de Blend (instance)
+    Shares(BytesN<32>),    // barrio_id -> bTokens del barrio (persistent)
+    TotalShares,           // suma de bTokens de todos los barrios (instance)
+}
+
+pub fn initialize(env: Env, admin: Address, pool_contract: Address,
+    blend_pool: Address, usdc_token: Address) -> Result<(), Error>;
+
+// Solo admin: reclama emisiones BLND del lado supply hacia `to`.
+// (En TestnetV2 el lado supply de USDC puede no tener emisiones — no-op seguro.)
+pub fn claim_blnd(env: Env, admin: Address, to: Address) -> Result<i128, Error>;
+```
+
+Decisiones de implementación (verificadas contra blend-contracts-v2, jul-2026):
+
+| Tema | Decisión |
+|---|---|
+| shares | **shares ≡ bTokens de Blend** (sin capa extra de contabilidad). `deposit` acredita el delta de bTokens que reporta `submit`; `withdraw` descuenta el delta real quemado |
+| Requests Blend | `Supply = 0` / `Withdraw = 1` (u32 planos) — prestamista puro, NUNCA SupplyCollateral (2/3): no entra al health factor ni a max_positions. Patrón del fee-vault oficial (script3) |
+| Cliente Blend | `#[contractclient]` + structs `#[contracttype]` espejo declarados a mano (Request, Positions, Reserve, ReserveConfig, ReserveData) — NO `blend-contract-sdk` (su última versión es para soroban-sdk 25; chocaría con nuestro 26.1.1). Mismo patrón que el viejo DefindexVaultClient |
+| Valoración | `value_of = shares × b_rate / 1e12` con `get_reserve(usdc)` (b_rate viene acumulado al ledger actual). ESCALA 1e12 (Blend v2; en v1 era 1e9) |
+| Auth a Blend | `deposit`: `env.authorize_as_current_contract` para la sub-invocación `usdc.transfer(adapter → blend_pool, amount)` + `submit(from=spender=to=adapter)`. `withdraw`/`claim`: SIN auth extra (tokens salen del pool de Blend; invoker auth cubre el require_auth) |
+| Retiro | request `Withdraw` con `amount = shares × b_rate / 1e12` (floor); Blend quema `ceil` — el dust de redondeo (≤1 bToken) queda acreditado al barrio, nunca se pierde entre barrios |
+| Índice de reserva | Leerlo de `get_reserve(usdc).config.index` en runtime (TestnetV2: USDC = 3) — NO hardcodear |
+| Eventos | `(symbol_short!("supply"), barrio_id), (amount, shares)` y `(symbol_short!("withdrw"), barrio_id), (shares, amount)` — los eventos canónicos del dashboard siguen siendo los `vault_dep`/`vault_red` de Pool |
+| Direcciones testnet | Blend pool TestnetV2 `CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF`; USDC SAC `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU` (el mismo que ya custodia el fondo); BLND `CB22KRA3YZVCNCQI64JQ5WE7UY2VAV7WFLK6A2JN3HEX56T2EDAFO7QF`. Van como parámetros de deploy (env vars del script), no hardcodeadas en el contrato |
+| Riesgo (lección YieldBlox) | El pool objetivo se parametriza en el adapter, no en Pool; el colchón líquido (20% gobernable) vive en Pool; el dashboard debe exponer pool exacto + backstop + oráculo |
+
+### Modelo Kotlin espejo (añadir a `docs/RaizModels.kt`)
+
+```kotlin
+/** Posición de yield de un barrio vía el YieldAdapter (F1: Blend directo). */
+data class YieldPosition(
+    val barrioId: String,      // hex de 64 chars
+    val shares: Long,          // bTokens (stroops de bToken)
+    val valueUsdc: Long,       // valor actual en stroops de USDC (shares × bRate / 1e12)
+    val apyBps: Int            // APY estimado en basis points (informativo, variable)
+)
 ```
 
 ---

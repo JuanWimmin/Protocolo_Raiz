@@ -264,6 +264,19 @@ enum class RaizErrorCode {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Yield del fondo (F1: Blend directo vía YieldAdapter — espejo del contrato
+// yield_adapter; ver raiz_v2_spec_contratos.md "Contrato 5")
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Posición de yield de un barrio vía el YieldAdapter (shares = bTokens de Blend). */
+data class YieldPosition(
+    val barrioId: String,      // hex de 64 chars
+    val shares: Long,          // bTokens del barrio (contabilidad del adapter)
+    val valueUsdc: Long,       // valor actual en stroops de USDC (shares × bRate / 1e12)
+    val apyBps: Int            // APY estimado en basis points (informativo, variable)
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helpers de conversión
 // ─────────────────────────────────────────────────────────────────────────────
 
