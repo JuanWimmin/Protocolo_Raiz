@@ -20,3 +20,6 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 pool = { path = "../pool" }
 governance = { path = "../governance" }
 rewards = { path = "../rewards" }
+# F1: yield_adapter real (BlendAdapter), como hace pool. Los tests hablan con
+# un MockBlendPool local (mismo patrón duplicado que pool/src/test.rs).
+yield_adapter = { path = "../yield_adapter" }

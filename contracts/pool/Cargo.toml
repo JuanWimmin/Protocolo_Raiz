@@ -18,3 +18,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 # Para tests: registramos el contrato Rewards real en el env de test
 # así el cross-contract call a accrue_points funciona.
 rewards = { path = "../rewards" }
+# F1: registramos el crate yield_adapter real (BlendAdapter) en vez del
+# MockVault de DeFindex. Los tests siguen necesitando un MockBlendPool local
+# (Blend no tiene testutils compatibles con sdk 26) — ver test.rs.
+yield_adapter = { path = "../yield_adapter" }

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # RAÍZ · Deploy a Stellar Testnet
 # --------------------------------
-# Compila los 4 contratos a wasm, despliega un USDC SAC (USDC:raiz-admin),
-# despliega los 4 contratos, inicializa todos en el orden correcto, y guarda
-# los IDs en deployments.json.
+# Compila los 5 contratos a wasm (Pool, Governance, Treasury, Rewards,
+# yield_adapter), referencia el USDC SAC de Blend, despliega los 5
+# contratos, inicializa todos en el orden correcto, y guarda los IDs en
+# deployments.json.
 #
 # Requisitos:
 #   - Rust toolchain con target wasm32-unknown-unknown.
@@ -15,11 +16,14 @@ set -euo pipefail
 NETWORK="${NETWORK:-testnet}"
 IDENTITY="${IDENTITY:-raiz-admin}"
 PROTOCOL_FEE_BPS="${PROTOCOL_FEE_BPS:-50}"
-# DeFindex (Camino A): el Pool custodia el USDC de Blend (el mismo que acepta el
-# vault DeFindex) en vez de un USDC propio. SAC, emisor clásico y vault — fijos en testnet.
+# F1: el Pool custodia el USDC de Blend (el que acepta el pool TestnetV2) en
+# vez de un USDC propio. SAC, emisor clásico y pool de Blend — fijos en testnet.
 USDC_SAC="${USDC_SAC:-CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU}"
 USDC_ISSUER="${USDC_ISSUER:-GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56}"
-DEFINDEX_VAULT="${DEFINDEX_VAULT:-CBMVK2JK6NTOT2O4HNQAIQFJY232BHKGLIMXDVQVHIIZKDACXDFZDWHN}"
+# Blend v2 TestnetV2: pool prestamista con la reserva USDC (índice 3). El
+# yield_adapter (BlendAdapter) habla directo con este pool — ya no hay vault
+# intermediario (DeFindex, pre-F1).
+BLEND_POOL="${BLEND_POOL:-CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTRACTS_DIR="$ROOT_DIR/contracts"
@@ -51,14 +55,13 @@ log "Admin: $ADMIN_ADDR"
 
 log "Compilando wasm (stellar contract build → wasm32v1-none)..."
 cd "$CONTRACTS_DIR"
-# Para el `contractimport!` del Pool (target wasm32-unknown-unknown) necesita
-# el wasm de rewards también en ese target — compila aparte primero.
-cargo build --release --target wasm32-unknown-unknown -p rewards
-# `stellar contract build` recompila al target wasm32v1-none que es el que
-# acepta el host de Soroban.
+# Todos los cross-contract calls del repo usan #[contractclient] declarado a
+# mano (no `contractimport!`), así que no hace falta un build en dos pasos:
+# `stellar contract build` compila los 5 crates al target wasm32v1-none, el
+# único que acepta el host de Soroban.
 stellar contract build
 
-for crate in rewards governance treasury pool; do
+for crate in rewards governance treasury pool yield_adapter; do
     wasm="$WASM_DIR/$crate.wasm"
     if [[ ! -f "$wasm" ]]; then
         err "No se encontró $wasm"
@@ -69,12 +72,13 @@ for crate in rewards governance treasury pool; do
 done
 
 # ── 3. USDC (Blend testnet) ────────────────────────────────────────────────
-# Camino A: el Pool custodia el USDC de Blend (el que acepta el vault DeFindex),
+# F1: el Pool custodia el USDC de Blend (el que acepta el pool TestnetV2),
 # NO un USDC propio. Ese SAC ya está desplegado en testnet; solo lo referenciamos.
 USDC_ID="$USDC_SAC"
 log "USDC (Blend) SAC: $USDC_ID  (emisor clásico USDC:$USDC_ISSUER)"
+log "Blend pool (TestnetV2): $BLEND_POOL"
 
-# ── 4. Deploy los 4 contratos ──────────────────────────────────────────────
+# ── 4. Deploy los 5 contratos ──────────────────────────────────────────────
 
 deploy_contract() {
     local name="$1"
@@ -113,8 +117,17 @@ log "Deploy Rewards..."
 REWARDS_ID=$(deploy_contract rewards)
 log "  Rewards: $REWARDS_ID"
 
+log "Deploy yield_adapter (BlendAdapter)..."
+YIELD_ADAPTER_ID=$(deploy_contract yield_adapter)
+log "  yield_adapter: $YIELD_ADAPTER_ID"
+
 # ── 5. Initialize en el orden correcto ─────────────────────────────────────
-# Orden: Rewards (necesita pool_addr) → Pool → Governance → Treasury.
+# Todos los contratos ya están desplegados (con Address propia) antes de que
+# ninguno se inicialice, así que no hay problema de huevo-gallina entre
+# Pool <-> yield_adapter: cada `initialize` solo necesita la Address del otro
+# contrato (ya conocida), no que ya esté inicializado.
+# Orden: Rewards (necesita pool_addr) → yield_adapter (necesita pool_addr) →
+#        Pool (necesita yield_adapter_addr) → Governance → Treasury.
 
 invoke() {
     local contract_id="$1"
@@ -141,13 +154,20 @@ invoke "$REWARDS_ID" initialize \
     --admin "$ADMIN_ADDR" \
     --pool_contract "$POOL_ID"
 
-log "Initialize Pool (admin, usdc, rewards, fee=$PROTOCOL_FEE_BPS, defindex_vault)..."
+log "Initialize yield_adapter (admin, pool=$POOL_ID, blend_pool=$BLEND_POOL, usdc)..."
+invoke "$YIELD_ADAPTER_ID" initialize \
+    --admin "$ADMIN_ADDR" \
+    --pool_contract "$POOL_ID" \
+    --blend_pool "$BLEND_POOL" \
+    --usdc_token "$USDC_ID"
+
+log "Initialize Pool (admin, usdc, rewards, fee=$PROTOCOL_FEE_BPS, yield_adapter=$YIELD_ADAPTER_ID)..."
 invoke "$POOL_ID" initialize \
     --admin "$ADMIN_ADDR" \
     --usdc_token "$USDC_ID" \
     --rewards_contract "$REWARDS_ID" \
     --protocol_fee_bps "$PROTOCOL_FEE_BPS" \
-    --defindex_vault "$DEFINDEX_VAULT"
+    --yield_adapter "$YIELD_ADAPTER_ID"
 
 log "Initialize Governance (protocol_admin, treasury=$TREASURY_ID)..."
 invoke "$GOVERNANCE_ID" initialize \
@@ -172,11 +192,11 @@ cat > "$DEPLOYMENTS_JSON" <<EOF
   "governance": "$GOVERNANCE_ID",
   "treasury": "$TREASURY_ID",
   "rewards": "$REWARDS_ID",
+  "yield_adapter": "$YIELD_ADAPTER_ID",
   "protocol_fee_bps": $PROTOCOL_FEE_BPS,
   "deployed_at": "$DEPLOYED_AT",
   "usdc_issuer": "$USDC_ISSUER",
-  "defindex_vault": "$DEFINDEX_VAULT",
-  "defindex_usdc": "$USDC_SAC"
+  "blend_pool": "$BLEND_POOL"
 }
 EOF
 log "deployments.json escrito:"
@@ -188,5 +208,7 @@ echo "  Pool:       https://stellar.expert/explorer/$NETWORK/contract/$POOL_ID"
 echo "  Governance: https://stellar.expert/explorer/$NETWORK/contract/$GOVERNANCE_ID"
 echo "  Treasury:   https://stellar.expert/explorer/$NETWORK/contract/$TREASURY_ID"
 echo "  Rewards:    https://stellar.expert/explorer/$NETWORK/contract/$REWARDS_ID"
+echo "  Adapter:    https://stellar.expert/explorer/$NETWORK/contract/$YIELD_ADAPTER_ID"
 echo "  USDC SAC:   https://stellar.expert/explorer/$NETWORK/contract/$USDC_ID"
+echo "  Blend pool: https://stellar.expert/explorer/$NETWORK/contract/$BLEND_POOL"
 echo "  Admin:      https://stellar.expert/explorer/$NETWORK/account/$ADMIN_ADDR"

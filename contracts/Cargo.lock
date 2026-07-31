@@ -1036,6 +1036,7 @@ version = "0.1.0"
 dependencies = [
  "rewards",
  "soroban-sdk",
+ "yield_adapter",
 ]
 
 [[package]]
@@ -1709,6 +1710,7 @@ dependencies = [
  "pool",
  "rewards",
  "soroban-sdk",
+ "yield_adapter",
 ]
 
 [[package]]
@@ -1885,6 +1887,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
 dependencies = [
  "windows-link",
+]
+
+[[package]]
+name = "yield_adapter"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

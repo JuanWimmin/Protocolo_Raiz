@@ -2,7 +2,8 @@
 
 //! Tests integrados de Treasury.
 //! Levanta los 4 contratos juntos (Rewards, Governance, Pool, Treasury) + USDC
-//! SAC, los wirea como en producción y ejercita el flujo completo:
+//! SAC + el yield_adapter REAL (BlendAdapter) + MockBlendPool, los wirea como
+//! en producción y ejercita el flujo completo:
 //!
 //!   pago con tip → pool tiene balance → propuesta → voto → tally → execute → cobro.
 
@@ -15,86 +16,244 @@ use rewards::{RewardsContract, RewardsContractClient};
 use soroban_sdk::{
     contract, contractimpl, contracttype,
     testutils::{Address as _, BytesN as _, Ledger},
-    token, Address, BytesN, Env, String, Symbol, Val, Vec,
+    token, Address, BytesN, Env, Map, String, Symbol, Vec,
 };
+use yield_adapter::{BlendAdapter, BlendAdapterClient};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MockVault local (duplicado de pool/test.rs; pool::test no es accesible desde
-// crates externos porque está bajo #[cfg(test)]).
+// MockBlendPool (duplicado de pool/src/test.rs; `yield_adapter::test` y
+// `pool::test` son `#[cfg(test)]` y no son accesibles desde este crate externo).
 // ─────────────────────────────────────────────────────────────────────────────
+
+const MOCK_SCALAR_12: i128 = 1_000_000_000_000;
+const MOCK_IDX: u32 = 3;
 
 #[contracttype]
 #[derive(Clone)]
-pub enum MVKey {
+pub struct Request {
+    pub request_type: u32,
+    pub address: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Positions {
+    pub liabilities: Map<u32, i128>,
+    pub collateral: Map<u32, i128>,
+    pub supply: Map<u32, i128>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ReserveConfig {
+    pub index: u32,
+    pub decimals: u32,
+    pub c_factor: u32,
+    pub l_factor: u32,
+    pub util: u32,
+    pub max_util: u32,
+    pub r_base: u32,
+    pub r_one: u32,
+    pub r_two: u32,
+    pub r_three: u32,
+    pub reactivity: u32,
+    pub supply_cap: i128,
+    pub enabled: bool,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ReserveData {
+    pub d_rate: i128,
+    pub b_rate: i128,
+    pub ir_mod: i128,
+    pub b_supply: i128,
+    pub d_supply: i128,
+    pub backstop_credit: i128,
+    pub last_time: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Reserve {
+    pub asset: Address,
+    pub config: ReserveConfig,
+    pub data: ReserveData,
+    pub scalar: i128,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PoolConfig {
+    pub oracle: Address,
+    pub min_collateral: i128,
+    pub bstop_rate: u32,
+    pub status: u32,
+    pub max_positions: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub enum MBKey {
     Usdc,
-    Shares(Address),
-    Price,
+    Blnd,
+    BRate,
+    IrMod,
+    BSupply,
+    DSupply,
+    BstopRate,
+    BTokens(Address),
+    BlndAmount,
 }
 
 #[contract]
-pub struct MockVault;
+pub struct MockBlendPool;
 
 #[contractimpl]
-impl MockVault {
-    pub fn initialize(env: Env, usdc: Address) {
-        env.storage().instance().set(&MVKey::Usdc, &usdc);
-        env.storage().instance().set(&MVKey::Price, &10_000i128);
+impl MockBlendPool {
+    pub fn initialize(env: Env, usdc: Address, blnd: Address) {
+        env.storage().instance().set(&MBKey::Usdc, &usdc);
+        env.storage().instance().set(&MBKey::Blnd, &blnd);
+        env.storage().instance().set(&MBKey::BRate, &MOCK_SCALAR_12);
+        env.storage().instance().set(&MBKey::IrMod, &10_000_000i128);
+        env.storage().instance().set(&MBKey::BSupply, &0i128);
+        env.storage().instance().set(&MBKey::DSupply, &0i128);
+        env.storage().instance().set(&MBKey::BstopRate, &2_000_000u32);
+        env.storage().instance().set(&MBKey::BlndAmount, &0i128);
     }
-    pub fn set_price(env: Env, price: i128) {
-        env.storage().instance().set(&MVKey::Price, &price);
+
+    pub fn set_b_rate(env: Env, rate: i128) {
+        env.storage().instance().set(&MBKey::BRate, &rate);
     }
-    pub fn deposit(
+
+    pub fn submit(
         env: Env,
-        amounts_desired: Vec<i128>,
-        _amounts_min: Vec<i128>,
         from: Address,
-        _invest: bool,
-    ) -> (Vec<i128>, i128, Val) {
-        from.require_auth();
-        let amount = amounts_desired.get(0).unwrap_or(0);
-        let usdc_addr: Address = env.storage().instance().get(&MVKey::Usdc).unwrap();
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        spender.require_auth();
+        if from != spender {
+            from.require_auth();
+        }
+        let usdc_addr: Address = env.storage().instance().get(&MBKey::Usdc).unwrap();
         let usdc = token::Client::new(&env, &usdc_addr);
-        let vault = env.current_contract_address();
-        usdc.transfer(&from, &vault, &amount);
-        let price: i128 = env.storage().instance().get(&MVKey::Price).unwrap_or(10_000);
-        let shares = amount * 10_000 / price;
-        let key = MVKey::Shares(from.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(current + shares));
-        let mut out = Vec::new(&env);
-        out.push_back(amount);
-        // Tercer elemento: Val::VOID (comodín compatible con el vault real que
-        // devuelve ScVal::Vec([ScVal::Void]) cuando invest=true).
-        (out, shares, Val::VOID.into())
+        let b_rate: i128 = env
+            .storage()
+            .instance()
+            .get(&MBKey::BRate)
+            .unwrap_or(MOCK_SCALAR_12);
+        let me = env.current_contract_address();
+
+        for req in requests.iter() {
+            if req.request_type == 0 {
+                usdc.transfer(&spender, &me, &req.amount);
+                let b_tokens = req.amount * MOCK_SCALAR_12 / b_rate;
+                let key = MBKey::BTokens(from.clone());
+                let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+                env.storage().persistent().set(&key, &(current + b_tokens));
+                let bs: i128 = env.storage().instance().get(&MBKey::BSupply).unwrap_or(0);
+                env.storage().instance().set(&MBKey::BSupply, &(bs + b_tokens));
+            } else if req.request_type == 1 {
+                let key = MBKey::BTokens(from.clone());
+                let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+                let b_needed = (req.amount * MOCK_SCALAR_12 + b_rate - 1) / b_rate;
+                let (b_burn, transfer_amount) = if b_needed >= current {
+                    (current, current * b_rate / MOCK_SCALAR_12)
+                } else {
+                    (b_needed, req.amount)
+                };
+                usdc.transfer(&me, &to, &transfer_amount);
+                env.storage().persistent().set(&key, &(current - b_burn));
+                let bs: i128 = env.storage().instance().get(&MBKey::BSupply).unwrap_or(0);
+                env.storage().instance().set(&MBKey::BSupply, &(bs - b_burn));
+            }
+        }
+
+        Self::get_positions(env.clone(), from)
     }
-    pub fn withdraw(
-        env: Env,
-        withdraw_shares: i128,
-        _min_amounts_out: Vec<i128>,
-        from: Address,
-    ) -> Vec<i128> {
+
+    pub fn get_positions(env: Env, address: Address) -> Positions {
+        let b_tokens: i128 = env
+            .storage()
+            .persistent()
+            .get(&MBKey::BTokens(address))
+            .unwrap_or(0);
+        let mut supply = Map::new(&env);
+        supply.set(MOCK_IDX, b_tokens);
+        Positions {
+            liabilities: Map::new(&env),
+            collateral: Map::new(&env),
+            supply,
+        }
+    }
+
+    pub fn get_reserve(env: Env, asset: Address) -> Reserve {
+        let b_rate: i128 = env
+            .storage()
+            .instance()
+            .get(&MBKey::BRate)
+            .unwrap_or(MOCK_SCALAR_12);
+        let ir_mod: i128 = env
+            .storage()
+            .instance()
+            .get(&MBKey::IrMod)
+            .unwrap_or(10_000_000);
+        let b_supply: i128 = env.storage().instance().get(&MBKey::BSupply).unwrap_or(0);
+        let d_supply: i128 = env.storage().instance().get(&MBKey::DSupply).unwrap_or(0);
+        Reserve {
+            asset,
+            config: ReserveConfig {
+                index: MOCK_IDX,
+                decimals: 7,
+                c_factor: 0,
+                l_factor: 0,
+                util: 7_500_000,
+                max_util: 9_500_000,
+                r_base: 100_000,
+                r_one: 500_000,
+                r_two: 5_000_000,
+                r_three: 15_000_000,
+                reactivity: 20,
+                supply_cap: i128::MAX,
+                enabled: true,
+            },
+            data: ReserveData {
+                d_rate: MOCK_SCALAR_12,
+                b_rate,
+                ir_mod,
+                b_supply,
+                d_supply,
+                backstop_credit: 0,
+                last_time: env.ledger().timestamp(),
+            },
+            scalar: 10_000_000,
+        }
+    }
+
+    pub fn get_config(env: Env) -> PoolConfig {
+        let bstop_rate: u32 = env.storage().instance().get(&MBKey::BstopRate).unwrap_or(0);
+        PoolConfig {
+            oracle: env.current_contract_address(),
+            min_collateral: 0,
+            bstop_rate,
+            status: 6,
+            max_positions: 4,
+        }
+    }
+
+    pub fn claim(env: Env, from: Address, reserve_token_ids: Vec<u32>, to: Address) -> i128 {
         from.require_auth();
-        let price: i128 = env.storage().instance().get(&MVKey::Price).unwrap_or(10_000);
-        let amount = withdraw_shares * price / 10_000;
-        let usdc_addr: Address = env.storage().instance().get(&MVKey::Usdc).unwrap();
-        let usdc = token::Client::new(&env, &usdc_addr);
-        let vault = env.current_contract_address();
-        usdc.transfer(&vault, &from, &amount);
-        let key = MVKey::Shares(from.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(current - withdraw_shares));
-        let mut out = Vec::new(&env);
-        out.push_back(amount);
-        out
-    }
-    pub fn balance(env: Env, id: Address) -> i128 {
-        env.storage().persistent().get(&MVKey::Shares(id)).unwrap_or(0)
-    }
-    pub fn get_asset_amounts_per_shares(env: Env, vault_shares: i128) -> Vec<i128> {
-        let price: i128 = env.storage().instance().get(&MVKey::Price).unwrap_or(10_000);
-        let mut out = Vec::new(&env);
-        out.push_back(vault_shares * price / 10_000);
-        out
+        let _ = reserve_token_ids;
+        let amount: i128 = env.storage().instance().get(&MBKey::BlndAmount).unwrap_or(0);
+        if amount > 0 {
+            let blnd_addr: Address = env.storage().instance().get(&MBKey::Blnd).unwrap();
+            let blnd = token::Client::new(&env, &blnd_addr);
+            blnd.transfer(&env.current_contract_address(), &to, &amount);
+        }
+        amount
     }
 }
 
@@ -110,7 +269,8 @@ struct Stack<'a> {
     treasury_addr: Address,
     pool_addr: Address,
     governance_addr: Address,
-    vault_addr: Address,
+    adapter_addr: Address,
+    blend_addr: Address,
 }
 
 fn build_stack<'a>(env: &'a Env) -> Stack<'a> {
@@ -123,11 +283,15 @@ fn build_stack<'a>(env: &'a Env) -> Stack<'a> {
     let usdc_addr = sac.address();
     let usdc = token::Client::new(env, &usdc_addr);
     let usdc_admin = token::StellarAssetClient::new(env, &usdc_addr);
+    // BLND SAC (solo lo necesita MockBlendPool.initialize; no se usa en estos tests).
+    let blnd_sac = env.register_stellar_asset_contract_v2(protocol_admin.clone());
+    let blnd_addr_token = blnd_sac.address();
 
-    // 5 contratos (4 de RAÍZ + MockVault)
+    // 6 contratos (4 de RAÍZ + yield_adapter real + MockBlendPool)
     let rewards_addr = env.register(RewardsContract, ());
     let governance_addr = env.register(GovernanceContract, ());
-    let vault_addr = env.register(MockVault, ());
+    let blend_addr = env.register(MockBlendPool, ());
+    let adapter_addr = env.register(BlendAdapter, ());
     let pool_addr = env.register(PoolContract, ());
     let treasury_addr = env.register(TreasuryContract, ());
 
@@ -135,17 +299,17 @@ fn build_stack<'a>(env: &'a Env) -> Stack<'a> {
     let governance = GovernanceContractClient::new(env, &governance_addr);
     let treasury = TreasuryContractClient::new(env, &treasury_addr);
     let rewards = RewardsContractClient::new(env, &rewards_addr);
-    let vault = MockVaultClient::new(env, &vault_addr);
+    let blend = MockBlendPoolClient::new(env, &blend_addr);
+    let adapter = BlendAdapterClient::new(env, &adapter_addr);
 
     // Wire: initialize cada uno.
-    vault.initialize(&usdc_addr);
+    blend.initialize(&usdc_addr, &blnd_addr_token);
+    adapter.initialize(&protocol_admin, &pool_addr, &blend_addr, &usdc_addr);
     rewards.initialize(&protocol_admin, &pool_addr);
-    // initialize ahora toma defindex_vault como 5° arg
-    pool.initialize(&protocol_admin, &usdc_addr, &rewards_addr, &50u32, &vault_addr);
+    // initialize toma yield_adapter como 5° arg (F1; antes defindex_vault).
+    pool.initialize(&protocol_admin, &usdc_addr, &rewards_addr, &50u32, &adapter_addr);
     governance.initialize(&protocol_admin, &treasury_addr);
     treasury.initialize(&pool_addr, &governance_addr);
-
-    let _ = vault; // silencia warning unused
 
     Stack {
         treasury,
@@ -157,7 +321,8 @@ fn build_stack<'a>(env: &'a Env) -> Stack<'a> {
         treasury_addr,
         pool_addr,
         governance_addr,
-        vault_addr,
+        adapter_addr,
+        blend_addr,
     }
 }
 
@@ -359,10 +524,16 @@ fn test_anyone_can_execute_passed_proposal() {
     let _ = (s.protocol_admin, s.governance_addr); // silencia warnings de unused
 }
 
-/// Flujo completo con yield de vault:
-///   pago → tip al pool → deposit al vault → propuesta → voto → execute
-/// Treasury debe rescatar shares del vault antes de ejecutar el pago.
+/// Flujo completo con yield del yield_adapter (F1):
+///   pago → tip al pool → deposit al adapter → propuesta → voto → execute
+/// Treasury debe rescatar shares del adapter antes de ejecutar el pago.
 /// Con yield simulado (10%), el pool recupera más USDC del que depositó.
+///
+/// DECISIÓN: este test deposita el 100% del fondo idle del barrio al adapter
+/// (para ejercitar el rescate TOTAL que hace Treasury). Eso viola el colchón
+/// líquido por defecto de Pool (20%, F1) — se setea `cushion_bps = 0` en el
+/// setup de este test para preservar el escenario original ("todo invertido,
+/// Treasury debe rescatarlo todo antes de pagar").
 #[test]
 fn test_execute_proposal_with_vault_shares_and_yield() {
     let env = Env::default();
@@ -373,20 +544,25 @@ fn test_execute_proposal_with_vault_shares_and_yield() {
     let pool_initial = s.pool.get_pool_balance(&bid);
     assert_eq!(pool_initial, 20_000_000);
 
-    // Admin deposita TODO el idle al vault (pool_balance queda en 0).
-    s.pool.deposit_idle_to_vault(&s.protocol_admin, &bid, &pool_initial);
+    // Sin colchón para este test (ver DECISIÓN en el doc del test).
+    s.pool.set_cushion_bps(&s.protocol_admin, &0u32);
+
+    // Admin deposita TODO el idle al adapter (pool_balance queda en 0).
+    s.pool
+        .deposit_idle_to_vault(&s.protocol_admin, &bid, &pool_initial);
     assert_eq!(s.pool.get_pool_balance(&bid), 0);
     let shares = s.pool.get_vault_shares(&bid);
-    assert_eq!(shares, 20_000_000); // 1:1
+    assert_eq!(shares, 20_000_000); // 1:1 al b_rate inicial
 
-    // Simula yield del 10%: MockVault.set_price(11_000) + mint extra al vault.
-    let vault = MockVaultClient::new(&env, &s.vault_addr);
-    vault.set_price(&11_000i128);
-    // El vault necesita USDC extra para cubrir el yield (10% de 20M = 2M).
-    s.usdc_admin.mint(&s.vault_addr, &2_000_000i128);
+    // Simula yield del 10%: MockBlendPool.set_b_rate(1.1e12) + mint extra al
+    // pool de Blend (mock) para cubrir el yield.
+    let blend = MockBlendPoolClient::new(&env, &s.blend_addr);
+    blend.set_b_rate(&1_100_000_000_000i128);
+    // El pool de Blend necesita USDC extra para cubrir el yield (10% de 20M = 2M).
+    s.usdc_admin.mint(&s.blend_addr, &2_000_000i128);
 
     // Crea propuesta: quiere 1 USDC (10_000_000 stroops) del pool.
-    // Como todo está en vault, Treasury deberá rescatar antes de pagar.
+    // Como todo está en el adapter, Treasury deberá rescatar antes de pagar.
     let recipient = Address::generate(&env);
     let id = create_and_vote(&env, &s, &bid, &residents, &recipient, 10_000_000, 4, 0);
 
@@ -405,7 +581,7 @@ fn test_execute_proposal_with_vault_shares_and_yield() {
     // pool_balance = 22_000_000 (rescatado con yield) - 10_000_000 (propuesta) = 12_000_000
     assert_eq!(s.pool.get_pool_balance(&bid), 12_000_000);
 
-    // Vault shares ya son 0 (todo rescatado)
+    // Shares del adapter ya son 0 (todo rescatado)
     assert_eq!(s.pool.get_vault_shares(&bid), 0);
 
     // Proposal marcada Executed
@@ -416,5 +592,5 @@ fn test_execute_proposal_with_vault_shares_and_yield() {
     // Treasury tiene 1 execution registrada
     assert_eq!(s.treasury.get_execution_count(&bid), 1);
 
-    let _ = s.governance_addr; // silencia warning
+    let _ = (s.governance_addr, s.adapter_addr); // silencia warnings
 }

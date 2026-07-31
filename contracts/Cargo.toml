@@ -5,6 +5,7 @@ members = [
     "governance",
     "treasury",
     "rewards",
+    "yield_adapter",
 ]
 
 [workspace.package]

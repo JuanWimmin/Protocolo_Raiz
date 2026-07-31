@@ -33,7 +33,7 @@ REWARDS=$(get_field rewards)
 TREASURY=$(get_field treasury)
 USDC=$(get_field usdc_sac)
 USDC_ISSUER=$(get_field usdc_issuer)
-DEFINDEX_VAULT=$(get_field defindex_vault)
+YIELD_ADAPTER=$(get_field yield_adapter)
 ADMIN_ADDR=$(get_field admin)
 TOURIST_ADDR=$(stellar keys address "$TOURIST" 2>/dev/null || echo "")
 
@@ -226,16 +226,17 @@ invoke "$POOL" "$TOURIST" pay_merchant --tourist "$TOURIST_ADDR" --merchant "$M7
 invoke "$POOL" "$TOURIST" pay_merchant --tourist "$TOURIST_ADDR" --merchant "$M8" --amount 70000000  --tip_bps 200 >/dev/null # 7 USDC
 log "  ✓ 2 pagos en Costa Vieja"
 
-# ── 5b. Camino A: depositar fondo ocioso del Centro al vault DeFindex ───────
-# Prueba el cross-contract Pool→vault (authorize_as_current_contract). El Centro
-# tiene ~0.3 USDC de tips acumulados; depositamos 0.2 y dejamos 0.1 líquidos.
-log "Camino A: depositando 0.2 USDC del fondo del Centro al vault DeFindex..."
+# ── 5b. F1: depositar fondo ocioso del Centro vía yield_adapter (Blend) ─────
+# Prueba el cross-contract Pool→yield_adapter→Blend. El Centro tiene ~0.3 USDC
+# de tips acumulados; depositamos 0.2 y dejamos 0.1 líquidos (deja el 33% del
+# fondo idle, por encima del colchón mínimo del 20% — no viola InsufficientLiquidity).
+log "F1: depositando 0.2 USDC del fondo del Centro vía yield_adapter (Blend)..."
 if invoke "$POOL" "$ADMIN" deposit_idle_to_vault \
     --caller "$ADMIN_ADDR" --barrio_id "$BARRIO_CENTRO" --amount 2000000 >/dev/null; then
     SHARES=$(invoke "$POOL" "$ADMIN" get_vault_shares --barrio_id "$BARRIO_CENTRO")
-    log "  ✓ Fondo del Centro rindiendo en DeFindex (shares=$SHARES)"
+    log "  ✓ Fondo del Centro rindiendo en Blend vía yield_adapter=$YIELD_ADAPTER (shares=$SHARES)"
 else
-    warn "  ✗ deposit_idle_to_vault falló — revisar auth cross-contract"
+    warn "  ✗ deposit_idle_to_vault falló — revisar auth cross-contract o el colchón líquido"
 fi
 
 # ── 6. Propuestas activas (1 por barrio) ───────────────────────────────────

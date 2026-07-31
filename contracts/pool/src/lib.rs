@@ -11,9 +11,15 @@
 //! para el comercio y el "Tip Barrio" para el fondo comunitario, y llama
 //! cross-contract al contrato Rewards para acumular puntos.
 //!
-//! También gestiona el vault DeFindex: admin o treasury del barrio pueden
-//! depositar los fondos ociosos (`deposit_idle_to_vault`) y rescatarlos
-//! (`redeem_from_vault`). El yield queda en `pool_balance` tras el rescate.
+//! También gestiona el yield sobre fondos ociosos (F1): admin o treasury del
+//! barrio pueden depositar los fondos ociosos (`deposit_idle_to_vault`) y
+//! rescatarlos (`redeem_from_vault`) a través de un contrato `yield_adapter`
+//! intercambiable (`set_yield_adapter`) — Pool NO conoce a Blend, solo la
+//! interfaz estándar del adapter. El yield queda en `pool_balance` tras el
+//! rescate. Los nombres `deposit_idle_to_vault`/`redeem_from_vault`/
+//! `get_vault_shares`/`get_vault_value` y los eventos `vault_dep`/`vault_red`
+//! se CONSERVAN por compatibilidad con Treasury, la app y el dashboard —
+//! "vault" ahora significa "la fuente de yield tras el adapter".
 //!
 //! Convenciones:
 //!   - Montos en USDC se manejan como i128 en stroops (7 decimales). 1 USDC = 10_000_000.
@@ -22,9 +28,8 @@
 //!   - El token USDC se maneja vía su Stellar Asset Contract (SAC) usando la interfaz token.
 
 use soroban_sdk::{
-    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractimpl, contracttype, symbol_short, vec,
-    token, Address, BytesN, Env, IntoVal, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, BytesN,
+    Env, String, Symbol, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +48,13 @@ pub enum Error {
     BarrioNotFound = 6,
     InvalidAmount = 7,
     InvalidTipBps = 8,
-    VaultNotConfigured = 9,
+    // F1: antes "VaultNotConfigured" (DeFindex). Mismo código, nuevo nombre:
+    // significa que DataKey::YieldAdapter no está seteado.
+    AdapterNotConfigured = 9,
+    // F1: nuevos errores del colchón líquido / migración de adapter.
+    InsufficientLiquidity = 10,
+    AdapterHasPositions = 11,
+    InvalidBps = 12,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,16 +93,20 @@ pub enum DataKey {
     UsdcToken,
     RewardsContract,
     ProtocolFeeBps,
-    // Vault DeFindex (instance): dirección del vault compartida para todos los barrios
-    DefindexVault,
+    // F1: Address del contrato yield_adapter (instance), compartido para
+    // todos los barrios. Antes era DefindexVault. La contabilidad de shares
+    // por barrio YA NO vive aquí — vive en el adapter (única fuente de verdad).
+    YieldAdapter,
+    // F1: colchón líquido no invertido, en bps (instance, default 2000 = 20%).
+    // Fracción del fondo del barrio que NUNCA se deposita en el adapter, para
+    // que Treasury tenga liquidez inmediata sin depender de un rescate.
+    CushionBps,
     Barrio(BytesN<32>),
     Merchant(Address),
     // Índice de comercios por barrio, para list_merchants (alimenta el mapa)
     BarrioMerchants(BytesN<32>),
     // Set de turistas que ya aportaron a un barrio (para unique_tourists)
     TouristSeen(BytesN<32>, Address),
-    // Shares del vault por barrio (persistent)
-    VaultShares(BytesN<32>),
     // Índice global de barrios registrados (persistent Vec<BytesN<32>>).
     // Alimentado por register_barrio; permite que la app descubra barrios
     // dinámicamente sin hardcodear la lista. Los barrios registrados ANTES
@@ -122,57 +137,43 @@ mod rewards_contract {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Interfaz del vault DeFindex (cliente declarado a mano)
+// Interfaz del yield_adapter (cliente declarado a mano, F1)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Se usa `#[contractclient]` en lugar de `contractimport!` porque el wasm del
-// vault DeFindex no está en este repo.
+// Se usa `#[contractclient]` en lugar de `contractimport!`: evita el build de
+// dos pasos. Mantener en sync con `contracts/yield_adapter/src/lib.rs`
+// (interfaz estándar del Contrato 5 en la spec — cualquier implementación de
+// yield_adapter debe respetar EXACTAMENTE estas firmas).
 //
-// DECISIÓN sobre el tipo de retorno de `deposit`:
-//   La firma on-chain real es:
-//     deposit(...) -> (Vec<i128>, i128, Option<Vec<Option<AssetInvestmentAllocation>>>)
-//   Solo necesitamos el elemento `.1` (i128 de shares). El tercer elemento varía
-//   según la versión y configuración del vault:
-//     - Con invest=false: puede ser Void (None) → ScVal::Void
-//     - Con invest=true:  el vault DeFindex real devuelve [null] → ScVal::Vec([ScVal::Void])
-//   Usar `()` (→ Void) o `Option<...>` falla para el caso invest=true del vault real.
-//   SOLUCIÓN: usar `soroban_sdk::Val` (tipo comodín). `Val` implementa
-//   `TryFromVal<Env, Val>` de forma identitaria (soroban-env-common val.rs:271),
-//   por lo que acepta CUALQUIER valor XDR sin hacer type-checking. Solo lo ignoramos.
-//   Verificado que Val es aceptable como componente de tupla en #[contractclient].
-mod vault_client {
-    use soroban_sdk::{contractclient, Address, Env, Val, Vec};
+// NOTA: las funciones públicas del adapter devuelven `Result<T, Error>`, pero
+// el trait del cliente declara solo el tipo de éxito (`T`) — el host de
+// Soroban traduce `Result::Err` en un trap/panic en la llamada cross-contract,
+// no en un `Result` XDR. Mismo patrón que `PoolClient`/`GovernanceClient` en
+// treasury/src/lib.rs.
+mod yield_adapter_client {
+    use soroban_sdk::{contractclient, Address, BytesN, Env};
 
     #[allow(dead_code)]
-    #[contractclient(name = "DefindexVaultClient")]
-    pub trait DefindexVault {
-        /// Deposita `amounts_desired[0]` USDC desde `from` al vault.
-        /// Retorna (amounts_depositados, shares_minteadas, _alloc_ignorada).
-        /// Solo usamos el elemento `.1`. El tercer elemento es `Val` (comodín
-        /// que acepta cualquier XDR: Void cuando invest=false, Vec([Void]) cuando
-        /// invest=true con el vault DeFindex real).
-        fn deposit(
-            env: Env,
-            amounts_desired: Vec<i128>,
-            amounts_min: Vec<i128>,
-            from: Address,
-            invest: bool,
-        ) -> (Vec<i128>, i128, Val);
-
-        /// Quema `withdraw_shares` shares y transfiere USDC de vuelta a `from`.
-        /// Retorna vec de montos por asset (tomamos [0] para USDC).
+    #[contractclient(name = "Client")]
+    pub trait YieldAdapter {
+        /// Deposita `amount` (ya transferido al adapter por Pool) y devuelve
+        /// las shares acreditadas al barrio.
+        fn deposit(env: Env, caller: Address, barrio_id: BytesN<32>, amount: i128) -> i128;
+        /// Retira `shares` del barrio y envía el USDC resultante a `to`.
+        /// Devuelve el USDC (stroops) efectivamente enviado.
         fn withdraw(
             env: Env,
-            withdraw_shares: i128,
-            min_amounts_out: Vec<i128>,
-            from: Address,
-        ) -> Vec<i128>;
-
-        /// Shares que tiene `id` en el vault.
-        fn balance(env: Env, id: Address) -> i128;
-
-        /// Valor USDC underlying de `vault_shares` shares (vec por asset).
-        fn get_asset_amounts_per_shares(env: Env, vault_shares: i128) -> Vec<i128>;
+            caller: Address,
+            barrio_id: BytesN<32>,
+            shares: i128,
+            to: Address,
+        ) -> i128;
+        /// Shares del barrio (lectura pura, sin auth).
+        fn shares_of(env: Env, barrio_id: BytesN<32>) -> i128;
+        /// Suma de shares de todos los barrios (invariante de migración).
+        fn total_shares(env: Env) -> i128;
+        /// Valor actual en USDC stroops de las shares del barrio.
+        fn value_of(env: Env, barrio_id: BytesN<32>) -> i128;
     }
 }
 
@@ -181,6 +182,8 @@ mod vault_client {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BPS_DENOMINATOR: i128 = 10_000;
+/// Colchón líquido por defecto: 20% del fondo del barrio nunca se invierte.
+const DEFAULT_CUSHION_BPS: u32 = 2_000;
 
 #[contract]
 pub struct PoolContract;
@@ -189,15 +192,16 @@ pub struct PoolContract;
 impl PoolContract {
     /// Inicializa el contrato. Solo se llama una vez.
     ///
-    /// BREAKING CHANGE vs versión anterior: añade `defindex_vault`.
-    /// Al re-desplegar en testnet hay que actualizar el script y deployments.json.
+    /// BREAKING CHANGE (F1, re-deploy): el 5° parámetro pasa a ser el contrato
+    /// `yield_adapter` (antes era `defindex_vault`). Al re-desplegar en
+    /// testnet hay que actualizar el script y deployments.json.
     pub fn initialize(
         env: Env,
         admin: Address,
         usdc_token: Address,
         rewards_contract: Address,
         protocol_fee_bps: u32,
-        defindex_vault: Address,
+        yield_adapter: Address,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
@@ -213,19 +217,54 @@ impl PoolContract {
             .set(&DataKey::ProtocolFeeBps, &protocol_fee_bps);
         env.storage()
             .instance()
-            .set(&DataKey::DefindexVault, &defindex_vault);
+            .set(&DataKey::YieldAdapter, &yield_adapter);
+        env.storage()
+            .instance()
+            .set(&DataKey::CushionBps, &DEFAULT_CUSHION_BPS);
         Ok(())
     }
 
-    /// Actualiza la dirección del vault DeFindex. Solo admin.
-    /// Útil si hay que migrar a una nueva versión del vault sin re-desplegar Pool.
-    pub fn set_defindex_vault(env: Env, admin: Address, vault: Address) -> Result<(), Error> {
+    /// Cambia el yield_adapter en caliente sin re-desplegar Pool. Solo admin
+    /// (v-actual; cuando la gobernanza pueda invocarlo, será una propuesta
+    /// votable — "¿el fondo va conservador o 70/30?").
+    ///
+    /// GUARDA: si ya había un adapter configurado, exige que no tenga
+    /// posiciones activas (`total_shares() == 0`). Migrar con posiciones
+    /// exige rescatar todo antes (vía `redeem_from_vault` por barrio). Si no
+    /// había adapter previo (primera vez), la operación es libre.
+    pub fn set_yield_adapter(env: Env, admin: Address, adapter: Address) -> Result<(), Error> {
         let stored_admin = Self::get_admin(&env)?;
         admin.require_auth();
         if admin != stored_admin {
             return Err(Error::Unauthorized);
         }
-        env.storage().instance().set(&DataKey::DefindexVault, &vault);
+        if let Some(current) = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::YieldAdapter)
+        {
+            let current_client = yield_adapter_client::Client::new(&env, &current);
+            if current_client.total_shares() > 0 {
+                return Err(Error::AdapterHasPositions);
+            }
+        }
+        env.storage().instance().set(&DataKey::YieldAdapter, &adapter);
+        Ok(())
+    }
+
+    /// Colchón líquido gobernable (default 2000 bps = 20%): fracción del
+    /// fondo del barrio que NUNCA se invierte, para que Treasury tenga
+    /// liquidez inmediata. Solo admin (futuro: gobernanza).
+    pub fn set_cushion_bps(env: Env, admin: Address, bps: u32) -> Result<(), Error> {
+        let stored_admin = Self::get_admin(&env)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(Error::Unauthorized);
+        }
+        if bps > 10_000 {
+            return Err(Error::InvalidBps);
+        }
+        env.storage().instance().set(&DataKey::CushionBps, &bps);
         Ok(())
     }
 
@@ -448,20 +487,22 @@ impl PoolContract {
         Ok(())
     }
 
-    // ── Vault DeFindex ────────────────────────────────────────────────────
+    // ── Yield sobre fondos ociosos (F1: vía yield_adapter) ──────────────────
 
-    /// Deposita fondos ociosos del pool en el vault DeFindex para generar yield.
+    /// Deposita fondos ociosos del pool en la fuente de yield vía el adapter.
     ///
     /// Solo puede llamar el admin del protocolo O el treasury del barrio.
     ///
-    /// Auth cross-contract (lo más delicado):
-    ///   El vault hace `from.require_auth()` (satisfecho porque Pool es el invocador directo)
-    ///   Y además llama internamente a `usdc.transfer(pool, vault, amount)`. Esa sub-llamada
-    ///   la hace el VAULT, no el Pool → el Pool DEBE pre-autorizarla con
-    ///   `env.authorize_as_current_contract` antes de llamar `vault.deposit`.
+    /// Flujo: `usdc.transfer(pool → adapter, amount)` — llamada DIRECTA al SAC
+    /// (invoker auth, sin `authorize_as_current_contract`: a diferencia de
+    /// DeFindex, aquí Pool mismo mueve los fondos, no el adapter) — seguido de
+    /// `adapter.deposit(pool_addr, barrio_id, amount)`. El
+    /// `authorize_as_current_contract` para la sub-invocación a Blend vive
+    /// ahora DENTRO del adapter, no en Pool.
     ///
-    /// NOTA TEST: con `mock_all_auths()` el auth se bypasea y los tests pasan sin
-    ///   `authorize_as_current_contract`. El código es correcto para producción.
+    /// Valida el colchón líquido ANTES de mover fondos: tras depositar, el
+    /// saldo idle restante del barrio debe seguir representando al menos
+    /// `cushion_bps` del valor total (idle + invertido).
     pub fn deposit_idle_to_vault(
         env: Env,
         caller: Address,
@@ -484,55 +525,44 @@ impl PoolContract {
             return Err(Error::InvalidAmount);
         }
 
-        let vault_addr: Address = env
+        let adapter_addr: Address = env
             .storage()
             .instance()
-            .get(&DataKey::DefindexVault)
-            .ok_or(Error::VaultNotConfigured)?;
+            .get(&DataKey::YieldAdapter)
+            .ok_or(Error::AdapterNotConfigured)?;
         let usdc_addr: Address = env
             .storage()
             .instance()
             .get(&DataKey::UsdcToken)
             .ok_or(Error::NotInitialized)?;
 
+        let adapter_client = yield_adapter_client::Client::new(&env, &adapter_addr);
+
+        // Colchón: (pool_balance - amount) * 10_000 >= (pool_balance + value_of) * cushion_bps
+        let cushion_bps: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CushionBps)
+            .unwrap_or(DEFAULT_CUSHION_BPS);
+        let current_value = adapter_client.value_of(&barrio_id);
+        let remaining_liquid = barrio.pool_balance - amount;
+        let total_value = barrio.pool_balance + current_value;
+        if remaining_liquid * BPS_DENOMINATOR < total_value * (cushion_bps as i128) {
+            return Err(Error::InsufficientLiquidity);
+        }
+
+        let usdc = token::Client::new(&env, &usdc_addr);
         let pool_addr = env.current_contract_address();
+        // Invocación directa al SAC: invoker auth (Pool es el invocador
+        // directo), SIN authorize_as_current_contract — eso vive en el adapter.
+        usdc.transfer(&pool_addr, &adapter_addr, &amount);
 
-        // Pre-autoriza la sub-invocación que el vault hará internamente:
-        //   usdc.transfer(pool, vault, amount)
-        // La llama el VAULT (no Pool), así que Pool debe autorizarla explícitamente.
-        env.authorize_as_current_contract(vec![
-            &env,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: usdc_addr.clone(),
-                    fn_name: Symbol::new(&env, "transfer"),
-                    args: vec![
-                        &env,
-                        pool_addr.clone().into_val(&env),
-                        vault_addr.clone().into_val(&env),
-                        amount.into_val(&env),
-                    ],
-                },
-                sub_invocations: vec![&env],
-            }),
-        ]);
-
-        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
-        let amounts_desired = vec![&env, amount];
-        let amounts_min = vec![&env, 0i128];
-        let (_amounts_deposited, shares, _alloc) =
-            vault.deposit(&amounts_desired, &amounts_min, &pool_addr, &true);
+        let shares = adapter_client.deposit(&pool_addr, &barrio_id, &amount);
 
         barrio.pool_balance -= amount;
         env.storage()
             .persistent()
             .set(&DataKey::Barrio(barrio_id.clone()), &barrio);
-
-        let shares_key = DataKey::VaultShares(barrio_id.clone());
-        let prev_shares: i128 = env.storage().persistent().get(&shares_key).unwrap_or(0);
-        env.storage()
-            .persistent()
-            .set(&shares_key, &(prev_shares + shares));
 
         env.events().publish(
             (symbol_short!("vault_dep"), barrio_id),
@@ -541,14 +571,12 @@ impl PoolContract {
         Ok(())
     }
 
-    /// Rescata shares del vault DeFindex de vuelta al pool (realizando el yield).
+    /// Rescata shares de la fuente de yield vía el adapter de vuelta a
+    /// `pool_balance` (realizando el yield).
     ///
-    /// Solo puede llamar el admin del protocolo O el treasury del barrio.
-    ///
-    /// Auth: el vault hace `from.require_auth()` (Pool es el invocador → satisfecho
-    ///   automáticamente). El vault luego llama `usdc.transfer(vault, pool, amount)`:
-    ///   esa transferencia ES del vault, no del pool → pool NO necesita
-    ///   `authorize_as_current_contract` para esta dirección.
+    /// Solo puede llamar el admin del protocolo O el treasury del barrio. El
+    /// adapter valida `shares <= shares_of(barrio_id)` — corrige el bug
+    /// pre-F1 de rescatar shares contablemente ajenas a otro barrio.
     pub fn redeem_from_vault(
         env: Env,
         caller: Address,
@@ -571,31 +599,20 @@ impl PoolContract {
             return Err(Error::InvalidAmount);
         }
 
-        let vault_addr: Address = env
+        let adapter_addr: Address = env
             .storage()
             .instance()
-            .get(&DataKey::DefindexVault)
-            .ok_or(Error::VaultNotConfigured)?;
+            .get(&DataKey::YieldAdapter)
+            .ok_or(Error::AdapterNotConfigured)?;
 
         let pool_addr = env.current_contract_address();
-        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
-        let min_amounts_out = vec![&env, 0i128];
-        let amounts: Vec<i128> = vault.withdraw(&shares, &min_amounts_out, &pool_addr);
-
-        // Suma todos los montos devueltos (para vault multi-asset futuros).
-        // En nuestro caso vault single-asset (USDC), sería amounts[0].
-        let got: i128 = amounts.iter().fold(0i128, |acc, x| acc + x);
+        let adapter_client = yield_adapter_client::Client::new(&env, &adapter_addr);
+        let got = adapter_client.withdraw(&pool_addr, &barrio_id, &shares, &pool_addr);
 
         barrio.pool_balance += got;
         env.storage()
             .persistent()
             .set(&DataKey::Barrio(barrio_id.clone()), &barrio);
-
-        let shares_key = DataKey::VaultShares(barrio_id.clone());
-        let prev_shares: i128 = env.storage().persistent().get(&shares_key).unwrap_or(0);
-        env.storage()
-            .persistent()
-            .set(&shares_key, &(prev_shares - shares));
 
         env.events().publish(
             (symbol_short!("vault_red"), barrio_id),
@@ -614,33 +631,24 @@ impl PoolContract {
             .unwrap_or(0)
     }
 
-    /// Shares del vault que tiene este barrio en el vault DeFindex.
+    /// Shares que tiene este barrio en la fuente de yield actual (delega en
+    /// el adapter — Pool ya no guarda shares propias). 0 si no hay adapter.
     pub fn get_vault_shares(env: Env, barrio_id: BytesN<32>) -> i128 {
-        env.storage()
-            .persistent()
-            .get(&DataKey::VaultShares(barrio_id))
-            .unwrap_or(0)
-    }
-
-    /// Valor USDC actual de las shares del vault para un barrio.
-    /// Llama `vault.get_asset_amounts_per_shares` si hay shares > 0.
-    /// Devuelve 0 si no hay shares o el vault no está configurado.
-    pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128 {
-        let shares: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::VaultShares(barrio_id.clone()))
-            .unwrap_or(0);
-        if shares == 0 {
-            return 0;
-        }
-        let vault_addr: Address = match env.storage().instance().get(&DataKey::DefindexVault) {
+        let adapter_addr: Address = match env.storage().instance().get(&DataKey::YieldAdapter) {
             Some(addr) => addr,
             None => return 0,
         };
-        let vault = vault_client::DefindexVaultClient::new(&env, &vault_addr);
-        let amounts = vault.get_asset_amounts_per_shares(&shares);
-        amounts.get(0).unwrap_or(0)
+        yield_adapter_client::Client::new(&env, &adapter_addr).shares_of(&barrio_id)
+    }
+
+    /// Valor USDC actual de las shares del barrio (delega en el adapter).
+    /// 0 si no hay adapter configurado.
+    pub fn get_vault_value(env: Env, barrio_id: BytesN<32>) -> i128 {
+        let adapter_addr: Address = match env.storage().instance().get(&DataKey::YieldAdapter) {
+            Some(addr) => addr,
+            None => return 0,
+        };
+        yield_adapter_client::Client::new(&env, &adapter_addr).value_of(&barrio_id)
     }
 
     pub fn get_barrio(env: Env, barrio_id: BytesN<32>) -> Result<BarrioData, Error> {

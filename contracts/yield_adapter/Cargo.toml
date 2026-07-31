@@ -1,0 +1,17 @@
+[package]
+name = "yield_adapter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "RAÍZ · Contrato yield_adapter — BlendAdapter, fuente de yield del fondo comunitario (F1)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
