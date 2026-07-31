@@ -203,6 +203,14 @@ log "deployments.json escrito:"
 cat "$DEPLOYMENTS_JSON"
 echo
 
+# La app carga los IDs desde assets (DeploymentsLoader): sincronizar SIEMPRE
+# tras cada deploy — antes era un paso manual que solo documentaba un KDoc.
+ANDROID_ASSETS="$ROOT_DIR/android/app/src/main/assets/deployments.json"
+if [ -d "$(dirname "$ANDROID_ASSETS")" ]; then
+    cp "$DEPLOYMENTS_JSON" "$ANDROID_ASSETS"
+    log "Copiado a android/app/src/main/assets/deployments.json"
+fi
+
 log "Stellar Expert:"
 echo "  Pool:       https://stellar.expert/explorer/$NETWORK/contract/$POOL_ID"
 echo "  Governance: https://stellar.expert/explorer/$NETWORK/contract/$GOVERNANCE_ID"
