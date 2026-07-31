@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAÍZ: de red de pagos turísticos a protocolo de ahorro comunitario sobre Stellar</title>
+<style>
+  :root{
+    --negro:#1a1a1a; --amarillo:#FBBF24; --purpura:#534AB7;
+    --verde:#0F6E56; --fondo:#FAFAF7; --gris:#6b7280; --hairline:#d8d6cf;
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, "Times New Roman", serif;
+    --sans: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--fondo); color:var(--negro);
+    font-family:var(--serif); font-size:17px; line-height:1.62;
+    padding:0 1.25rem;
+  }
+  .sheet{max-width:46rem; margin:0 auto; padding:4.5rem 0 6rem;}
+
+  /* ── Cabecera ── */
+  header{border-top:3px solid var(--negro); padding-top:1.1rem; margin-bottom:2.8rem;}
+  .kicker{
+    font-family:var(--sans); font-size:.72rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--verde); display:flex;
+    justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  }
+  .kicker b{color:var(--negro); font-weight:600;}
+  h1{
+    font-size:2.15rem; line-height:1.18; font-weight:700;
+    margin:1.4rem 0 .65rem; letter-spacing:-.012em;
+  }
+  .subtitle{font-size:1.14rem; font-style:italic; color:#3f3f3c; margin-bottom:1.5rem;}
+  .byline{
+    font-family:var(--sans); font-size:.8rem; color:var(--gris);
+    display:flex; gap:.6rem; align-items:baseline; flex-wrap:wrap;
+    border-bottom:1px solid var(--hairline); padding-bottom:1.4rem;
+  }
+  .byline .dot{color:var(--amarillo); font-size:.9rem;}
+  .byline a{color:var(--purpura); text-decoration:none;}
+
+  /* ── Resumen ── */
+  .abstract{
+    margin:2.2rem 0 2.4rem; padding:.35rem 0 .35rem 1.35rem;
+    border-left:3px solid var(--amarillo);
+    font-size:.94rem; line-height:1.58; color:#2c2c29;
+  }
+  .abstract p+p{margin-top:.7rem;}
+  .abstract .runin{font-weight:700; color:var(--negro);}
+  .keywords{font-size:.85rem; color:var(--gris);}
+
+  /* ── Índice ── */
+  nav.toc{
+    margin:0 0 3.2rem; padding:1.3rem 0 1.5rem;
+    border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
+  }
+  nav.toc .toc-title{
+    font-family:var(--sans); font-size:.72rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--gris); margin-bottom:.9rem;
+  }
+  nav.toc ol{
+    list-style:none; columns:2; column-gap:2.5rem; font-size:.92rem;
+  }
+  nav.toc li{margin:.28rem 0; break-inside:avoid;}
+  nav.toc a{color:var(--negro); text-decoration:none;}
+  nav.toc a:hover{color:var(--purpura);}
+  nav.toc .n{color:var(--verde); font-family:var(--sans); font-size:.8rem; font-weight:600; margin-right:.5em;}
+
+  /* ── Cuerpo ── */
+  section{margin-bottom:2.9rem;}
+  h2{
+    font-size:1.38rem; line-height:1.25; margin:2.6rem 0 1rem;
+    letter-spacing:-.01em;
+  }
+  h2 .n, h3 .n{color:var(--verde); font-family:var(--sans); font-size:.85em; font-weight:600; margin-right:.55em;}
+  h3{font-size:1.08rem; margin:1.9rem 0 .7rem;}
+  h4{
+    font-family:var(--sans); font-size:.82rem; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--purpura); margin:1.4rem 0 .5rem;
+  }
+  p{margin:0 0 1rem;}
+  p.lead::first-letter{
+    font-size:3.1em; float:left; line-height:.82;
+    padding:.06em .12em 0 0; color:var(--verde); font-weight:700;
+  }
+  em{font-style:italic;}
+  strong{font-weight:700;}
+  code{
+    font-family:var(--mono); font-size:.82em; background:#efede6;
+    padding:.1em .35em; border-radius:3px; white-space:nowrap;
+  }
+  a{color:var(--purpura);}
+  ul,ol{margin:0 0 1rem 1.35rem;}
+  li{margin:.3rem 0;}
+  li::marker{color:var(--verde);}
+  blockquote{
+    margin:1.4rem 0; padding:.2rem 0 .2rem 1.2rem;
+    border-left:2px solid var(--hairline); font-style:italic; color:#44443f;
+  }
+  hr.sep{border:0; border-top:1px solid var(--hairline); margin:2.6rem auto; width:38%;}
+
+  /* ── Cápsulas de alerta / nota ── */
+  .nota{
+    font-size:.9rem; line-height:1.55; margin:1.3rem 0;
+    padding:.85rem 1.1rem; background:#f3f1e9; border:1px solid var(--hairline);
+  }
+  .nota .tag{
+    font-family:var(--sans); font-size:.68rem; letter-spacing:.14em;
+    text-transform:uppercase; font-weight:700; color:var(--verde);
+    display:block; margin-bottom:.35rem;
+  }
+  .nota.alerta .tag{color:#a3452c;}
+
+  /* ── Tablas ── */
+  table{
+    width:100%; border-collapse:collapse; margin:1.4rem 0;
+    font-size:.88rem; line-height:1.45;
+  }
+  caption{
+    caption-side:top; text-align:left; font-family:var(--sans);
+    font-size:.75rem; color:var(--gris); margin-bottom:.5rem;
+  }
+  caption b{color:var(--verde); letter-spacing:.08em; text-transform:uppercase;}
+  th{
+    font-family:var(--sans); font-size:.72rem; letter-spacing:.08em;
+    text-transform:uppercase; text-align:left; color:var(--negro);
+    border-top:2px solid var(--negro); border-bottom:1px solid var(--negro);
+    padding:.45rem .6rem .45rem 0; vertical-align:bottom;
+  }
+  td{border-bottom:1px solid var(--hairline); padding:.5rem .6rem .5rem 0; vertical-align:top;}
+  tr:last-child td{border-bottom:2px solid var(--negro);}
+  td.num{font-family:var(--sans); font-weight:600; color:var(--verde); white-space:nowrap;}
+
+  /* ── Figuras ── */
+  figure{margin:1.9rem 0;}
+  figure svg{width:100%; height:auto; display:block;}
+  figcaption{
+    font-family:var(--sans); font-size:.78rem; line-height:1.5;
+    color:var(--gris); margin-top:.65rem; padding-top:.5rem;
+    border-top:1px solid var(--hairline);
+  }
+  figcaption b{color:var(--verde); letter-spacing:.06em; text-transform:uppercase;}
+
+  /* ── Interfaz YieldAdapter ── */
+  .iface{
+    font-family:var(--mono); font-size:.8rem; line-height:1.9;
+    border-top:2px solid var(--negro); border-bottom:2px solid var(--negro);
+    padding:.6rem .2rem; margin:1.3rem 0; overflow-x:auto;
+  }
+  .iface .ret{color:var(--verde);}
+  .iface .cm{color:var(--gris);}
+
+  /* ── Referencias ── */
+  .refs{font-size:.82rem; line-height:1.5; color:#33332f;}
+  .refs ol{margin-left:1.6rem;}
+  .refs li{margin:.42rem 0; padding-left:.2rem;}
+  .refs a{color:var(--purpura); text-decoration:none; word-break:break-all;}
+  .refs a:hover{text-decoration:underline;}
+
+  footer{
+    margin-top:4rem; padding-top:1.2rem; border-top:3px solid var(--negro);
+    font-family:var(--sans); font-size:.75rem; color:var(--gris);
+    display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  }
+  footer .lema{font-style:italic; color:var(--verde);}
+
+  @media (max-width:600px){
+    body{font-size:16px;}
+    h1{font-size:1.65rem;}
+    nav.toc ol{columns:1;}
+  }
+  @media print{
+    body{background:#fff;}
+    .sheet{max-width:100%; padding:1rem 0;}
+    nav.toc{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <div class="kicker"><span><b>Protocolo Raíz</b> · Borrador técnico v1.0</span><span>31 de julio de 2026</span></div>
+  <h1>RAÍZ: de red de pagos turísticos a protocolo de ahorro comunitario sobre Stellar</h1>
+  <p class="subtitle">Diseño técnico para la independencia de yield y la capa de enjambre</p>
+  <div class="byline">
+    <span>Equipo Protocolo Raíz</span><span class="dot">●</span>
+    <a href="https://raizapp.xyz">raizapp.xyz</a><span class="dot">●</span>
+    <span>Stellar Testnet · Protocol 27</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <p><span class="runin">Resumen.</span> RAÍZ es una red de pagos turísticos sobre Stellar que desvía un porcentaje configurable de cada pago (<em>Tip Barrio</em>, 2&nbsp;%) a un fondo comunitario custodiado por contratos Soroban y gobernado por residentes mediante tokens <em>soulbound</em>. El sistema actual —cuatro contratos desplegados en testnet, una aplicación Android nativa y flujos verificados extremo a extremo— delega el rendimiento del fondo en el vault USDC de DeFindex. Este documento presenta el diseño técnico para convertir a RAÍZ en un <em>protocolo de ahorro comunitario</em> autónomo, articulado en cuatro vías: (i)&nbsp;la sustitución de DeFindex por integración directa con Blend detrás de una interfaz de adaptación propia (<code>YieldAdapter</code>), gobernable por los residentes; (ii)&nbsp;una capa de instrumentos de ahorro que no existe hoy en el ecosistema Stellar —círculos de ahorro rotativo con identidad soulbound, bóvedas de metas con bloqueo temporal, ahorro con compromiso y sorteo sin pérdida—; (iii)&nbsp;la capa <em>Enjambre</em>, en la que los dispositivos del barrio participan de la infraestructura del protocolo: custodia colectiva del fondo mediante cuentas inteligentes con passkeys y, en su etapa final, firmas umbral FROST; atestación vecinal de residencia; transporte de transacciones por malla <em>store-and-forward</em>; verificación ligera de finalidad SCP en el móvil; y recompensas tipo DePIN financiadas por la comisión del protocolo; y (iv)&nbsp;una capa de <em>conocimiento cero</em> bajo el principio «transparencia colectiva, privacidad individual»: voto secreto tipo Semaphore verificado con las primitivas BN254/Poseidon de los Protocolos 25–26 —la primera votación privada del ecosistema— y, en fase posterior, privacidad de saldos individuales. Se analiza la viabilidad de cada componente contra el estado verificado de la red Stellar a julio de 2026 (Protocol&nbsp;27), se delimita explícitamente lo que la física de los sistemas distribuidos —y los límites reales del voto ZK— no permiten prometer, y se propone una hoja de ruta por fases compatible con el Stellar Community Fund.</p>
+  <p class="keywords"><span class="runin" style="font-size:.9em">Palabras clave.</span> Stellar · Soroban · ahorro comunitario · ROSCA · firmas umbral · FROST · smart accounts · passkeys · DePIN · SCP · zero-knowledge · Semaphore · Groth16</p>
+</div>
+
+<nav class="toc">
+  <div class="toc-title">Contenido</div>
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>Introducción</a></li>
+    <li><a href="#s2"><span class="n">2</span>Contexto: la red Stellar en 2026</a></li>
+    <li><a href="#s3"><span class="n">3</span>RAÍZ hoy: arquitectura desplegada</a></li>
+    <li><a href="#s4"><span class="n">4</span>Vía 1 — Independencia de yield</a></li>
+    <li><a href="#s5"><span class="n">5</span>Vía 2 — La capa de ahorro inexistente</a></li>
+    <li><a href="#s6"><span class="n">6</span>Vía 3 — El Enjambre</a></li>
+    <li><a href="#s7"><span class="n">7</span>Vía 4 — La capa ZK</a></li>
+    <li><a href="#s8"><span class="n">8</span>Modelo de amenazas y límites</a></li>
+    <li><a href="#s9"><span class="n">9</span>Trabajo relacionado</a></li>
+    <li><a href="#s10"><span class="n">10</span>Hoja de ruta</a></li>
+    <li><a href="#s11"><span class="n">11</span>Conclusión</a></li>
+    <li><a href="#refs"><span class="n">※</span>Referencias</a></li>
+  </ol>
+</nav>
+
+<!-- ════════════════ 1 ════════════════ -->
+<section id="s1">
+<h2><span class="n">1</span>Introducción</h2>
+<p class="lead">El turismo extrae valor de los barrios que lo hacen posible: las plataformas de intermediación, las cadenas y la plusvalía capturan el margen, mientras quienes crean el atractivo —residentes, artesanos, comercio de esquina— no participan de las decisiones de reinversión. RAÍZ ataca este problema con una tesis simple y verificable: <em>el valor que genera el barrio debe quedarse en el barrio y decidirse en el barrio, on-chain</em>.</p>
+<p>La implementación actual, desplegada en la testnet de Stellar el 29 de junio de 2026, demuestra la tesis en producción técnica: un turista paga en USDC a un comercio; el contrato <code>Pool</code> separa automáticamente el monto del comercio, el Tip Barrio (2&nbsp;%) hacia el fondo comunitario y la comisión del protocolo (0,5&nbsp;%); los residentes —acreditados con un token de residencia intransferible— proponen y votan el destino del fondo; y el contrato <code>Treasury</code> ejecuta las propuestas aprobadas sin que ninguna llave privada individual controle los fondos. Todos los eventos son auditables públicamente.</p>
+<p>El sistema tiene, sin embargo, una dependencia estructural: el rendimiento del fondo ocioso se obtiene depositándolo en el vault USDC de DeFindex. Esa dependencia impuso la elección del token, añade una capa de comisión y contraparte, y requiere una API externa para reportar el APY. Este documento responde a una pregunta de diseño concreta: <strong>¿cómo se convierte RAÍZ en un protocolo de ahorro por derecho propio, sin DeFindex, aprovechando la arquitectura de Stellar y construyendo tecnología que hoy no existe en ese ecosistema, sin comprometer la misión comunitaria?</strong></p>
+<h3>1.1&ensp;Contribuciones</h3>
+<ul>
+  <li><strong>C1.</strong> Un análisis verificado del estado de la red Stellar y su ecosistema de ahorro a julio de 2026, incluyendo un <em>gap analysis</em> de los instrumentos que no existen (§2, §2.4).</li>
+  <li><strong>C2.</strong> El diseño de <code>YieldAdapter</code>: la sustitución quirúrgica de DeFindex por integración directa con Blend detrás de una interfaz propia y gobernable (§4).</li>
+  <li><strong>C3.</strong> La capa de ahorro comunitario: <em>Cadena de Barrio</em> (ROSCA soulbound), bóvedas de metas, ahorro con compromiso y sorteo sin pérdida (§5).</li>
+  <li><strong>C4.</strong> La capa <em>Enjambre</em>: custodia colectiva (passkeys → FROST), atestación vecinal, malla de transporte, verificación ligera SCP y recompensas DePIN (§6).</li>
+  <li><strong>C5.</strong> La capa ZK: voto secreto tipo Semaphore sobre las primitivas BN254/Poseidon de Protocol 25–26 —inédito en Stellar— y privacidad de saldos individuales como fase posterior (§7).</li>
+  <li><strong>C6.</strong> Un modelo de amenazas honesto que delimita lo técnicamente imposible —incluido el voto incoercible— frente a lo construible (§8).</li>
+</ul>
+</section>
+
+<!-- ════════════════ 2 ════════════════ -->
+<section id="s2">
+<h2><span class="n">2</span>Contexto: la red Stellar en 2026</h2>
+
+<h3>2.1&ensp;Consenso y estructura</h3>
+<p>Stellar alcanza consenso mediante SCP (<em>Stellar Consensus Protocol</em>), una instancia de acuerdo bizantino federado: cada nodo declara su <em>quorum set</em> —los nodos en los que confía y el umbral requerido— y el consenso emerge de la intersección transitiva de esas elecciones (<em>quorum slices</em>) <a href="#refs">[1,&nbsp;2]</a>. SCP prioriza <em>safety</em> sobre <em>liveness</em>: ante un fallo de quórum la red se detiene antes que bifurcarse. No existe minería ni <em>staking</em>; validar no genera recompensas. El núcleo de confianza público (<em>tier-1</em>) estaba compuesto por siete organizaciones con un plan de expansión a trece; el 16 de julio de 2026 se anunció la incorporación de MoneyGram, Figure Markets y Range <a href="#refs">[3,&nbsp;4]</a>.</p>
+<p>Los requisitos de un validador (8 núcleos, 16&nbsp;GB de RAM —al alza tras CAP-66—, NVMe de 10&nbsp;000 IOPS, uptime del 99,9&nbsp;% <a href="#refs">[5]</a>) son relevantes para §6: delimitan qué puede y qué no puede ser un dispositivo móvil dentro del protocolo.</p>
+
+<h3>2.2&ensp;La cadena de protocolos 2025–2026</h3>
+<table>
+  <caption><b>Tabla 1</b> · Protocolos Stellar 2025–2026 (verificado jul-2026)</caption>
+  <thead><tr><th>P.</th><th>Mainnet</th><th>Aporte principal</th></tr></thead>
+  <tbody>
+    <tr><td class="num">23</td><td>sep-25</td><td>Ejecución paralela Soroban (CAP-63); estado vivo en RAM y auto-restore (CAP-66); caché Wasm; eventos unificados; timing SCP votable (CAP-70) [6]</td></tr>
+    <tr><td class="num">24</td><td>oct-25</td><td>Estabilidad (fix de <em>state archival</em>) [7]</td></tr>
+    <tr><td class="num">25</td><td>ene-26</td><td>«X-Ray»: verificación ZK on-chain (BN254, CAP-74) y hashes Poseidon (CAP-75) [8]</td></tr>
+    <tr><td class="num">26</td><td>may-26</td><td>«Yardstick»: TTL v2 (CAP-78); congelamiento por consenso (CAP-77); aritmética 256-bit; mejoras SAC [9]</td></tr>
+    <tr><td class="num">27</td><td><strong>jul-26</strong></td><td><strong>«Zipper»: delegación de autenticación nativa para smart accounts (CAP-71); antesala de Protocol 28</strong> [10]</td></tr>
+  </tbody>
+</table>
+<p>Dos <em>upgrades</em> son estructurales para este diseño: <strong>Protocol 23</strong> introdujo la ejecución paralela de contratos y el estado vivo en memoria (lecturas más baratas, restauración automática de entradas archivadas), y <strong>Protocol 27</strong> («Zipper», mainnet 8-jul-2026) introdujo la <em>delegación de autenticación nativa</em> para cuentas inteligentes: un firmante puede delegar en otros, agrupando firmantes delegados en una única entrada de autorización. Protocol 28 completará la autenticación basada en contratos. Es exactamente el primitivo que la custodia de enjambre necesita (§6.1); RAÍZ, que ya opera smart accounts con passkeys, llega a esta ola en el momento en que la SDF la está construyendo.</p>
+
+<h3>2.3&ensp;Ecosistema de rendimiento</h3>
+<p>A 31 de julio de 2026 la red opera con normalidad (100&nbsp;% de uptime en 90 días) <a href="#refs">[11]</a>. El TVL de la cadena ronda los $227&nbsp;M <a href="#refs">[12]</a>. El primitivo de crédito dominante es <strong>Blend</strong> ($141&nbsp;M TVL, APY medio ≈3,6&nbsp;%): pools de préstamo aislados donde los depositantes reciben <em>bTokens</em> cuyo tipo de cambio (<em>b-rate</em>) acumula el interés por segundo, asegurados por un módulo <em>backstop</em> de primera pérdida <a href="#refs">[13]</a>. DeFindex ($11,5&nbsp;M TVL) es una capa de vaults que <em>rutea depósitos hacia Blend</em> <a href="#refs">[14]</a>; Upshift llegó a Soroban en junio de 2026 con el mismo modelo institucional <a href="#refs">[15]</a>.</p>
+<p>Tres hechos técnicos condicionan el diseño: (i)&nbsp;un contrato Soroban <em>puede</em> depositar directamente en Blend —lo demuestran DeFindex mismo, una implementación abierta de referencia <a href="#refs">[16]</a> y los integradores en producción (Meru, Airtm) <a href="#refs">[17]</a>—; (ii)&nbsp;el AMM nativo de Stellar classic y los <em>claimable balances</em> son <strong>inaccesibles</strong> desde Soroban: el Stellar Asset Contract solo expone la interfaz de token <a href="#refs">[18]</a>; (iii)&nbsp;XLM no tiene staking de consenso: no existe rendimiento «nativo» de protocolo.</p>
+
+<h3>2.4&ensp;Gap analysis: lo que no existe en Stellar</h3>
+<p>La búsqueda sistemática (julio 2026) sobre el ecosistema, el Stellar Community Fund y los registros públicos arroja ausencias notables, que constituyen el espacio de diseño de este documento:</p>
+<ul>
+  <li><strong>G1.</strong> ROSCA/tanda madura en producción. Solo existe SoroSusu, embrionario y sin tracción [23].</li>
+  <li><strong>G2.</strong> Ahorro con metas y bloqueo temporal como producto (los primitivos existen; nadie los productizó).</li>
+  <li><strong>G3.</strong> Ahorro con compromiso y penalización social (patrón GoodGhosting/HaloFi [24]).</li>
+  <li><strong>G4.</strong> <em>Prize-linked savings</em> (sorteo sin pérdida, patrón PoolTogether).</li>
+  <li><strong>G5.</strong> Vault de ahorro comunitario con gobernanza soulbound.</li>
+  <li><strong>G6.</strong> Tooling de firmas umbral (FROST) para Stellar.</li>
+  <li><strong>G7.</strong> Cliente de verificación ligera (light client) móvil.</li>
+  <li><strong>G8.</strong> Malla <em>store-and-forward</em> de transacciones.</li>
+  <li><strong>G9.</strong> DePIN de cualquier tipo sobre Stellar.</li>
+  <li><strong>G10.</strong> Votación privada. La SDF lista «zkVoting» como caso de uso aspiracional <a href="#refs">[54]</a>; nadie lo ha construido, y no existe port de Semaphore a Soroban.</li>
+</ul>
+<p>Cada ausencia tiene sus <em>building blocks</em> verificados en la red. Ninguna está ensamblada. RAÍZ puede ser el primero en varias simultáneamente porque ya posee las piezas de identidad (soulbound), gobernanza y pagos de las que estos instrumentos dependen.</p>
+</section>
+
+<!-- ════════════════ 3 ════════════════ -->
+<section id="s3">
+<h2><span class="n">3</span>RAÍZ hoy: arquitectura desplegada</h2>
+<p>El sistema en testnet consta de cuatro contratos Soroban (Rust, <code>soroban-sdk</code> 22.x) y una aplicación Android nativa (Kotlin, Jetpack Compose) que opera como cliente delgado: lee por simulación vía Soroban RPC y escribe transacciones firmadas por el usuario. No existe backend propio.</p>
+<ul>
+  <li><code>Pool</code> — recibe <code>pay_merchant</code>, aplica el split (comercio / tip / fee), custodia el fondo por barrio, mantiene el índice de comercios y hoy deposita el fondo ocioso en el vault DeFindex.</li>
+  <li><code>Governance</code> — mintea tokens de residencia <em>soulbound</em> (sin función <code>transfer</code>), gestiona propuestas, voto único por residente, quórum del 30&nbsp;% y <code>tally</code> idempotente.</li>
+  <li><code>Treasury</code> — ejecución <em>trustless</em>; cualquiera invoca <code>execute_proposal</code>, el contrato verifica en Governance, rescata el yield y ordena el retiro. No custodia.</li>
+  <li><code>Rewards</code> — puntos no transferibles (1 punto por 0,01 USDC de tip, acuñables solo por <code>Pool</code>) y catálogo de premios de artesanos.</li>
+</ul>
+<p>Los flujos de pago, gobernanza, ejecución, canje y <em>onboarding</em> están verificados extremo a extremo en dispositivo real, con 55 tests de contratos en verde. Las limitaciones conocidas —y relevantes aquí— son dos: la clave del administrador demo viaja embebida en el APK, y la acreditación de residencia es un mint manual del administrador. La Figura&nbsp;1 muestra la transición arquitectónica que este documento propone.</p>
+
+<figure>
+<svg viewBox="0 0 860 330" xmlns="http://www.w3.org/2000/svg" font-family="Avenir Next, Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a1a1a"/>
+    </marker>
+    <marker id="arv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0F6E56"/>
+    </marker>
+    <marker id="arp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#534AB7"/>
+    </marker>
+    <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9a988f"/>
+    </marker>
+  </defs>
+  <style>
+    .bx{fill:#fff; stroke:#1a1a1a; stroke-width:1.4; rx:3;}
+    .bxg{fill:#efede6; stroke:#9a988f; stroke-width:1.2; rx:3;}
+    .bxv{fill:#e2efe9; stroke:#0F6E56; stroke-width:1.4; rx:3;}
+    .bxa{fill:#fdf2d0; stroke:#1a1a1a; stroke-width:1.4; rx:3;}
+    .bxp{fill:#e9e7f6; stroke:#534AB7; stroke-width:1.4; rx:3;}
+    .t{font-size:11.5px; fill:#1a1a1a;}
+    .tb{font-size:11.5px; font-weight:700; fill:#1a1a1a;}
+    .ts{font-size:10px; fill:#5a5952;}
+    .lab{font-size:9.5px; fill:#6b7280;}
+    .hdr{font-size:11px; font-weight:700; letter-spacing:2px;}
+    .ln{stroke:#1a1a1a; stroke-width:1.3; fill:none;}
+    .lnv{stroke:#0F6E56; stroke-width:1.3; fill:none;}
+    .lnp{stroke:#534AB7; stroke-width:1.3; fill:none;}
+    .lng{stroke:#9a988f; stroke-width:1.2; fill:none; stroke-dasharray:4 3;}
+  </style>
+
+  <!-- HOY -->
+  <text x="105" y="22" text-anchor="middle" class="hdr" fill="#6b7280">HOY</text>
+  <rect x="30" y="34" width="150" height="40" class="bx"/>
+  <text x="105" y="50" text-anchor="middle" class="tb">App Android</text>
+  <text x="105" y="64" text-anchor="middle" class="ts">7 pantallas + passkeys</text>
+
+  <rect x="30" y="104" width="150" height="40" class="bx"/>
+  <text x="105" y="120" text-anchor="middle" class="tb">Pool</text>
+  <text x="105" y="134" text-anchor="middle" class="ts">pagos + fondo</text>
+
+  <rect x="210" y="104" width="96" height="40" class="bx"/>
+  <text x="258" y="120" text-anchor="middle" class="tb">Gov.</text>
+  <text x="258" y="134" text-anchor="middle" class="ts">soulbound</text>
+
+  <rect x="210" y="174" width="96" height="40" class="bx"/>
+  <text x="258" y="190" text-anchor="middle" class="tb">Treasury</text>
+  <text x="258" y="204" text-anchor="middle" class="ts">trustless</text>
+
+  <rect x="30" y="174" width="150" height="40" class="bxg"/>
+  <text x="105" y="190" text-anchor="middle" class="tb" fill="#5a5952">Vault DeFindex</text>
+  <text x="105" y="204" text-anchor="middle" class="ts">(intermediario)</text>
+
+  <rect x="30" y="244" width="150" height="40" class="bxv"/>
+  <text x="105" y="260" text-anchor="middle" class="tb">Blend</text>
+  <text x="105" y="274" text-anchor="middle" class="ts">pool USDC</text>
+
+  <line x1="105" y1="74" x2="105" y2="102" class="ln" marker-end="url(#ar)"/>
+  <line x1="105" y1="144" x2="105" y2="172" class="lng" marker-end="url(#arg)"/>
+  <text x="112" y="162" class="lab">deposit</text>
+  <line x1="105" y1="214" x2="105" y2="242" class="lng" marker-end="url(#arg)"/>
+  <text x="112" y="232" class="lab">rutea</text>
+  <line x1="258" y1="144" x2="258" y2="172" class="ln" marker-end="url(#ar)"/>
+  <line x1="210" y1="194" x2="182" y2="149" class="ln" marker-end="url(#ar)"/>
+
+  <!-- divisor -->
+  <line x1="340" y1="18" x2="340" y2="310" stroke="#c9c7be" stroke-width="1" stroke-dasharray="5 4"/>
+
+  <!-- OBJETIVO -->
+  <text x="610" y="22" text-anchor="middle" class="hdr" fill="#0F6E56">OBJETIVO</text>
+  <rect x="510" y="34" width="200" height="40" class="bx"/>
+  <text x="610" y="50" text-anchor="middle" class="tb">App Android + Enjambre</text>
+  <text x="610" y="64" text-anchor="middle" class="ts">mesh · light-verify · firmante</text>
+
+  <rect x="370" y="104" width="118" height="40" class="bx"/>
+  <text x="429" y="120" text-anchor="middle" class="tb">Pool</text>
+  <text x="429" y="134" text-anchor="middle" class="ts">pagos + fondo</text>
+
+  <rect x="518" y="104" width="130" height="40" class="bxa"/>
+  <text x="583" y="120" text-anchor="middle" class="tb">savings_circle</text>
+  <text x="583" y="134" text-anchor="middle" class="ts">goal_vault · retos · sorteo</text>
+
+  <rect x="678" y="104" width="130" height="40" class="bxp"/>
+  <text x="743" y="120" text-anchor="middle" class="tb">attestation</text>
+  <text x="743" y="134" text-anchor="middle" class="ts">swarm_rewards</text>
+
+  <rect x="440" y="184" width="160" height="40" class="bxv"/>
+  <text x="520" y="200" text-anchor="middle" class="tb">YieldAdapter</text>
+  <text x="520" y="214" text-anchor="middle" class="ts">interfaz propia</text>
+
+  <rect x="440" y="254" width="160" height="42" class="bxv"/>
+  <text x="520" y="270" text-anchor="middle" class="tb">BlendAdapter → Blend</text>
+  <text x="520" y="285" text-anchor="middle" class="ts">mañana: RWA, mixto</text>
+
+  <rect x="660" y="254" width="150" height="42" class="bxp"/>
+  <text x="735" y="270" text-anchor="middle" class="tb">Custodia enjambre</text>
+  <text x="735" y="285" text-anchor="middle" class="ts">passkeys → FROST</text>
+
+  <line x1="545" y1="74" x2="440" y2="102" class="ln" marker-end="url(#ar)"/>
+  <line x1="595" y1="74" x2="588" y2="102" class="ln" marker-end="url(#ar)"/>
+  <line x1="672" y1="74" x2="733" y2="102" class="ln" marker-end="url(#ar)"/>
+  <line x1="440" y1="144" x2="487" y2="182" class="lnv" marker-end="url(#arv)"/>
+  <line x1="577" y1="144" x2="545" y2="182" class="lnv" marker-end="url(#arv)"/>
+  <line x1="520" y1="224" x2="520" y2="252" class="lnv" marker-end="url(#arv)"/>
+  <text x="527" y="243" class="lab">set_adapter gobernado</text>
+  <line x1="735" y1="252" x2="740" y2="146" class="lnp" marker-end="url(#arp)"/>
+  <text x="744" y="205" class="lab" fill="#534AB7">firma colectiva</text>
+</svg>
+<figcaption><b>Figura 1</b> · Transición arquitectónica. Hoy el yield pasa por un vault intermediario; en el diseño objetivo el <code>Pool</code> y los nuevos contratos de ahorro dependen de una interfaz propia (<code>YieldAdapter</code>) cuya implementación se elige por gobernanza, y la autoridad administrativa se disuelve en la custodia del enjambre.</figcaption>
+</figure>
+</section>
+
+<!-- ════════════════ 4 ════════════════ -->
+<section id="s4">
+<h2><span class="n">4</span>Vía 1 — Independencia de yield: Blend directo tras un adaptador propio</h2>
+
+<h3>4.1&ensp;El cambio quirúrgico</h3>
+<p>La observación que habilita esta vía es pública y verificada: DeFindex es una capa de conveniencia cuyo subyacente es Blend <a href="#refs">[14]</a>. RAÍZ puede, por tanto, hablar con el subyacente. El contrato <code>Pool</code> sustituye sus llamadas al vault por el flujo Blend:</p>
+<ul>
+  <li><strong>Depósito</strong>: <code>submit()</code> con petición <code>SUPPLY_COLLATERAL</code> sobre el pool USDC; el fondo recibe <em>bTokens</em>.</li>
+  <li><strong>Valoración</strong>: <code>get_reserve()</code> expone el <em>b-rate</em>; el valor del fondo es <em>v = b<sub>rate</sub> · q<sub>bTokens</sub></em>, calculable on-chain sin oráculos ni API externas. El APY se deriva de la serie temporal del propio b-rate.</li>
+  <li><strong>Retiro</strong>: petición simétrica; <code>Treasury.execute_proposal</code> rescata antes de pagar, como hoy.</li>
+  <li><strong>Emisiones</strong>: <code>claim()</code> recupera las emisiones BLND del pool, liquidables a favor del fondo.</li>
+</ul>
+<p>La contabilidad por barrio es idéntica a la actual (los bTokens sustituyen a <code>VaultShares</code>); el token custodiado no cambia; la app reemplaza <code>DefindexClient</code> por un <code>BlendClient</code> de lecturas puras y elimina la API key externa. El patrón está en producción en integradores como Meru <a href="#refs">[17]</a> y documentado en una implementación abierta de referencia <a href="#refs">[16]</a>.</p>
+
+<h3>4.2&ensp;<code>YieldAdapter</code>: de integración a protocolo</h3>
+<p>Sustituir DeFindex por Blend sin más sería cambiar una dependencia por otra. El diseño interpone una interfaz propiedad del protocolo:</p>
+<div class="iface">
+deposit(barrio, amount)&nbsp;&nbsp;<span class="ret">→ shares</span><br>
+withdraw(barrio, shares)&nbsp;<span class="ret">→ amount</span><br>
+value_of(barrio)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ret">→ i128</span> <span class="cm">// valor actual en USDC</span><br>
+apy_hint()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ret">→ u32</span>&nbsp; <span class="cm">// bps, informativo</span>
+</div>
+<p><code>Pool</code> y los contratos de ahorro de §5 dependen únicamente de esta interfaz. La primera implementación es <code>BlendAdapter</code>; las siguientes pueden envolver RWA (Ondo USDY, ≈5,3&nbsp;% APY al lanzamiento en Stellar <a href="#refs">[20]</a>; bonos CETES de Etherfuse <a href="#refs">[21]</a>, ambos con restricciones jurisdiccionales que el adaptador encapsula), renta fija cuando madure (Spield, hoy en testnet <a href="#refs">[22]</a>) o carteras mixtas. El punto de diseño central: <strong><code>set_adapter</code> es una operación gobernada</strong>. La pregunta «¿el fondo del barrio va 100&nbsp;% conservador o 70/30?» se convierte en una propuesta más que los residentes votan. El ahorro también se gobierna; ningún vault del ecosistema ofrece esto.</p>
+
+<h3>4.3&ensp;Gestión de riesgo: la lección YieldBlox</h3>
+<p>En febrero de 2026 un pool construido <em>sobre</em> Blend (YieldBlox) fue drenado por ≈$10,2&nbsp;M mediante manipulación de oráculo: el atacante vació la liquidez del par USTRY/USDC, infló el precio ~100× y tomó prestado contra el colateral sobrevalorado <a href="#refs">[19]</a>. La lección operativa no es «Blend es inseguro», sino que <strong>el riesgo es por pool</strong>: oráculo, activos listados y tamaño del backstop del pool concreto. Política de RAÍZ:</p>
+<ol>
+  <li>Operar únicamente contra pools con oráculos robustos y backstop profundo; parametrizar el pool objetivo en el adaptador, no en <code>Pool</code>.</li>
+  <li>Mantener un <strong>colchón líquido no invertido</strong> (p.&nbsp;ej. 20&nbsp;% del fondo) como parámetro gobernable; las ejecuciones de Treasury se sirven primero del colchón.</li>
+  <li>Exponer en el dashboard el pool exacto, su backstop y su oráculo: el riesgo visible es parte de la misión.</li>
+  <li>A futuro, el gap G7 sugiere una mutual de cobertura comunitaria; tras YieldBlox no existe ninguna en Stellar.</li>
+</ol>
+</section>
+
+<!-- ════════════════ 5 ════════════════ -->
+<section id="s5">
+<h2><span class="n">5</span>Vía 2 — La capa de ahorro que no existe en Stellar</h2>
+<p>Esta sección convierte a RAÍZ de «fondo que rinde» en «protocolo de ahorro». Los cuatro instrumentos comparten infraestructura (depósitos por miembro, épocas, <code>YieldAdapter</code>, reparto) y todos se apoyan en el activo diferencial que RAÍZ ya posee: <strong>la identidad soulbound de barrio</strong>.</p>
+
+<h3>5.1&ensp;Cadena de Barrio: la ROSCA soulbound</h3>
+<p>La ROSCA (tanda, cadena, san, pasanaku, natillera) es la institución de ahorro popular dominante en América Latina: <em>N</em> personas aportan una cuota periódica y cada ronda una de ellas recibe el bote completo. Su traducción on-chain ha fracasado históricamente por el <em>default anónimo</em>: quien ya cobró su turno no tiene incentivo para seguir aportando si su identidad es descartable <a href="#refs">[25,&nbsp;26]</a>.</p>
+<p>El token soulbound de <code>Governance</code> resuelve exactamente este problema. En la <em>Cadena de Barrio</em> (contrato <code>savings_circle</code>):</p>
+<ul>
+  <li>Solo residentes verificados del barrio pueden unirse; la identidad no es descartable porque no es transferible ni re-minteable.</li>
+  <li>El orden de cobro se asigna por sorteo (o subasta de descuento en v2); la cuota <em>c</em> y el período son parámetros del círculo.</li>
+  <li>En cada ronda <em>r</em>, el bote <em>B = N·c</em> se transfiere al miembro <em>σ(r)</em>; los fondos en espera se depositan vía <code>YieldAdapter</code>, y el rendimiento acumulado se liquida al cierre: a prorrata entre los cumplidores o, en círculos «solidarios», al fondo común del barrio —la tanda le paga renta a la comunidad.</li>
+  <li>El incumplimiento se registra on-chain: el historial de círculos completados constituye una <strong>reputación de ahorro</strong> pública y no falsificable, base de un futuro score crediticio comunitario (v3).</li>
+</ul>
+
+<figure>
+<svg viewBox="0 0 860 240" xmlns="http://www.w3.org/2000/svg" font-family="Avenir Next, Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0F6E56"/></marker>
+    <marker id="ar2p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#534AB7"/></marker>
+  </defs>
+  <style>
+    .rb{fill:#fdf2d0; stroke:#1a1a1a; stroke-width:1.4;}
+    .rg{fill:#efede6; stroke:#9a988f; stroke-width:1.2;}
+    .rv{fill:#e2efe9; stroke:#0F6E56; stroke-width:1.4;}
+    .rp{fill:#e9e7f6; stroke:#534AB7; stroke-width:1.4;}
+    .t2{font-size:12px; fill:#1a1a1a;}
+    .tb2{font-size:12px; font-weight:700; fill:#1a1a1a;}
+    .ts2{font-size:10.5px; fill:#5a5952;}
+  </style>
+  <rect x="40" y="30" width="150" height="46" rx="3" class="rb"/>
+  <text x="115" y="49" text-anchor="middle" class="tb2">Ronda 1</text>
+  <text x="115" y="65" text-anchor="middle" class="ts2">N·c → vecina 3</text>
+  <rect x="240" y="30" width="150" height="46" rx="3" class="rb"/>
+  <text x="315" y="49" text-anchor="middle" class="tb2">Ronda 2</text>
+  <text x="315" y="65" text-anchor="middle" class="ts2">N·c → vecino 1</text>
+  <rect x="440" y="30" width="150" height="46" rx="3" class="rg"/>
+  <text x="515" y="57" text-anchor="middle" class="tb2" fill="#8a887f">· · ·</text>
+  <rect x="640" y="30" width="150" height="46" rx="3" class="rb"/>
+  <text x="715" y="49" text-anchor="middle" class="tb2">Ronda N</text>
+  <text x="715" y="65" text-anchor="middle" class="ts2">N·c → vecina N</text>
+
+  <rect x="240" y="120" width="360" height="42" rx="3" class="rv"/>
+  <text x="420" y="138" text-anchor="middle" class="tb2">fondos en espera → YieldAdapter</text>
+  <text x="420" y="153" text-anchor="middle" class="ts2">el bote rinde mientras espera su turno</text>
+
+  <rect x="240" y="186" width="360" height="42" rx="3" class="rp"/>
+  <text x="420" y="204" text-anchor="middle" class="tb2">cierre: reparto del yield + reputación soulbound ±</text>
+  <text x="420" y="219" text-anchor="middle" class="ts2">historial de círculos = score de ahorro comunitario</text>
+
+  <path d="M 115 76 L 115 100 L 290 100 L 290 118" fill="none" stroke="#0F6E56" stroke-width="1.3" marker-end="url(#ar2)"/>
+  <path d="M 315 76 L 315 118" fill="none" stroke="#0F6E56" stroke-width="1.3" marker-end="url(#ar2)"/>
+  <path d="M 715 76 L 715 100 L 550 100 L 550 118" fill="none" stroke="#0F6E56" stroke-width="1.3" marker-end="url(#ar2)"/>
+  <path d="M 420 162 L 420 184" fill="none" stroke="#534AB7" stroke-width="1.3" marker-end="url(#ar2p)"/>
+</svg>
+<figcaption><b>Figura 2</b> · Ciclo de una Cadena de Barrio con <em>N</em> vecinos verificados, cuota <em>c</em> y orden de cobro sorteado. El bote en espera rinde; el cierre liquida el yield y actualiza la reputación.</figcaption>
+</figure>
+
+<p>En Stellar solo existe un intento embrionario de ROSCA (SoroSusu: sin pagos automáticos, sin auditoría, sin tracción <a href="#refs">[23]</a>); ninguno con identidad fuerte. La Cadena de Barrio sería la primera ROSCA con resistencia sybil estructural del ecosistema, y el instrumento que más fielmente traduce la cultura financiera de los barrios a los que RAÍZ sirve.</p>
+
+<h3>5.2&ensp;Bóveda de metas con bloqueo temporal</h3>
+<p>Stellar posee <em>time-locks</em> nativos (claimable balances con predicados temporales <a href="#refs">[27]</a>), pero son inaccesibles desde Soroban <a href="#refs">[18]</a> y nadie los ha productizado (G2). El contrato <code>goal_vault</code> implementa metas personales o colectivas: objetivo <em>(m,&nbsp;t)</em> de monto y fecha, retiro bloqueado hasta cumplirse, depósitos de terceros admitidos —un turista puede aportar a «la escuela: 500 USDC para diciembre» visible en la app, una forma nueva de Tip dirigido— y rendimiento vía el adaptador. Sería el primer <em>timelock-vault</em> con metas de Soroban.</p>
+
+<h3>5.3&ensp;Retos de ahorro con compromiso</h3>
+<p>Patrón <em>commit-to-save</em> (GoodGhosting/HaloFi <a href="#refs">[24]</a>), inexistente en Stellar (G3): temporadas de <em>k</em> aportes periódicos; quien cumple recupera capital más su parte del yield; el yield de quien abandona se redistribuye entre los cumplidores o cae al fondo del barrio. La deserción financia lo común.</p>
+
+<h3>5.4&ensp;Sorteo sin pérdida</h3>
+<p><em>Prize-linked savings</em> (patrón PoolTogether; G4): el yield agregado de un período se sortea entre los ahorradores; nadie pierde capital. La aleatoriedad v1 se deriva de datos de ledger con compromiso previo (<em>commit-reveal</em>); Protocol 25 habilita sorteos con verificación ZK a futuro <a href="#refs">[8]</a>.</p>
+<div class="nota alerta"><span class="tag">Nota regulatoria</span>El encuadre jurídico por jurisdicción («premio al ahorro», no lotería) debe validarse antes del despliegue de §5.4.</div>
+</section>
+
+<!-- ════════════════ 6 ════════════════ -->
+<section id="s6">
+<h2><span class="n">6</span>Vía 3 — El Enjambre: los dispositivos del barrio como infraestructura</h2>
+<p>La intuición fundacional —«dispositivos conectados por enjambres que sirvan como nodos»— es correcta en dirección y debe afinarse en física. Un teléfono no puede ser validador de Stellar: los requisitos de hardware y disponibilidad <a href="#refs">[5]</a> son incompatibles con móviles, NAT y batería. Y ningún sistema puede ofrecer <em>finalidad</em> de pagos offline sin hardware seguro o custodia: es la conclusión formal del programa Polaris del BIS <a href="#refs">[34]</a>. Lo que sigue es lo que el enjambre <em>sí</em> puede ser —cinco roles, ninguno existente hoy en Stellar— y cómo cada rol se apoya en primitivos verificados.</p>
+
+<h3>6.1&ensp;El enjambre custodia: del admin embebido a la firma colectiva</h3>
+<p>La limitación más grave del MVP es la clave administrativa embebida en el APK. El enjambre la disuelve en tres etapas de descentralización creciente:</p>
+<h4>Etapa A — multisig nativo (disponible hoy)</h4>
+<p>La autoridad administrativa migra a una cuenta Stellar con hasta 20 firmantes-vecinos, pesos y umbrales por criticidad <a href="#refs">[28]</a>. Cero código nuevo; precedente comunitario documentado (Montelibero <a href="#refs">[29]</a>).</p>
+<h4>Etapa B — smart account comunal con passkeys y políticas</h4>
+<p>El fondo y la autoridad del barrio se instancian como cuenta inteligente Soroban cuyos firmantes son las <strong>passkeys</strong> (WebAuthn/secp256r1, CAP-51 <a href="#refs">[30]</a>) de <em>M</em> residentes, con <em>policy signers</em>: umbral <em>k</em>-de-<em>n</em>, límites diarios, <em>timelocks</em> por monto, listas de operaciones permitidas. Los bloques están auditados y disponibles (OpenZeppelin Stellar Contracts <a href="#refs">[31]</a>), y la delegación nativa de Protocol 27 abarata precisamente la agrupación de firmantes delegados <a href="#refs">[10]</a>. RAÍZ ya integra el kit de smart accounts para usuarios: extenderlo a la custodia comunal es el paso natural, y nadie lo ha ensamblado para fondos vecinales en Stellar.</p>
+<h4>Etapa C — FROST: el enjambre es el firmante</h4>
+<p>FROST <a href="#refs">[32]</a> es un esquema de firmas umbral: <em>n</em> participantes generan colectivamente una clave de grupo mediante DKG, y cualquier subconjunto de tamaño <em>t</em> produce <em>una</em> firma. La propiedad decisiva: las implementaciones FROST-ed25519 producen <strong>firmas ed25519 estándar</strong> <a href="#refs">[33]</a>, indistinguibles de una firma individual, que Stellar verifica hoy <strong>sin ningún cambio de protocolo</strong>. La cuenta del fondo pasa a tener como clave pública la clave de grupo del enjambre: <em>«la llave del barrio no existe; existe el barrio»</em>. No existe tooling FROST-Stellar en ningún lugar (G6): construir <code>frost-stellar</code> (DKG entre móviles, <em>re-sharing</em> ante altas y bajas de vecinos, recuperación ante pérdida de dispositivos) es una contribución de infraestructura al ecosistema completo, del perfil que el SCF financia.</p>
+
+<figure>
+<svg viewBox="0 0 860 250" xmlns="http://www.w3.org/2000/svg" font-family="Avenir Next, Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#534AB7"/></marker>
+    <marker id="ar3v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0F6E56"/></marker>
+    <marker id="ar3n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a1a1a"/></marker>
+  </defs>
+  <style>
+    .ph{fill:#e9e7f6; stroke:#534AB7; stroke-width:1.4;}
+    .phoff{fill:#efede6; stroke:#9a988f; stroke-width:1.2;}
+    .fr{fill:#fff; stroke:#1a1a1a; stroke-width:1.4;}
+    .sg{fill:#e2efe9; stroke:#0F6E56; stroke-width:1.6;}
+    .t3{font-size:12px; fill:#1a1a1a;} .tb3{font-size:12px; font-weight:700; fill:#1a1a1a;}
+    .ts3{font-size:10.5px; fill:#5a5952;}
+  </style>
+  <rect x="130" y="24" width="110" height="40" rx="6" class="ph"/>
+  <text x="185" y="48" text-anchor="middle" class="tb3">vecina 1</text>
+  <rect x="290" y="24" width="110" height="40" rx="6" class="ph"/>
+  <text x="345" y="48" text-anchor="middle" class="tb3">vecino 2</text>
+  <rect x="450" y="24" width="110" height="40" rx="6" class="phoff"/>
+  <text x="505" y="43" text-anchor="middle" class="tb3" fill="#8a887f">vecino 3</text>
+  <text x="505" y="57" text-anchor="middle" class="ts3">apagado</text>
+  <rect x="610" y="24" width="110" height="40" rx="6" class="ph"/>
+  <text x="665" y="48" text-anchor="middle" class="tb3">vecina 4</text>
+
+  <rect x="285" y="104" width="280" height="44" rx="3" class="fr"/>
+  <text x="425" y="122" text-anchor="middle" class="tb3">FROST t-de-n (t = 3)</text>
+  <text x="425" y="138" text-anchor="middle" class="ts3">rondas de firma parcial · DKG previo</text>
+
+  <rect x="285" y="168" width="280" height="30" rx="3" class="sg"/>
+  <text x="425" y="188" text-anchor="middle" class="tb3" fill="#0F6E56">1 firma ed25519 estándar</text>
+
+  <text x="425" y="232" text-anchor="middle" class="ts3">Stellar la verifica hoy, sin cambios de protocolo — la red ve una firma ordinaria</text>
+
+  <path d="M 185 64 L 185 88 L 320 88 L 320 102" fill="none" stroke="#534AB7" stroke-width="1.3" marker-end="url(#ar3)"/>
+  <path d="M 345 64 L 345 88 L 390 88 L 390 102" fill="none" stroke="#534AB7" stroke-width="1.3" marker-end="url(#ar3)"/>
+  <path d="M 665 64 L 665 88 L 530 88 L 530 102" fill="none" stroke="#534AB7" stroke-width="1.3" marker-end="url(#ar3)"/>
+  <path d="M 425 148 L 425 166" fill="none" stroke="#0F6E56" stroke-width="1.4" marker-end="url(#ar3v)"/>
+  <path d="M 425 198 L 425 214" fill="none" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar3n)"/>
+</svg>
+<figcaption><b>Figura 3</b> · Custodia por enjambre en su etapa final: <em>t</em> de <em>n</em> dispositivos de residentes co-firman; la red solo ve una firma ed25519 ordinaria. El vecino 3 puede estar apagado: basta el umbral.</figcaption>
+</figure>
+
+<h3>6.2&ensp;El enjambre atestigua: residencia como red de confianza</h3>
+<p>El segundo bloqueante del MVP es el KYC simulado. Se sustituye por atestación vecinal: un aspirante es avalado por <em>M</em> residentes verificados que firman con su passkey en el contrato <code>attestation</code>, con depósito de reputación en juego, ventana de disputa y revocación. Es imprescindible nombrarlo con honestidad: no es una <em>prueba</em> criptográfica de presencia física —el GPS es falsificable y la co-presencia BLE prueba dispositivos, no personas <a href="#refs">[38]</a>—, sino un mecanismo <em>social</em> de resistencia sybil con incentivos, en la tradición de las redes de confianza <a href="#refs">[39]</a>. Para una comunidad que se conoce, es más honesto y más fiel a la misión que un KYC corporativo. No existe nada equivalente en Stellar.</p>
+
+<h3>6.3&ensp;El enjambre transporta: malla store-and-forward</h3>
+<p>Una transacción Stellar es un sobre XDR firmado, transportable por cualquier canal: BLE, WiFi Direct, QR, NFC. El patrón está probado fuera de Stellar: TxTenna transportó transacciones Bitcoin por radio mesh hasta un gateway con internet <a href="#refs">[35]</a>, y Bitchat (2025) demostró mensajería mesh BLE <em>store-and-forward</em> real entre smartphones <a href="#refs">[36]</a>. En RAÍZ: el turista sin datos firma su pago; el XDR salta entre dispositivos del enjambre hasta que cualquiera con conectividad lo emite; la confirmación regresa por la malla. Dos límites se declaran sin eufemismos: los <em>sequence numbers</em> y <em>time bounds</em> acotan la ventana útil de una transacción pre-firmada, y el receptor <strong>no tiene finalidad</strong> hasta la confirmación de red —la interfaz muestra «pago en tránsito por el enjambre»—. Con ledgers de ~5&nbsp;s, la finalidad llega segundos después de que un nodo de la malla toque internet. Resuelve un dolor real (zonas turísticas sin señal, turistas sin SIM local) y sería el primer transporte mesh de transacciones del ecosistema (G8).</p>
+
+<h3>6.4&ensp;El enjambre verifica: finalidad SCP en el móvil</h3>
+<p>No existe light client de Stellar (G7). El patrón para construir su versión mínima está probado por el oráculo de Stellar del puente Spacewalk (Pendulum): recolectar los sobres SCP <code>externalized</code> que difunden los validadores y <strong>verificar las firmas ed25519 del conjunto tier-1 conocido</strong> <a href="#refs">[37]</a>. La criptografía es trivial para un móvil. Una biblioteca <code>stellar-light-verify</code> embebida en la app hace que el dashboard de transparencia no dependa de confiar en un RPC: <em>«este saldo del fondo está confirmado por la red, verificado en tu teléfono»</em>. El supuesto de confianza (la lista tier-1, subjetividad débil) se documenta explícitamente; verifica finalidad de ledger, no inclusión arbitraria de estado.</p>
+
+<h3>6.5&ensp;El enjambre se recompensa: DePIN de barrio</h3>
+<p>No existe DePIN alguno sobre Stellar (G9) <a href="#refs">[40]</a>. Los micropagos de Stellar (comisiones de fracción de centavo) permiten recompensar los servicios <em>medibles</em> del enjambre: relays de malla que transportaron pagos (acuses firmados), comercios-gateway que emitieron transacciones ajenas, dispositivos que ejecutan el verificador ligero, y uno a tres mini-PCs comunitarios (casa comunal, junta) que corren un nodo <em>watcher</em> como «testigo del barrio» —alimenta el dashboard e indexa los eventos locales; sin peso en el consenso global, y así se comunica—. La fuente de las recompensas cierra el círculo económico: la comisión de protocolo (0,5&nbsp;%) deja de acumularse en el administrador y financia la infraestructura del enjambre vía el contrato <code>swarm_rewards</code>. La lección de Helium se respeta: lo difícil no es pagar sino verificar el trabajo físico <a href="#refs">[41]</a>; la v1 recompensa únicamente trabajos verificables on-chain.</p>
+</section>
+
+<!-- ════════════════ 7 · ZK ════════════════ -->
+<section id="s7">
+<h2><span class="n">7</span>Vía 4 — La capa ZK: transparencia colectiva, privacidad individual</h2>
+<p>La tesis de RAÍZ exige transparencia radical de lo colectivo: cada pago, cada ejecución del fondo, auditable por cualquiera. Pero en un barrio real donde todos se conocen, la transparencia de lo <em>individual</em> es un riesgo: el voto público expone al vecino a la presión social, y el saldo público expone al ahorrador. La capa ZK resuelve esta tensión sin traicionar la misión, bajo un principio de diseño estricto: <strong>los agregados permanecen públicos y verificables; las atribuciones individuales se vuelven privadas</strong>. El fondo común jamás se oculta. El momento es deliberado: la estrategia de privacidad publicada por la SDF («transparencia por defecto, privacidad configurable, con cumplimiento») <a href="#refs">[50]</a> y las primitivas de Protocol 25–26 hacen de esta capa una continuación natural del protocolo, no un injerto.</p>
+
+<h3>7.1&ensp;Primitivas y estado del arte en Stellar (verificado jul-2026)</h3>
+<p>Protocol 25 introdujo las funciones host BN254 (<code>bn254_g1_add</code>, <code>bn254_g1_mul</code>, <code>bn254_multi_pairing_check</code>; paridad con los precompiles EIP-196/197 de Ethereum) <a href="#refs">[43]</a> y las permutaciones Poseidon/Poseidon2 <em>parametrizables</em> sobre los campos de BN254 y BLS12-381 <a href="#refs">[44]</a> —lo que permite reproducir la instancia exacta de Poseidon de circomlib pasando sus constantes—. Protocol 26 añadió MSM y aritmética del campo escalar (<code>bn254_g1_msm</code>, <code>bn254_fr_*</code>) <a href="#refs">[45]</a>. En el SDK, estas primitivas exigen <code>soroban-sdk</code> ≥ 25.x (recomendado 26.1) <a href="#refs">[46]</a>; el workspace actual de RAÍZ (22.x) requiere una migración planificada.</p>
+<p>Existen ya verificadores de referencia: el ejemplo oficial Groth16 de <code>soroban-examples</code> (sobre BLS12-381, portable a BN254 con las mismas cuatro parejas de pairing) <a href="#refs">[47]</a>, el verificador RISC&nbsp;Zero de Nethermind (Groth16/BN254, sin auditar) <a href="#refs">[48]</a> y verificadores UltraHonk para Noir <a href="#refs">[49]</a>. Los costos son el límite operativo: un pairing consume ≈40&nbsp;M de las ~100&nbsp;M de instrucciones por transacción <a href="#refs">[52,&nbsp;53]</a>; una verificación Groth16/BN254 completa cabe en el presupuesto pero consume gran parte de él. En el ecosistema, OpenZeppelin publicó en julio de 2026 el <em>developer preview</em> de tokens confidenciales (compromisos de Pedersen + pruebas Noir; testnet, auditorías en curso) <a href="#refs">[51]</a>, y existen prototipos de privacy pools <a href="#refs">[52]</a>. <strong>Votación privada no ha construido nadie</strong> (G10): la SDF la lista como caso de uso aspiracional <a href="#refs">[54]</a>.</p>
+
+<h3>7.2&ensp;El problema: el voto público en un barrio real</h3>
+<p>En el contrato <code>Governance</code> actual, <code>vote()</code> persiste <code>Vote(proposal_id, Address)</code> y emite el evento <code>(vote, barrio_id)</code> con datos <code>(proposal_id, resident, support)</code>: la identidad y el sentido del voto son doblemente públicos, en storage y en el stream de eventos. El token soulbound impide <em>comprar</em> el voto (no es transferible); no impide <em>coaccionarlo</em>: en una comunidad pequeña, votar contra la propuesta del vecino con poder tiene costo social observable. El voto secreto es un principio democrático básico que la gobernanza de RAÍZ hoy no ofrece.</p>
+
+<h3>7.3&ensp;Diseño: voto secreto tipo Semaphore</h3>
+<p>El diseño adopta Semaphore v4 <a href="#refs">[55]</a> —el protocolo de señalización anónima de PSE, probado en producción masiva por World&nbsp;ID <a href="#refs">[57]</a>— sin modificar su circuito:</p>
+<ol>
+  <li><strong>Registro.</strong> Al acreditarse la residencia (hoy mint del admin; mañana atestación vecinal, §6.2), el teléfono genera una identidad Semaphore (clave EdDSA sobre Baby Jubjub, protegida por el mismo Keystore que ya usa la app) y su <em>commitment</em> = Poseidon(A<sub>x</sub>,&nbsp;A<sub>y</sub>) se inserta en el árbol de Merkle incremental (LeanIMT) del barrio, mantenido on-chain junto al registro soulbound.</li>
+  <li><strong>Voto.</strong> El teléfono genera una prueba Groth16/BN254 de: «conozco un secreto cuyo commitment está en el árbol de raíz <em>R</em>, y mi nullifier es Poseidon(<em>proposal_id</em>,&nbsp;<em>secreto</em>)». Con el tooling móvil actual (mopro, bindings Kotlin; witnesscalc + rapidsnark) la prueba tarda ≈0,17&nbsp;s en gama alta y &lt;1&nbsp;s en gama media <a href="#refs">[56]</a>: imperceptible en UX.</li>
+  <li><strong>Verificación.</strong> <code>vote_private(proof, root, nullifier, support)</code>: el contrato verifica la prueba con las funciones host BN254, exige <code>root</code> ∈ raíces válidas del barrio y <code>nullifier</code> inédito (anti doble voto), y suma el voto. El <em>tally</em> sigue siendo público y auditable; las identidades, no. La firma del emisor de la transacción deja de identificar al votante: cualquier <em>relayer</em> puede enviarla —y aquí la capa ZK se trenza con el Enjambre: los dispositivos del barrio actúan como relayers (§6.3), desvinculando también los metadatos de red.</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 860 320" xmlns="http://www.w3.org/2000/svg" font-family="Avenir Next, Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a1a1a"/></marker>
+    <marker id="ar5v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0F6E56"/></marker>
+    <marker id="ar5p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#534AB7"/></marker>
+  </defs>
+  <style>
+    .z1{fill:#e9e7f6; stroke:#534AB7; stroke-width:1.4;}
+    .z2{fill:#fff; stroke:#1a1a1a; stroke-width:1.4;}
+    .z3{fill:#efede6; stroke:#9a988f; stroke-width:1.2;}
+    .z4{fill:#e2efe9; stroke:#0F6E56; stroke-width:1.4;}
+    .z5{fill:#fdf2d0; stroke:#1a1a1a; stroke-width:1.4;}
+    .zt{font-size:12px; font-weight:700; fill:#1a1a1a;}
+    .zs{font-size:10.5px; fill:#5a5952;}
+  </style>
+  <rect x="180" y="12" width="500" height="44" rx="3" class="z1"/>
+  <text x="430" y="30" text-anchor="middle" class="zt">Registro (una vez): identidad EdDSA en el teléfono</text>
+  <text x="430" y="46" text-anchor="middle" class="zs">commitment → árbol LeanIMT del barrio (on-chain)</text>
+  <rect x="180" y="76" width="500" height="44" rx="3" class="z2"/>
+  <text x="430" y="94" text-anchor="middle" class="zt">Teléfono: prueba Groth16/BN254 (mopro, &lt;1 s)</text>
+  <text x="430" y="110" text-anchor="middle" class="zs">«estoy en el árbol» + nullifier = Poseidon(proposal_id, secreto)</text>
+  <rect x="180" y="140" width="500" height="36" rx="3" class="z3"/>
+  <text x="430" y="162" text-anchor="middle" class="zt" fill="#4c4b45">Relayer del enjambre envía la tx — sin identificar al votante</text>
+  <rect x="180" y="196" width="500" height="44" rx="3" class="z4"/>
+  <text x="430" y="214" text-anchor="middle" class="zt">vote_private: verifica BN254 (CAP-74/80) + Poseidon (CAP-75)</text>
+  <text x="430" y="230" text-anchor="middle" class="zs">raíz válida · nullifier nuevo → suma el voto</text>
+  <rect x="180" y="260" width="500" height="36" rx="3" class="z5"/>
+  <text x="430" y="282" text-anchor="middle" class="zt">Tally público y auditable — sin identidades</text>
+  <line x1="430" y1="56" x2="430" y2="74" stroke="#534AB7" stroke-width="1.3" marker-end="url(#ar5p)"/>
+  <line x1="430" y1="120" x2="430" y2="138" stroke="#1a1a1a" stroke-width="1.3" marker-end="url(#ar5)"/>
+  <line x1="430" y1="176" x2="430" y2="194" stroke="#1a1a1a" stroke-width="1.3" marker-end="url(#ar5)"/>
+  <line x1="430" y1="240" x2="430" y2="258" stroke="#0F6E56" stroke-width="1.3" marker-end="url(#ar5v)"/>
+</svg>
+<figcaption><b>Figura 4</b> · Voto secreto tipo Semaphore sobre Soroban. El circuito estándar v4 no se modifica (hereda su ceremonia de setup pública); el código propio se concentra en el verificador y la lógica de contrato.</figcaption>
+</figure>
+
+<p>Tres decisiones de ingeniería reducen el riesgo al mínimo: (a) <strong>no escribir circuitos propios</strong> —la clase de bug dominante en ZK son los circuitos <em>under-constrained</em> <a href="#refs">[59]</a>; usando el circuito estándar v4 y sus <em>zkeys</em> de ceremonia pública, el código propio (y su auditoría) se concentra en el verificador Soroban y la gestión de árbol/raíces/nullifiers—; (b) validar la equivalencia Poseidon↔circomlib con vectores de prueba antes de nada; (c) el voto público actual se mantiene como modo de compatibilidad hasta que el privado esté auditado.</p>
+
+<h3>7.4&ensp;Fase 2: privacidad del ahorro y de la reputación</h3>
+<p>Con el mismo principio: en los instrumentos de §5, los <em>aportes individuales</em> pueden registrarse como compromisos de Pedersen cuya suma homomórfica hace público el agregado del círculo sin atribuir cifras por persona —el patrón de los tokens confidenciales de OpenZeppelin sobre Stellar <a href="#refs">[51]</a>, cuya salida de <em>preview</em> conviene esperar antes que reimplementarlo—. Una alternativa más simple y honesta para v1: denominaciones fijas de aporte (elimina los range proofs). Y para la reputación de ahorro (§5.1): probar en ZK «completé ≥3 círculos sin default» sin publicar el historial financiero completo —la versión digna de un buró de crédito.</p>
+
+<h3>7.5&ensp;Límites honestos de la capa ZK</h3>
+<ol>
+  <li><strong>No es receipt-free</strong>: quien conoce su secreto puede <em>demostrar</em> cómo votó; la venta voluntaria de voto sigue siendo posible. La solución conocida (MACI <a href="#refs">[58]</a>) exige un coordinador con infraestructura propia —desproporcionado para un barrio hoy; queda como escalada si el soborno se vuelve amenaza real.</li>
+  <li><strong>La coacción presencial es irresoluble a nivel de protocolo</strong>: nadie impide votar con el coaccionador mirando la pantalla. Se mitiga (ventanas largas de votación), no se elimina.</li>
+  <li><strong>El anonimato está acotado por el censo</strong>: con 15 residentes y 12 votos, el conjunto de anonimato es pequeño. Los tallies deben publicarse agregados por cierre, no voto a voto en tiempo real.</li>
+  <li><strong>El presupuesto de cómputo es estrecho</strong>: una verificación consume gran parte de las ~100&nbsp;M instrucciones de una transacción; una prueba por voto, sin lotes, es el diseño v1.</li>
+  <li><strong>El tooling es joven</strong>: los verificadores de referencia no están auditados; la migración de SDK (22.x&nbsp;→&nbsp;26.1) toca los cuatro contratos. Por eso esta vía es tercera ola (F6), nunca el critical path.</li>
+</ol>
+</section>
+
+<!-- ════════════════ 8 ════════════════ -->
+<section id="s8">
+<h2><span class="n">8</span>Modelo de amenazas y límites declarados</h2>
+<h3>8.1&ensp;Lo que este diseño no promete</h3>
+<ol>
+  <li><strong>«Los teléfonos validan Stellar»</strong>: falso e innecesario. El enjambre custodia, atestigua, transporta y verifica; no produce consenso global <a href="#refs">[5]</a>.</li>
+  <li><strong>Finalidad offline</strong>: imposible en software puro; el doble gasto sin conexión requiere hardware seguro o custodia <a href="#refs">[34]</a>. La malla es transporte.</li>
+  <li><strong>«Prueba» de residencia</strong>: la atestación vecinal es un mecanismo social con incentivos, no una prueba criptográfica de presencia <a href="#refs">[38]</a>.</li>
+  <li><strong>APY garantizado</strong>: el rendimiento de Blend es variable y con riesgo por pool (§4.3); se muestra siempre como variable y con el riesgo visible.</li>
+  <li><strong>«Voto incoercible»</strong>: el voto secreto ZK elimina el recibo público, no la coacción presencial ni la venta voluntaria de voto (§7.5); «anonimato» nunca se promete en censos pequeños sin cualificarlo.</li>
+</ol>
+<h3>8.2&ensp;Riesgos principales y mitigaciones</h3>
+<ul>
+  <li><em>Oráculo/pool</em> (YieldBlox <a href="#refs">[19]</a>): selección estricta de pool, colchón líquido, transparencia de exposición.</li>
+  <li><em>Colusión en la atestación</em> (sybil social): depósitos de reputación, revocación, ventanas de disputa, admisión gradual.</li>
+  <li><em>Pérdida de dispositivos en la custodia</em>: umbral <em>t&nbsp;&lt;&nbsp;n</em> con margen, re-sharing periódico, recuperación social vía el propio contrato de atestación.</li>
+  <li><em>Default en círculos</em>: cuotas iniciales bajas, reputación progresiva, variantes con colateral parcial para botes altos.</li>
+  <li><em>Regulatorio</em>: encuadre del sorteo sin pérdida y del off-ramp por jurisdicción; anchors SEP-24/38 para la rampa fiat en el roadmap general.</li>
+  <li><em>Circuitos y verificadores ZK</em>: política de no escribir circuitos propios (Semaphore v4 estándar + ceremonia heredada); vectores de prueba Poseidon↔circomlib; auditoría del verificador antes de retirar el voto público de compatibilidad.</li>
+</ul>
+</section>
+
+<!-- ════════════════ 9 ════════════════ -->
+<section id="s9">
+<h2><span class="n">9</span>Trabajo relacionado</h2>
+<p><strong>En Stellar</strong>: DeFindex y Upshift ofrecen vaults de yield B2B sin gobernanza territorial ni identidad soulbound <a href="#refs">[14,&nbsp;15]</a>; SoroSusu es el único intento ROSCA, embrionario <a href="#refs">[23]</a>; Montelibero documenta custodia multisig comunitaria clásica <a href="#refs">[29]</a>; el oráculo de Spacewalk demuestra la verificación ligera de SCP fuera de la red <a href="#refs">[37]</a>.</p>
+<p><strong>Fuera de Stellar</strong>: WeTrust y las ROSCAs sobre Ethereum ilustran el fallo por identidad débil <a href="#refs">[26]</a>; GoodGhosting/HaloFi el ahorro con compromiso <a href="#refs">[24]</a>; PoolTogether el sorteo sin pérdida; TxTenna y Bitchat el transporte mesh <a href="#refs">[35,&nbsp;36]</a>; Helium la economía DePIN y sus problemas de verificación <a href="#refs">[41]</a>; FROST (RFC 9591) la firma umbral compatible <a href="#refs">[32,&nbsp;33]</a>; y el programa Polaris del BIS fija el límite formal de los pagos offline <a href="#refs">[34]</a>.</p>
+<p><strong>En privacidad</strong>: World&nbsp;ID es el mayor despliegue de Semaphore en producción <a href="#refs">[57]</a>; MACI añade resistencia al soborno a costa de un coordinador <a href="#refs">[58]</a>; Vocdoni opera votación anónima con zk-SNARKs y el PoC de voto privado de NounsDAO (Aragon+Aztec) nunca llegó a producción —útil como frontera de lo intentado—. En Stellar, los tokens confidenciales de OpenZeppelin (preview) <a href="#refs">[51]</a> y los prototipos de privacy pools <a href="#refs">[52]</a> son el estado del arte; votación privada no existe.</p>
+<p>La combinación —identidad soulbound territorial + ahorro popular + custodia de enjambre + voto secreto sobre una red de pagos de coste marginal— no aparece ensamblada en ningún ecosistema.</p>
+</section>
+
+<!-- ════════════════ 10 ════════════════ -->
+<section id="s10">
+<h2><span class="n">10</span>Hoja de ruta</h2>
+
+<figure>
+<svg viewBox="0 0 860 360" xmlns="http://www.w3.org/2000/svg" font-family="Avenir Next, Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a1a1a"/></marker>
+  </defs>
+  <style>
+    .f1{fill:#e2efe9; stroke:#0F6E56;} .f2{fill:#fdf2d0; stroke:#1a1a1a;}
+    .f3{fill:#e9e7f6; stroke:#534AB7;} .f4{fill:#fff; stroke:#1a1a1a;}
+    .f5{fill:#efede6; stroke:#9a988f;} .f6{fill:#e9e7f6; stroke:#534AB7; stroke-dasharray:5 3;}
+    .fb{stroke-width:1.4;}
+    .t4{font-size:12.5px; font-weight:700; fill:#1a1a1a;}
+    .ts4{font-size:11px; fill:#4c4b45;}
+    .fn{font-size:11px; font-weight:700; letter-spacing:1px;}
+  </style>
+  <rect x="60" y="14" width="740" height="42" rx="3" class="f1 fb"/>
+  <text x="80" y="32" class="t4">F1 · Blend directo + YieldAdapter <tspan class="ts4" font-weight="400">(semanas)</tspan></text>
+  <text x="80" y="47" class="ts4">sale DeFindex · sin API keys · patrón probado en producción</text>
+
+  <rect x="60" y="74" width="740" height="42" rx="3" class="f2 fb"/>
+  <text x="80" y="92" class="t4">F2 · Cadena de Barrio <tspan class="ts4" font-weight="400">(1–2 meses)</tspan></text>
+  <text x="80" y="107" class="ts4">savings_circle + reputación soulbound · primera ROSCA sybil-resistente de Stellar</text>
+
+  <rect x="60" y="134" width="740" height="42" rx="3" class="f3 fb"/>
+  <text x="80" y="152" class="t4">F3 · Custodia enjambre (Etapa B) + atestación vecinal</text>
+  <text x="80" y="167" class="ts4">elimina la clave admin del APK y el KYC simulado · candidata a SCF</text>
+
+  <rect x="60" y="194" width="740" height="42" rx="3" class="f4 fb"/>
+  <text x="80" y="212" class="t4">F4 · Metas, retos, sorteo</text>
+  <text x="80" y="227" class="ts4">reutiliza ~80 % de la infraestructura de F2</text>
+
+  <rect x="60" y="254" width="740" height="42" rx="3" class="f5 fb"/>
+  <text x="80" y="272" class="t4">F5 · Enjambre frontera</text>
+  <text x="80" y="287" class="ts4">mesh · stellar-light-verify · swarm_rewards · piloto FROST · candidata a SCF</text>
+
+  <rect x="60" y="314" width="740" height="42" rx="3" class="f6 fb"/>
+  <text x="80" y="332" class="t4">F6 · Capa ZK: voto secreto <tspan class="ts4" font-weight="400">(Semaphore-Soroban)</tspan></text>
+  <text x="80" y="347" class="ts4">migración SDK 26.1 en F1 · verificador BN254 · candidata a segunda aplicación SCF</text>
+
+  <line x1="430" y1="56" x2="430" y2="72" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar4)"/>
+  <line x1="430" y1="116" x2="430" y2="132" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar4)"/>
+  <line x1="430" y1="176" x2="430" y2="192" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar4)"/>
+  <line x1="430" y1="236" x2="430" y2="252" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar4)"/>
+  <line x1="430" y1="296" x2="430" y2="312" stroke="#1a1a1a" stroke-width="1.2" marker-end="url(#ar4)"/>
+</svg>
+<figcaption><b>Figura 5</b> · Fases propuestas. Cada fase es demostrable por sí sola y no interrumpe lo desplegado: el <code>Pool</code> actual sigue operando mientras el adaptador se valida en testnet.</figcaption>
+</figure>
+
+<p>La secuencia ordena el trabajo por riesgo y dependencia. F1 cumple el objetivo declarado (independencia de DeFindex) con el mínimo riesgo. F2 materializa la identidad de protocolo de ahorro. F3 elimina los dos bloqueantes de mainnet con tecnología inédita en Stellar. F4 completa el portafolio de instrumentos sobre la infraestructura de F2. F5 agrupa las contribuciones de infraestructura de ecosistema. F6 (capa ZK) corre como tercera ola: su único prerequisito temprano —la migración del workspace a <code>soroban-sdk</code> 26.1— se ejecuta durante F1, cuando el código de contratos ya está abierto; el voto secreto entra a desarrollo solo con F2 estable, y «Semaphore para Stellar» se perfila como <em>segunda</em> aplicación al SCF con vida propia. Las fases F3, F5 y F6 encajan en el perfil del Stellar Community Fund (SCF 7.0: hasta $150&nbsp;K por track de Build, tope de $300&nbsp;K por proyecto, pagos por hitos) <a href="#refs">[42]</a>, cuya cartera histórica financia precisamente «primeros en Stellar» de infraestructura —y la propia SDF ha señalado la votación privada como caso de uso deseado <a href="#refs">[54]</a>.</p>
+</section>
+
+<!-- ════════════════ 11 ════════════════ -->
+<section id="s11">
+<h2><span class="n">11</span>Conclusión</h2>
+<p>RAÍZ demostró en testnet que una economía de barrio puede operar on-chain: pagos, fondo común, gobernanza soulbound y ejecución sin custodios. La dependencia de DeFindex es eliminable con riesgo mínimo porque su subyacente —Blend— es directamente accesible desde Soroban, y el adaptador propio convierte la fuente de rendimiento en una decisión gobernada por los residentes. La diferenciación no está en competir con los vaults existentes sino en construir la capa que el ecosistema no tiene: los instrumentos de ahorro popular latinoamericanos con identidad soulbound, y un enjambre de dispositivos vecinales que custodia, atestigua, transporta, verifica y se recompensa. Cada componente descansa en primitivos verificados de la red a julio de 2026 —incluida la delegación de autenticación recién activada en Protocol&nbsp;27 y las primitivas ZK de Protocol&nbsp;25–26— y ninguno existe ensamblado. La capa ZK, en particular, convierte la última tensión del diseño —transparencia colectiva frente a intimidad individual— en una elección de arquitectura en lugar de un compromiso.</p>
+<blockquote>La misión no cambia; se profundiza: el barrio deja de ser beneficiario de la infraestructura y pasa a serla.</blockquote>
+</section>
+
+<hr class="sep">
+
+<!-- ════════════════ Referencias ════════════════ -->
+<section id="refs" class="refs">
+<h2><span class="n">※</span>Referencias</h2>
+<ol>
+  <li>D. Mazières. <em>The Stellar Consensus Protocol</em>. SDF. <a href="https://stellar.org/papers/stellar-consensus-protocol">stellar.org/papers/stellar-consensus-protocol</a></li>
+  <li>SDF. <em>Stellar Consensus Protocol — Fundamentals</em>. <a href="https://developers.stellar.org/docs/learn/fundamentals/stellar-consensus-protocol">developers.stellar.org</a></li>
+  <li>SDF. <em>Tier 1 Organizations</em>. <a href="https://developers.stellar.org/docs/validators/tier-1-orgs">developers.stellar.org/docs/validators/tier-1-orgs</a></li>
+  <li>TechAfrica News. <em>MoneyGram, Figure Markets and Range join Stellar as Tier-1 validators</em> (16-jul-2026). <a href="https://techafricanews.com/2026/07/16/">techafricanews.com</a></li>
+  <li>SDF. <em>Validator Admin Guide — Prerequisites</em>. <a href="https://developers.stellar.org/docs/validators/admin-guide/prerequisites">developers.stellar.org</a></li>
+  <li>SDF. <em>Announcing Protocol 23</em>. <a href="https://stellar.org/blog/developers/announcing-protocol-23">stellar.org/blog</a></li>
+  <li>SDF. <em>Protocol 24 Upgrade Guide</em>. <a href="https://stellar.org/blog/developers/protocol-24-upgrade-guide">stellar.org/blog</a></li>
+  <li>SDF. <em>Announcing Stellar X-Ray: Protocol 25</em>. <a href="https://stellar.org/blog/developers/announcing-stellar-x-ray-protocol-25">stellar.org/blog</a></li>
+  <li>SDF. <em>Stellar Yardstick: Protocol 26 Upgrade Guide</em>. <a href="https://stellar.org/blog/foundation-news/stellar-yardstick-protocol-26-upgrade-guide">stellar.org/blog</a></li>
+  <li>SDF. <em>Stellar Zipper: Protocol 27 Upgrade Guide</em>. <a href="https://stellar.org/blog/foundation-news/stellar-zipper-protocol-27-upgrade-guide">stellar.org/blog</a></li>
+  <li>SDF. <em>Stellar Status</em>. <a href="https://status.stellar.org">status.stellar.org</a></li>
+  <li>DefiLlama. <em>Stellar Chain Overview</em> (31-jul-2026). <a href="https://defillama.com/chain/stellar">defillama.com/chain/stellar</a></li>
+  <li>Blend Capital. <em>Blend Whitepaper</em>. <a href="https://docs.blend.capital/blend-whitepaper">docs.blend.capital</a></li>
+  <li>SDF. <em>Composability on Stellar: From Concept to Reality</em>. <a href="https://stellar.org/blog/developers/composability-on-stellar-from-concept-to-reality">stellar.org/blog</a></li>
+  <li>LumenLoop. <em>Upshift brings multi-chain vault infrastructure to Stellar</em> (jun-2026). <a href="https://lumenloop.com/research/">lumenloop.com</a></li>
+  <li>J. Bachini. <em>Blend Vault</em> (código de referencia). <a href="https://github.com/jamesbachini/Blend-Vault">github.com/jamesbachini/Blend-Vault</a></li>
+  <li>SDF. <em>Meru wallet uses Blend DeFi protocol for yield</em>. <a href="https://stellar.org/case-studies/meru-wallet-uses-blend-defi-protocol-for-yield">stellar.org/case-studies</a></li>
+  <li>SDF. <em>Stellar Asset Contract</em>. <a href="https://developers.stellar.org/docs/tokens/stellar-asset-contract">developers.stellar.org</a></li>
+  <li>Halborn. <em>Explained: The YieldBlox Hack (February 2026)</em>. <a href="https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026">halborn.com</a></li>
+  <li>Ondo / SDF. <em>Ondo launches USDY on Stellar</em>. <a href="https://stellar.org/press/ondo-finance-launches-usdy-on-stellar">stellar.org/press</a></li>
+  <li>SDF. <em>Global Bonds, Local Impact: Stablebonds on Stellar</em>. <a href="https://stellar.org/blog/foundation-news/global-bonds-local-impact-stablebonds-on-stellar">stellar.org/blog</a></li>
+  <li>Spield. <em>Fixed yield on Stellar</em> (testnet). <a href="https://www.spield.live/">spield.live</a></li>
+  <li>SoroSusu Protocol. <em>sorosusu-contracts</em>. <a href="https://github.com/SoroSusu-Protocol/sorosusu-contracts">github.com/SoroSusu-Protocol</a></li>
+  <li>GoodGhosting/HaloFi. <em>Commit-to-save pools</em>. <a href="https://github.com/good-Ghosting/">github.com/good-Ghosting</a></li>
+  <li><em>Rotating savings and credit association</em>. <a href="https://en.wikipedia.org/wiki/Rotating_savings_and_credit_association">wikipedia.org</a></li>
+  <li>CoinIdol. <em>WeTrust launches Trusted Lending Circles (ROSCA)</em>. <a href="https://coinidol.com/wetrust-launches-trusted-lending-rosca-platform/">coinidol.com</a></li>
+  <li>Stellar Protocol. <em>CAP-0023: Two-Part Payments</em>. <a href="https://github.com/stellar/stellar-protocol/blob/master/core/cap-0023.md">github.com/stellar/stellar-protocol</a></li>
+  <li>SDF. <em>Signatures and Multisig</em>. <a href="https://developers.stellar.org/docs/learn/fundamentals/transactions/signatures-multisig">developers.stellar.org</a></li>
+  <li>Montelibero. <em>stellar-multisig</em>. <a href="https://github.com/montelibero-org/stellar-multisig">github.com/montelibero-org</a></li>
+  <li>SDF. <em>Announcing Protocol 21 (CAP-51: secp256r1)</em>. <a href="https://stellar.org/blog/developers/announcing-protocol-21">stellar.org/blog</a></li>
+  <li>OpenZeppelin. <em>Stellar Contracts: Smart Accounts</em> (auditado, RC v0.7.0). <a href="https://docs.openzeppelin.com/stellar-contracts/accounts/smart-account">docs.openzeppelin.com</a></li>
+  <li>C. Komlo, I. Goldberg <em>et al.</em> <em>RFC 9591: FROST</em>. <a href="https://www.rfc-editor.org/rfc/rfc9591.html">rfc-editor.org/rfc/rfc9591</a></li>
+  <li>Taurus. <em>frost-ed25519</em>. <a href="https://github.com/taurushq-io/frost-ed25519">github.com/taurushq-io/frost-ed25519</a></li>
+  <li>BIS Innovation Hub. <em>Project Polaris: handbook for offline payments with CBDC</em>. <a href="https://www.bis.org/publ/othp64.htm">bis.org/publ/othp64</a></li>
+  <li>Coin Center. <em>Decentralizing Bitcoin's last mile with mobile mesh networks</em>. <a href="https://coincenter.org/decentralizing-bitcoins-last-mile-with-mobile-mesh-networks/">coincenter.org</a></li>
+  <li>CNBC. <em>Bitchat: Bluetooth mesh store-and-forward messaging</em> (jul-2025). <a href="https://www.cnbc.com/2025/07/07/jack-dorsey-whatsapp-bluetooth.html">cnbc.com</a></li>
+  <li>Pendulum. <em>Introducing the Stellar Oracle</em> (Spacewalk). <a href="https://medium.com/pendulum-chain/introducing-the-stellar-oracle-ce4b85244cc8">medium.com/pendulum-chain</a></li>
+  <li>XYO / FOAM. <em>Proof-of-location: prior art y límites</em>. <a href="https://xyo.network/proof-of-location">xyo.network</a></li>
+  <li>Frontiers in Blockchain. <em>Sybil-resistant identity and web-of-trust (survey)</em>. <a href="https://www.frontiersin.org/journals/blockchain/articles/10.3389/fbloc.2020.590171/full">frontiersin.org</a></li>
+  <li>arXiv. <em>A Survey of DePIN</em>. <a href="https://arxiv.org/html/2406.02239v1">arxiv.org/html/2406.02239v1</a></li>
+  <li>Messari. <em>Understanding Helium</em>. <a href="https://messari.io/report/understanding-helium-a-comprehensive-overview">messari.io</a></li>
+  <li>SDF. <em>Stellar Community Fund</em>. <a href="https://communityfund.stellar.org">communityfund.stellar.org</a></li>
+  <li>Stellar Protocol. <em>CAP-0074: Host functions for BN254</em>. <a href="https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md">github.com/stellar/stellar-protocol</a></li>
+  <li>Stellar Protocol. <em>CAP-0075: Poseidon/Poseidon2 permutations</em>. <a href="https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md">github.com/stellar/stellar-protocol</a></li>
+  <li>Stellar Protocol. <em>CAP-0080: Host functions for efficient ZK BN254 use cases</em>. <a href="https://github.com/stellar/stellar-protocol/blob/master/core/cap-0080.md">github.com/stellar/stellar-protocol</a></li>
+  <li>SDF. <em>rs-soroban-sdk releases</em> (v25.0.0: BN254 + Poseidon vía CryptoHazmat; v26.x: CAP-0080). <a href="https://github.com/stellar/rs-soroban-sdk/releases">github.com/stellar/rs-soroban-sdk</a></li>
+  <li>SDF. <em>soroban-examples: groth16_verifier</em>. <a href="https://github.com/stellar/soroban-examples/tree/main/groth16_verifier">github.com/stellar/soroban-examples</a></li>
+  <li>Nethermind. <em>stellar-risc0-verifier</em> (Groth16/BN254; no auditado). <a href="https://github.com/NethermindEth/stellar-risc0-verifier">github.com/NethermindEth</a></li>
+  <li>indextree. <em>ultrahonk_soroban_contract</em> (verificador Noir/UltraHonk). <a href="https://github.com/indextree/ultrahonk_soroban_contract">github.com/indextree</a></li>
+  <li>SDF. <em>A Strategy for Privacy on Blockchain</em>. <a href="https://stellar.org/blog/ecosystem/strategy-for-privacy-on-blockchain">stellar.org/blog</a></li>
+  <li>SDF/OpenZeppelin. <em>Developer Preview: Confidential Tokens on Stellar</em> (jul-2026). <a href="https://stellar.org/blog/developers/developer-preview-confidential-tokens-on-stellar">stellar.org/blog</a></li>
+  <li>SDF. <em>Prototyping Privacy Pools on Stellar</em> (pairing ≈40M instrucciones). <a href="https://stellar.org/blog/ecosystem/prototyping-privacy-pools-on-stellar">stellar.org/blog</a></li>
+  <li>noir-lang. <em>Discusión 8509: costes de verificación en Soroban</em> (límite ~100M instrucciones). <a href="https://github.com/orgs/noir-lang/discussions/8509">github.com/orgs/noir-lang</a></li>
+  <li>SDF. <em>5 Real-World Zero-Knowledge Use Cases</em> (zkVoting como caso aspiracional). <a href="https://stellar.org/blog/developers/5-real-world-zero-knowledge-use-cases">stellar.org/blog</a></li>
+  <li>PSE. <em>Semaphore Protocol v4</em>. <a href="https://docs.semaphore.pse.dev/">docs.semaphore.pse.dev</a></li>
+  <li>PSE. <em>mopro: mobile proving</em> (bindings Kotlin; Semaphore-32 ≈0,17 s en gama alta). <a href="https://zkmopro.org/docs/performance">zkmopro.org/docs/performance</a></li>
+  <li>World. <em>Intro to ZKPs, Semaphore and World ID</em>. <a href="https://world.org/blog/world/intro-zero-knowledge-proofs-semaphore-application-world-id">world.org/blog</a></li>
+  <li>PSE. <em>MACI: Minimal Anti-Collusion Infrastructure</em>. <a href="https://maci.pse.dev/docs/introduction">maci.pse.dev</a></li>
+  <li>0xPARC. <em>ZK Bug Tracker</em> (circuitos under-constrained como clase dominante). <a href="https://github.com/0xPARC/zk-bug-tracker">github.com/0xPARC/zk-bug-tracker</a></li>
+</ol>
+</section>
+
+<footer>
+  <span>Protocolo Raíz · borrador técnico v1.0 · 2026</span>
+  <span class="lema">«2 % de cada pago, gobernado por el barrio, verificable en la cadena.»</span>
+</footer>
+
+</div>
+</body>
+</html>

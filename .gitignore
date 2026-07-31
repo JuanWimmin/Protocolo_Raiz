@@ -40,9 +40,11 @@ deployments.local.json
 *.log
 # Screenshots adb temporales
 raiz_screen*.png
+# Capturas de debugging (los screenshots "buenos" de android/.shots/ raíz sí se versionan)
+android/.shots/ErroresPasskey/
 
 # ─── Claude Code ────────────────────────────────────────────────────
 .claude/settings.local.json
 
 # ─── Documentos(toda la carpeta) ────────────────────────────────────────────────────
- .docs/ 
+.docs/
