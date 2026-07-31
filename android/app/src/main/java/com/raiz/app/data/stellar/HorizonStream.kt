@@ -62,8 +62,9 @@ class HorizonStream @Inject constructor(
 
     /**
      * Emisor del USDC para operaciones clásicas (trustline, balance, faucet).
-     * Tras el re-deploy a DeFindex será el USDC de Blend (`usdc_issuer` en
-     * deployments.json); si no está, cae al admin (compat con el deploy previo).
+     * Es el USDC de Blend (`usdc_issuer` en deployments.json, el mismo SAC
+     * que custodia el fondo desde el Camino A); si no está, cae al admin
+     * (compat con el deploy previo).
      */
     private val usdcIssuer: String by lazy { deployments.usdcIssuer ?: deployments.admin }
 

@@ -1,6 +1,7 @@
 package com.raiz.app.ui.treasury
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -50,14 +52,15 @@ import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
 
 /**
- * Pantalla "Tesorería que rinde".
+ * Pantalla "Tesorería que rinde" (F1: Blend v2 directo vía `yield_adapter`).
  *
  * Muestra:
- *  1. Tarjeta global del vault DeFindex (APY, TVL, precio por share, estrategia).
- *  2. Lista per-barrio: posición de cada uno de los 3 barrios del demo en el vault
- *     (depositado, valor actual, rendimiento).
- *  3. Sección secundaria "Reserva del protocolo": deposit/withdraw del capital
- *     admin del protocolo.
+ *  1. Tarjeta de contexto del pool Blend (APY estimado del adapter, TVL y
+ *     utilización de TODO el pool — no solo la posición de RAÍZ).
+ *  2. Lista per-barrio: posición de cada uno de los 3 barrios del demo en la
+ *     fuente de yield (depositado, valor actual, rendimiento).
+ *  3. Sección secundaria "Mover fondos (admin)": deposit/withdraw del fondo
+ *     ocioso de un barrio, vía Pool (único camino desde F1).
  */
 @Composable
 fun YieldScreen(
@@ -75,8 +78,8 @@ fun YieldScreen(
             TopBar(onBack = onBack, onRefresh = viewModel::refresh)
 
             when {
-                state.loading && state.stats == null -> CenteredLoader()
-                state.error != null && state.stats == null -> ErrorBox(state.error!!)
+                state.loading && state.reserveStats == null -> CenteredLoader()
+                state.error != null && state.reserveStats == null -> ErrorBox(state.error!!)
                 else -> Body(state = state, viewModel = viewModel)
             }
         }
@@ -119,7 +122,7 @@ private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 1. Tarjeta global del vault DeFindex
+        // 1. Tarjeta de contexto del pool Blend
         VaultGlobalCard(state = state)
 
         // 2. Posición por barrio
@@ -138,15 +141,16 @@ private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
             }
         }
 
-        // 3. Reserva del protocolo (capital admin)
-        SectionLabel(texto = "Reserva del protocolo")
+        // 3. Mover fondos (admin), por barrio
+        SectionLabel(texto = "Mover fondos (admin)")
         ActionCard(state = state, viewModel = viewModel)
 
-        // Nota informativa al pie
+        // Nota informativa al pie: fuente y riesgo del yield, visibles a propósito.
         Text(
-            text = "Un solo vault USDC compartido que rinde on-chain. Los fondos de " +
-                "cada barrio y la reserva del protocolo aportan al mismo vault DeFindex " +
-                "(Blend, auditado OtterSec). Liquidez disponible al rescatar.",
+            text = "El fondo ocioso de cada barrio se presta en el pool USDC de Blend v2 " +
+                "(TestnetV2) a través del contrato yield_adapter de RAÍZ. El rendimiento " +
+                "es VARIABLE (depende de la utilización del pool) y no está garantizado — " +
+                "liquidez disponible al rescatar, sujeta al colchón líquido del barrio.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
             color = RaizBlack.copy(alpha = 0.55f),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
@@ -157,8 +161,9 @@ private fun Body(state: YieldUiState, viewModel: YieldViewModel) {
 // ── Tarjeta global del vault ─────────────────────────────────────────────────
 
 /**
- * Muestra los stats globales del vault DeFindex: APY, TVL, precio por share
- * y la estrategia (Blend USDC). Contexto visual: "un solo vault compartido".
+ * Muestra el contexto del pool USDC de Blend v2 (TestnetV2): APY estimado
+ * del `yield_adapter`, TVL y utilización de TODO el pool Blend (no solo la
+ * posición de RAÍZ — el pool es compartido con otros protocolos).
  */
 @Composable
 private fun VaultGlobalCard(state: YieldUiState) {
@@ -170,7 +175,7 @@ private fun VaultGlobalCard(state: YieldUiState) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Encabezado: nombre del vault + badge APY
+        // Encabezado: pool Blend + badge APY
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -178,12 +183,12 @@ private fun VaultGlobalCard(state: YieldUiState) {
         ) {
             Column {
                 Text(
-                    text = "Vault DeFindex · USDC",
+                    text = "Pool Blend v2 · USDC",
                     style = MaterialTheme.typography.bodyMedium,
                     color = RaizWhite.copy(alpha = 0.7f),
                 )
                 Text(
-                    text = "Un solo vault compartido que rinde",
+                    text = "El fondo ocioso de cada barrio se presta ahí",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                     color = RaizWhite.copy(alpha = 0.45f),
                 )
@@ -191,20 +196,20 @@ private fun VaultGlobalCard(state: YieldUiState) {
             ApyBadge(apyBps = state.apyBps)
         }
 
-        // TVL y precio por share en fila
+        // TVL y utilización del pool Blend en fila
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // TVL
+            // TVL del pool Blend (todo el pool, no solo RAÍZ)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "TVL del vault",
+                    text = "TVL del pool Blend",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                     color = RaizWhite.copy(alpha = 0.5f),
                 )
                 Text(
-                    text = (state.stats?.tvlStroops ?: 0L).formatUsdc(),
+                    text = (state.reserveStats?.tvlStroops ?: 0L).formatUsdc(),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
@@ -212,15 +217,15 @@ private fun VaultGlobalCard(state: YieldUiState) {
                     color = RaizYellow,
                 )
             }
-            // Precio por share
+            // Utilización (pasivos/activos del pool)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Precio / share",
+                    text = "Utilización",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                     color = RaizWhite.copy(alpha = 0.5f),
                 )
                 Text(
-                    text = (state.stats?.pricePerShareStroops ?: 0L).formatUsdc(),
+                    text = "%.1f%%".format((state.reserveStats?.utilizationBps ?: 0) / 100.0),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
@@ -230,7 +235,7 @@ private fun VaultGlobalCard(state: YieldUiState) {
             }
         }
 
-        // Estrategia
+        // Estrategia + riesgo visible
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -242,7 +247,7 @@ private fun VaultGlobalCard(state: YieldUiState) {
                 modifier = Modifier.size(14.dp),
             )
             Text(
-                text = "Blend (USDC) · auditado por OtterSec",
+                text = "Blend v2 (Stellar testnet) · rendimiento variable, no garantizado",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                 color = RaizWhite.copy(alpha = 0.55f),
             )
@@ -252,17 +257,25 @@ private fun VaultGlobalCard(state: YieldUiState) {
 
 @Composable
 private fun ApyBadge(apyBps: Int?) {
-    val label = apyBps?.let { "%.2f%% APY".format(it / 100.0) } ?: "Rinde on-chain"
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(RaizGreen)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
+    val label = apyBps?.let { "~%.2f%% APY".format(it / 100.0) } ?: "Rinde on-chain"
+    Column(horizontalAlignment = Alignment.End) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(RaizGreen)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = RaizWhite,
+            )
+        }
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-            color = RaizWhite,
+            text = "estimado · variable",
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 9.sp),
+            color = RaizWhite.copy(alpha = 0.45f),
+            modifier = Modifier.padding(top = 2.dp),
         )
     }
 }
@@ -368,9 +381,15 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "Mover fondos (admin)",
+            text = "Depositar/rescatar el fondo ocioso de un barrio en Blend",
             style = MaterialTheme.typography.labelLarge,
             color = RaizBlack,
+        )
+        BarrioSelector(
+            barrios = state.barriosYield,
+            selectedBarrioId = state.selectedBarrioId,
+            enabled = !submitting,
+            onSelect = viewModel::onBarrioSelected,
         )
         OutlinedTextField(
             value = state.amountInput,
@@ -399,7 +418,7 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
             }
             OutlinedButton(
                 onClick = viewModel::withdrawAll,
-                enabled = !submitting && (state.position?.shares ?: 0L) > 0L,
+                enabled = !submitting && (state.selectedBarrioItem?.depositadoStroops ?: 0L) > 0L,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp),
@@ -413,6 +432,39 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
             }
         }
         ActionFeedback(action = state.action)
+    }
+}
+
+/** Selector de barrio (pills horizontales) para la acción admin de mover fondos. */
+@Composable
+private fun BarrioSelector(
+    barrios: List<BarrioYieldItem>,
+    selectedBarrioId: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        barrios.forEach { item ->
+            val selected = item.barrioId == selectedBarrioId
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (selected) RaizPurple else RaizPurple.copy(alpha = 0.10f))
+                    .clickable(enabled = enabled) { onSelect(item.barrioId) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = item.nombre,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (selected) RaizWhite else RaizBlack.copy(alpha = 0.7f),
+                )
+            }
+        }
     }
 }
 

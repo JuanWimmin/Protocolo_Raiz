@@ -131,12 +131,16 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Pool: get_vault_shares (Camino A — fondo del barrio en DeFindex) ───
+    // ── Pool: get_vault_shares (Camino A — fondo del barrio en la fuente de yield) ─
 
     /**
-     * Shares (stroops, 7 dec) que el fondo de un barrio tiene depositadas en el
-     * vault de DeFindex. Lectura pura de storage del Pool (read-only). A precio
-     * por share ~1.0 equivale a su valor en USDC. 0 si el barrio no ha depositado.
+     * Shares (stroops, 7 dec) que el fondo de un barrio tiene depositadas en
+     * la fuente de yield configurada en el Pool (F1: Blend v2 vía el
+     * contrato `yield_adapter` — antes el vault DeFindex). Lectura pura de
+     * storage del Pool: internamente Pool delega en `adapter.shares_of(barrio_id)`,
+     * pero para la app es transparente — mismo nombre y firma de siempre
+     * (compat conservada a propósito, ver spec "NOTA DE COMPATIBILIDAD").
+     * 0 si el barrio no ha depositado.
      */
     suspend fun getVaultShares(barrioId: String): RaizResult<Long> {
         val bytes = barrioId.hexToBytes()
@@ -157,18 +161,22 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Pool: get_vault_value (valor USDC actual del fondo en DeFindex) ──
+    // ── Pool: get_vault_value (valor USDC actual del fondo en la fuente de yield) ─
 
     /**
-     * Valor USDC actual (en stroops) de la posición del barrio en el vault
-     * DeFindex: shares del barrio × precio por share en el momento de la consulta.
-     * Lectura pura — usa el admin como source y signer = null.
-     * Devuelve 0 si el barrio no tiene shares o el vault no está configurado.
+     * Valor USDC actual (en stroops) de la posición del barrio en la fuente
+     * de yield configurada (F1: Blend v2 vía `yield_adapter`, antes DeFindex):
+     * shares del barrio × precio en el momento de la consulta. Lectura pura —
+     * usa el admin como source y signer = null. Devuelve 0 si el barrio no
+     * tiene shares o el adapter no está configurado.
      *
-     * Internamente el contrato llama a `vault.get_asset_amounts_per_shares`.
-     * Si las entradas del vault tienen TTL expirado (sin actividad >~1 mes),
-     * el RPC puede rechazar con "Signer required for write call"; en ese caso
-     * el resultado será RaizResult.Error(NETWORK_ERROR, ...).
+     * Internamente Pool delega en `adapter.value_of(barrio_id)` (= shares ×
+     * b_rate / 1e12 en Blend). Como cualquier lectura Soroban sobre entradas
+     * con TTL expirado (sin actividad >~1 mes), el RPC puede en teoría
+     * rechazar con "Signer required for write call" por footprint de
+     * restore (gotcha general documentado en CLAUDE.md, no específico de
+     * ningún proveedor de yield); en ese caso el resultado será
+     * RaizResult.Error(NETWORK_ERROR, ...).
      */
     suspend fun getVaultValue(barrioId: String): RaizResult<Long> {
         val bytes = barrioId.hexToBytes()
@@ -187,6 +195,98 @@ class SorobanClient @Inject constructor(
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "getVaultValue: ${e.message}")
             },
         )
+    }
+
+    // ── Pool: deposit_idle_to_vault / redeem_from_vault (Camino A, F1) ─────
+    //
+    // Único camino de escritura hacia la fuente de yield: el "Camino B"
+    // (depositar/rescatar directo contra el vault, como hacía DefindexClient)
+    // murió con F1. Firma admin O treasury_contract del barrio (ver
+    // WalletManager.demoAdminKeyPair para el modo demo).
+
+    /**
+     * Deposita `amountStroops` del fondo ocioso de un barrio en la fuente de
+     * yield configurada en el Pool (F1: Blend v2 vía `yield_adapter`).
+     *
+     * `caller` debe ser el admin del protocolo o el `treasury_contract` del
+     * barrio — el contrato valida y falla con `Unauthorized` si no.
+     * `amount` debe ser positivo y no exceder el `pool_balance` del barrio
+     * (falla con `InvalidAmount`); en F1 además valida el colchón líquido
+     * gobernable (falla con `InsufficientLiquidity` si lo rompe).
+     */
+    suspend fun depositIdleToVault(
+        caller: KeyPair,
+        barrioId: String,
+        amountStroops: Long,
+    ): RaizResult<Unit> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            withNetworkRetry {
+                poolClient().invoke<Unit>(
+                    functionName = "deposit_idle_to_vault",
+                    arguments = mapOf(
+                        "caller" to caller.getAccountId(),
+                        "barrio_id" to bytes,
+                        "amount" to amountStroops,
+                    ),
+                    source = caller.getAccountId(),
+                    signer = caller,
+                    parseResultXdrFn = { /* void */ },
+                )
+            }
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e -> RaizResult.Error(mapVaultError(e.message), "depositIdleToVault: ${e.message}") },
+        )
+    }
+
+    /**
+     * Rescata `shares` del barrio desde la fuente de yield de vuelta al
+     * `pool_balance` (realiza el yield acumulado). `caller` debe ser el
+     * admin del protocolo o el `treasury_contract` del barrio.
+     *
+     * `shares` debe ser positivo y no exceder las shares del barrio (falla
+     * con `InsufficientShares` en F1 — el adapter valida `shares <= shares_of(barrio_id)`,
+     * corrigiendo el bug pre-F1 donde `VaultShares` podía quedar negativo).
+     */
+    suspend fun redeemFromVault(
+        caller: KeyPair,
+        barrioId: String,
+        shares: Long,
+    ): RaizResult<Unit> {
+        val bytes = barrioId.hexToBytes()
+            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        return runCatching {
+            withNetworkRetry {
+                poolClient().invoke<Unit>(
+                    functionName = "redeem_from_vault",
+                    arguments = mapOf(
+                        "caller" to caller.getAccountId(),
+                        "barrio_id" to bytes,
+                        "shares" to shares,
+                    ),
+                    source = caller.getAccountId(),
+                    signer = caller,
+                    parseResultXdrFn = { /* void */ },
+                )
+            }
+        }.fold(
+            onSuccess = { RaizResult.Success(Unit) },
+            onFailure = { e -> RaizResult.Error(mapVaultError(e.message), "redeemFromVault: ${e.message}") },
+        )
+    }
+
+    /** Mapea errores de deposit_idle_to_vault/redeem_from_vault a un [RaizErrorCode] semántico. */
+    private fun mapVaultError(msg: String?): RaizErrorCode = when {
+        msg == null -> RaizErrorCode.NETWORK_ERROR
+        "Unauthorized" in msg -> RaizErrorCode.UNAUTHORIZED
+        "BarrioNotFound" in msg -> RaizErrorCode.NOT_FOUND
+        "VaultNotConfigured" in msg -> RaizErrorCode.NOT_FOUND
+        "InsufficientLiquidity" in msg -> RaizErrorCode.INSUFFICIENT_BALANCE
+        "InsufficientShares" in msg -> RaizErrorCode.INSUFFICIENT_BALANCE
+        "InvalidAmount" in msg || "balance" in msg.lowercase() -> RaizErrorCode.INSUFFICIENT_BALANCE
+        else -> RaizErrorCode.NETWORK_ERROR
     }
 
     // ── Pool: list_barrios (RBAC dinámico) ───────────────────────────────

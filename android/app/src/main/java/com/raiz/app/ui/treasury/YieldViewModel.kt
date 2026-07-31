@@ -3,13 +3,10 @@ package com.raiz.app.ui.treasury
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.raiz.app.data.model.RaizConstants
+import com.raiz.app.data.model.BlendReserveStats
 import com.raiz.app.data.model.RaizResult
-import com.raiz.app.data.model.VaultPosition
-import com.raiz.app.data.model.VaultStats
 import com.raiz.app.data.model.toStroops
-import com.raiz.app.data.stellar.DefindexClient
-import com.raiz.app.data.stellar.DeploymentsLoader
+import com.raiz.app.data.stellar.BlendClient
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,7 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Estado de una acción on-chain (deposit/withdraw) en el vault. */
+/** Estado de una acción on-chain (deposit/withdraw vía Pool) en la fuente de yield. */
 sealed interface TreasuryAction {
     data object Idle : TreasuryAction
     data object Submitting : TreasuryAction
@@ -30,14 +27,16 @@ sealed interface TreasuryAction {
 }
 
 /**
- * Posición individual de un barrio en el vault DeFindex.
+ * Posición individual de un barrio en la fuente de yield (F1: Blend v2 vía
+ * `yield_adapter`).
  *
  * @param barrioId            ID hex del barrio (64 chars).
  * @param nombre              Nombre legible (ej. "Centro Histórico").
- * @param depositadoStroops   Shares del barrio en el vault (en stroops, 7 dec). Dado
- *                            que el vault arranca a precio 1.0 (10^7 stroops/share),
- *                            las shares minteadas equivalen al USDC depositado.
- * @param valorActualStroops  Valor en USDC (stroops): shares × pricePerShare / 10^7.
+ * @param depositadoStroops   Shares del barrio (bTokens, stroops 7 dec) — `Pool.get_vault_shares`.
+ *                            Comparable 1:1 con USDC (misma convención que tenían las
+ *                            shares del vault DeFindex: b_rate arranca en ~1.0).
+ * @param valorActualStroops  Valor en USDC (stroops) — `Pool.get_vault_value`, ya viene
+ *                             calculado on-chain (shares × bRate / 1e12), sin cómputo off-chain.
  * @param rendimientoStroops  Yield acumulado (stroops): (valorActual − depositado)
  *                            coercionado a ≥ 0.
  */
@@ -52,53 +51,61 @@ data class BarrioYieldItem(
 data class YieldUiState(
     val loading: Boolean = true,
     val error: String? = null,
-    val stats: VaultStats? = null,
-    /** Posición de la reserva del protocolo (cuenta admin) en el vault. */
-    val position: VaultPosition? = null,
-    /** APY en basis points (1500 = 15%). null si no hay key/endpoint. */
+    /**
+     * TVL/utilización del pool USDC de Blend v2 completo (no solo la
+     * posición de RAÍZ) — contexto de riesgo/liquidez. Fuente:
+     * [BlendClient.getReserveData], lectura directa contra Blend.
+     */
+    val reserveStats: BlendReserveStats? = null,
+    /**
+     * APY en basis points desde `yield_adapter.apy_hint()` (F1). `null` si
+     * el deploy F1 todavía no publicó `yield_adapter` en deployments.json.
+     * Estimado y variable — se muestra como tal en la UI.
+     */
     val apyBps: Int? = null,
     val amountInput: String = "",
+    /** Barrio seleccionado para la acción admin (depositar/rescatar). */
+    val selectedBarrioId: String = "",
     val action: TreasuryAction = TreasuryAction.Idle,
-    /** Posición de cada barrio en el vault. Vacía durante la carga inicial. */
+    /** Posición de cada barrio en la fuente de yield. Vacía durante la carga inicial. */
     val barriosYield: List<BarrioYieldItem> = emptyList(),
 ) {
-    /**
-     * Rendimiento generado (stroops) de la RESERVA DEL PROTOCOLO (tesorería admin):
-     * valor actual − shares (las shares minteadas ≈ USDC depositado a precio 1.0).
-     */
-    val yieldStroops: Long
-        get() = ((position?.currentValueStroops ?: 0L) - (position?.shares ?: 0L))
-            .coerceAtLeast(0L)
+    val selectedBarrioItem: BarrioYieldItem?
+        get() = barriosYield.firstOrNull { it.barrioId == selectedBarrioId }
+
+    /** Rendimiento agregado (stroops) de TODOS los barrios juntos. */
+    val totalYieldStroops: Long
+        get() = barriosYield.sumOf { it.rendimientoStroops }
 }
 
 /**
  * ViewModel de la pantalla "Tesorería que rinde".
  *
- * Carga los stats globales del vault USDC de DeFindex (APY, TVL, precio por
- * share) y, para cada uno de los 3 barrios del demo, la posición individual
- * en el vault a través de [SorobanClient.getVaultShares].
+ * F1: la fuente de yield es Blend v2 directo tras el contrato propio
+ * `yield_adapter` — ya no hay vault DeFindex ni API key REST para el APY.
  *
- * La reserva del protocolo (cuenta admin) sigue siendo gestionable desde la
- * sección secundaria "Reserva del protocolo" en la pantalla.
- *
- * NOTA sobre el cálculo de valorActual: se hace off-chain multiplicando
- * shares × pricePerShareStroops / 10^7 con BigInteger para evitar overflow.
- * NO se usa getVaultValue (que internamente llama a get_asset_amounts_per_shares
- * del vault) para evitar el gotcha de footprint de restore → "Signer required
- * for write call" cuando las entradas tienen TTL expirado.
+ * Fuentes de datos:
+ *  - **Contexto del pool Blend** (TVL/utilización de TODO el pool, no solo
+ *    RAÍZ) y **APY estimado** del adapter → [BlendClient] (dos lecturas
+ *    on-chain independientes, ver su KDoc).
+ *  - **Posición por barrio** (shares, valor actual) → `Pool` vía
+ *    [SorobanClient.getVaultShares] / [SorobanClient.getVaultValue]. El
+ *    Pool delega en el yield_adapter pero conserva nombre/firma — sin
+ *    cambios de interfaz en la app.
+ *  - **Depositar / rescatar** (sección "Mover fondos"): único camino es vía
+ *    Pool ([SorobanClient.depositIdleToVault] / [SorobanClient.redeemFromVault]),
+ *    firmado por la cuenta admin, para el barrio seleccionado en la UI.
  */
 @HiltViewModel
 class YieldViewModel @Inject constructor(
-    private val defindexClient: DefindexClient,
+    private val blendClient: BlendClient,
     private val sorobanClient: SorobanClient,
     private val walletManager: WalletManager,
-    private val deploymentsLoader: DeploymentsLoader,
 ) : ViewModel() {
 
-    /** Firmante/holder de la reserva = cuenta admin del protocolo. */
-    private val treasuryAddress: String by lazy { deploymentsLoader.load().admin }
-
-    private val _state = MutableStateFlow(YieldUiState())
+    private val _state = MutableStateFlow(
+        YieldUiState(selectedBarrioId = DEMO_BARRIOS.keys.first()),
+    )
     val state: StateFlow<YieldUiState> = _state.asStateFlow()
 
     init { refresh() }
@@ -109,50 +116,32 @@ class YieldViewModel @Inject constructor(
         _state.update { it.copy(amountInput = clean) }
     }
 
+    fun onBarrioSelected(barrioId: String) {
+        _state.update { it.copy(selectedBarrioId = barrioId) }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
 
-            // ── 1. Stats globales del vault: TVL, oferta total de shares, precio por share ──
-            val statsResult = defindexClient.getVaultStats()
-            val positionResult = defindexClient.getPosition(treasuryAddress)
-            val apy = defindexClient.getApyBps() // best-effort, puede ser null
+            // ── 1. Contexto del pool Blend (TVL/utilización) + APY del adapter propio ──
+            val reserveResult = blendClient.getReserveData()
+            val apy = blendClient.getAdapterApyBps() // best-effort, null si F1 aún no desplegado
 
-            val stats = (statsResult as? RaizResult.Success)?.data
-            val position = (positionResult as? RaizResult.Success)?.data
-            val firstError = (statsResult as? RaizResult.Error)?.message
-                ?: (positionResult as? RaizResult.Error)?.message
-
-            // Precio por share en stroops. Si no hay stats usamos 1.0 (= 10^7) para no
-            // dividir por cero y mostrar valores coherentes.
-            val pricePerShare = stats?.pricePerShareStroops ?: RaizConstants.USDC_STROOPS_PER_UNIT
+            val reserveStats = (reserveResult as? RaizResult.Success)?.data
+            val reserveError = (reserveResult as? RaizResult.Error)?.message
 
             Log.i(
                 TAG,
-                "Yield global: tvl=${stats?.tvlStroops} pps=$pricePerShare apyBps=$apy",
+                "Blend pool: tvl=${reserveStats?.tvlStroops} util=${reserveStats?.utilizationBps}bps apyBps=$apy",
             )
 
-            // ── 2. Posición de cada barrio en el vault ────────────────────────────────
-            // getVaultShares() lee directamente del storage del contrato Pool (storage key
-            // VaultShares(barrio_id) → i128). Es lectura pura: no llama a ninguna función
-            // del vault de DeFindex, así que no puede caer en el gotcha de "write call".
+            // ── 2. Posición de cada barrio en la fuente de yield ────────────────────
+            // getVaultShares/getVaultValue leen (vía Pool) el storage/adapter — lectura
+            // pura, con retry porque el RPC de testnet es flaky en ráfaga.
             val barriosYield = DEMO_BARRIOS.map { (barrioId, nombre) ->
-                // Reintenta por barrio: el RPC de testnet es flaky en ráfaga y un
-                // fallo transitorio NO debe mostrar 0 USDC del fondo del barrio.
                 val shares = sharesWithRetry(barrioId, nombre)
-
-                // valorActual = shares × pricePerShare / 10^7.
-                // BigInteger para evitar overflow en la multiplicación de dos Long grandes.
-                val valorActual = if (shares > 0L) {
-                    (shares.toBigInteger() * pricePerShare.toBigInteger() /
-                        RaizConstants.USDC_STROOPS_PER_UNIT.toBigInteger()).toLong()
-                } else {
-                    0L
-                }
-
-                // Rendimiento = valor actual − shares depositadas (coercionado a ≥ 0).
-                // Las shares minteadas ≈ USDC depositado porque el vault arranca a precio 1.0;
-                // conforme el precio sube, la diferencia es el yield acumulado.
+                val valorActual = if (shares > 0L) valueWithRetry(barrioId, nombre) else 0L
                 val rendimiento = (valorActual - shares).coerceAtLeast(0L)
 
                 Log.i(
@@ -172,9 +161,8 @@ class YieldViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     loading = false,
-                    error = if (stats == null) firstError else null,
-                    stats = stats,
-                    position = position,
+                    error = if (reserveStats == null) reserveError else null,
+                    reserveStats = reserveStats,
                     apyBps = apy,
                     barriosYield = barriosYield,
                 )
@@ -200,13 +188,28 @@ class YieldViewModel @Inject constructor(
         return 0L
     }
 
-    /** Deposita el monto del input (USDC) en el vault firmando como tesorería admin. */
+    /** Mismo patrón de retry que [sharesWithRetry], para `Pool.get_vault_value`. */
+    private suspend fun valueWithRetry(barrioId: String, nombre: String, attempts: Int = 3): Long {
+        repeat(attempts) { i ->
+            when (val r = sorobanClient.getVaultValue(barrioId)) {
+                is RaizResult.Success -> return r.data
+                is RaizResult.Error -> {
+                    Log.w(TAG, "getVaultValue($nombre) intento ${i + 1}/$attempts: ${r.message}")
+                    if (i < attempts - 1) delay(900)
+                }
+            }
+        }
+        return 0L
+    }
+
+    /** Deposita el monto del input (USDC) en Blend, para el barrio seleccionado, firmando como admin. */
     fun deposit() {
         val amountStroops = _state.value.amountInput.toDoubleOrNull()?.toStroops() ?: 0L
         if (amountStroops <= 0L) {
             _state.update { it.copy(action = TreasuryAction.Failed("Ingresa un monto válido en USDC.")) }
             return
         }
+        val barrioId = _state.value.selectedBarrioId
         viewModelScope.launch {
             _state.update { it.copy(action = TreasuryAction.Submitting) }
             val signer = walletManager.demoAdminKeyPair()
@@ -220,9 +223,9 @@ class YieldViewModel @Inject constructor(
                 }
                 return@launch
             }
-            when (val r = defindexClient.deposit(signer, amountStroops)) {
+            when (val r = sorobanClient.depositIdleToVault(signer, barrioId, amountStroops)) {
                 is RaizResult.Success -> {
-                    Log.i(TAG, "Depósito OK: ${r.data} shares minteadas")
+                    Log.i(TAG, "Depósito OK: $amountStroops stroops → Blend (barrio $barrioId)")
                     _state.update {
                         it.copy(
                             action = TreasuryAction.Ok("Depósito confirmado on-chain"),
@@ -238,11 +241,12 @@ class YieldViewModel @Inject constructor(
         }
     }
 
-    /** Rescata toda la posición de shares de la reserva del protocolo. */
+    /** Rescata toda la posición de shares del barrio seleccionado. */
     fun withdrawAll() {
-        val shares = _state.value.position?.shares ?: 0L
+        val barrioId = _state.value.selectedBarrioId
+        val shares = _state.value.selectedBarrioItem?.depositadoStroops ?: 0L
         if (shares <= 0L) {
-            _state.update { it.copy(action = TreasuryAction.Failed("No hay posición que rescatar.")) }
+            _state.update { it.copy(action = TreasuryAction.Failed("Este barrio no tiene posición que rescatar.")) }
             return
         }
         viewModelScope.launch {
@@ -258,9 +262,9 @@ class YieldViewModel @Inject constructor(
                 }
                 return@launch
             }
-            when (val r = defindexClient.withdraw(signer, shares)) {
+            when (val r = sorobanClient.redeemFromVault(signer, barrioId, shares)) {
                 is RaizResult.Success -> {
-                    Log.i(TAG, "Rescate OK: ${r.data} stroops recuperados")
+                    Log.i(TAG, "Rescate OK: $shares shares del barrio $barrioId")
                     _state.update {
                         it.copy(action = TreasuryAction.Ok("Rescate confirmado on-chain"))
                     }
@@ -278,10 +282,16 @@ class YieldViewModel @Inject constructor(
     }
 
     private fun humanError(raw: String): String = when {
-        "InsufficientBalance" in raw || "balance" in raw.lowercase() ->
-            "Saldo insuficiente de USDC en la tesorería."
-        "vault DeFindex no configurado" in raw ->
-            "El vault de DeFindex no está configurado."
+        "InsufficientBalance" in raw || "InvalidAmount" in raw || "balance" in raw.lowercase() ->
+            "Saldo insuficiente de USDC en el fondo del barrio."
+        "InsufficientLiquidity" in raw ->
+            "Rompería el colchón líquido mínimo del barrio."
+        "InsufficientShares" in raw ->
+            "El barrio no tiene esas shares para rescatar."
+        "VaultNotConfigured" in raw ->
+            "El adapter de yield (Blend) no está configurado todavía."
+        "Unauthorized" in raw ->
+            "No autorizado: solo el admin o la tesorería del barrio pueden mover fondos."
         else -> raw
     }
 

@@ -712,7 +712,7 @@ private fun ErrorState(message: String) {
     }
 }
 
-/** Tarjeta de entrada a la pantalla "Tesorería que rinde" (DeFindex). */
+/** Tarjeta de entrada a la pantalla "Tesorería que rinde" (Blend v2). */
 @Composable
 private fun YieldCta(onClick: () -> Unit) {
     Row(
@@ -741,7 +741,7 @@ private fun YieldCta(onClick: () -> Unit) {
                 color = RaizWhite,
             )
             Text(
-                text = "El fondo ocioso genera rendimiento en DeFindex",
+                text = "El fondo ocioso genera rendimiento variable en Blend",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
                 color = RaizWhite.copy(alpha = 0.85f),
             )
@@ -750,7 +750,7 @@ private fun YieldCta(onClick: () -> Unit) {
     }
 }
 
-/** Camino A: posición del fondo del barrio en el vault DeFindex (cross-contract). */
+/** Camino A: posición del fondo del barrio en Blend v2, vía yield_adapter (cross-contract). */
 @Composable
 private fun VaultPositionCard(vaultStroops: Long) {
     Row(
@@ -773,7 +773,7 @@ private fun VaultPositionCard(vaultStroops: Long) {
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Fondo rindiendo en DeFindex",
+                text = "Fondo rindiendo en Blend",
                 style = MaterialTheme.typography.labelLarge,
                 color = RaizBlack,
             )

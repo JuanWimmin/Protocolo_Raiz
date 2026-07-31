@@ -37,7 +37,7 @@ data class DashboardUiState(
     val merchantCount: Int = 0,
     val proposals: List<Proposal> = emptyList(),
     val proposalAction: Map<Long, ProposalActionState> = emptyMap(),
-    /** Camino A: shares del fondo del barrio en el vault DeFindex (≈ USDC a pps 1.0). */
+    /** Camino A: shares del fondo del barrio en la fuente de yield (F1: Blend v2 vía yield_adapter; ≈ USDC a precio 1.0). */
     val vaultSharesStroops: Long = 0L,
     // Direcciones C… de los contratos desplegados — vacías hasta que DeploymentsLoader cargue.
     val contractPool: String = "",

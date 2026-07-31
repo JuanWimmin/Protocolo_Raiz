@@ -23,6 +23,14 @@ object RaizConstants {
 
     const val TESTNET_HORIZON_URL = "https://horizon-testnet.stellar.org"
     const val TESTNET_SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org"
+
+    /**
+     * Pool USDC de Blend v2 "TestnetV2" (reserva USDC en índice 3). Fuente:
+     * `blend-capital/blend-utils` `testnet.contracts.json`. Fallback SOLO si
+     * `deployments.json` no trae la clave `blend_pool` — nunca la única
+     * fuente; [com.raiz.app.data.stellar.BlendClient] prioriza siempre el deployment.
+     */
+    const val BLEND_POOL_TESTNET = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF"
 }
 
 /** stroops (Long) -> USDC (Double). 10^7 stroops = 1 USDC. */
