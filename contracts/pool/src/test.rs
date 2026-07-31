@@ -414,7 +414,7 @@ fn test_payment_emits_event() {
     client.pay_merchant(&tourist, &merchant_addr, &10_000_000i128, &200u32);
 
     let events = env.events().all();
-    assert!(!events.is_empty());
+    assert!(!events.events().is_empty());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -612,9 +612,9 @@ fn test_vault_deposit_emits_event() {
     client.deposit_idle_to_vault(&admin, &bid, &10_000_000i128);
     let events = env.events().all();
     // Mínimo: vault_dep del pool + transfer del SAC (llamado por MockVault.deposit)
-    assert!(!events.is_empty());
+    assert!(!events.events().is_empty());
     // Hay al menos 2 (SAC transfer + vault_dep)
-    assert!(events.len() >= 2);
+    assert!(events.events().len() >= 2);
 }
 
 #[test]
@@ -631,8 +631,8 @@ fn test_vault_redeem_emits_event() {
     client.redeem_from_vault(&admin, &bid, &shares);
     let events = env.events().all();
     // Mínimo: vault_red del pool + transfer del SAC (llamado por MockVault.withdraw)
-    assert!(!events.is_empty());
-    assert!(events.len() >= 2);
+    assert!(!events.events().is_empty());
+    assert!(events.events().len() >= 2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

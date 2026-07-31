@@ -1,4 +1,9 @@
 #![no_std]
+// `env.events().publish()` está deprecado desde soroban-sdk 23 en favor de
+// `#[contractevent]`, pero migrar cambiaría el formato on-chain de los eventos
+// (topics/data derivados del struct) y rompería el dashboard de transparencia
+// y el parser Android. Se mantiene `publish()` intencionalmente.
+#![allow(deprecated)]
 
 //! RAÍZ · Contrato Treasury
 //! -------------------------

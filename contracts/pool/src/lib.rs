@@ -1,4 +1,9 @@
 #![no_std]
+// `env.events().publish()` está deprecado desde soroban-sdk 23 en favor de
+// `#[contractevent]`, pero migrar cambiaría el formato on-chain de los eventos
+// (topics/data derivados del struct) y rompería el dashboard de transparencia
+// y el parser Android. Se mantiene `publish()` intencionalmente.
+#![allow(deprecated)]
 
 //! RAÍZ · Contrato Pool
 //! ---------------------
@@ -98,16 +103,22 @@ pub enum DataKey {
 // ─────────────────────────────────────────────────────────────────────────────
 // Interfaz del contrato Rewards (para cross-contract call)
 // ─────────────────────────────────────────────────────────────────────────────
-
+//
+// Cliente declarado a mano con `#[contractclient]` en lugar de `contractimport!`:
+// evita el build de dos pasos (compilar el wasm de Rewards antes que Pool).
+// Mantener en sync con la firma real de `rewards::accrue_points`
+// (contracts/rewards/src/lib.rs). Si Rewards cambia esa firma, actualizar aquí.
 mod rewards_contract {
-    // `contractimport!` resuelve rutas relativas al Cargo.toml del crate
-    // (CARGO_MANIFEST_DIR), no al archivo. Desde `contracts/pool/` subimos un
-    // nivel a `contracts/` donde vive el `target/` compartido del workspace.
-    // Compila `rewards` antes de `pool`:
-    //   cargo build --release --target wasm32-unknown-unknown -p rewards
-    soroban_sdk::contractimport!(
-        file = "../target/wasm32-unknown-unknown/release/rewards.wasm"
-    );
+    use soroban_sdk::{contractclient, Address, Env};
+
+    #[allow(dead_code)]
+    #[contractclient(name = "Client")]
+    pub trait Rewards {
+        /// Acumula puntos para `tourist` proporcional a `tip_amount`. Rewards
+        /// verifica que `caller_pool` es el Pool registrado (require_auth +
+        /// comparación contra el address guardado en su storage).
+        fn accrue_points(env: Env, caller_pool: Address, tourist: Address, tip_amount: i128);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -14,10 +14,11 @@ authors = ["RAÍZ"]
 license = "MIT"
 
 [workspace.dependencies]
-# Si tu toolchain tiene una versión más nueva publicada, sube aquí.
-# La 22.0.8 es la línea estable que coincide con la API que ya usa el borrador
-# (env.register(Contract, ()), register_stellar_asset_contract_v2, etc.)
-soroban-sdk = "22.0.8"
+# 26.1.1: última serie estable soportada al migrar (2026-07-31). Sin breaking
+# changes para la API que usa RAÍZ (env.register(Contract, ()),
+# register_stellar_asset_contract_v2, etc.) más allá de env.events().all()
+# (ver pool/src/test.rs) y los límites de recursos por defecto en tests.
+soroban-sdk = "26.1.1"
 
 # Profile optimizado para tamaño WASM (Stellar limita el tamaño del contrato).
 [profile.release]

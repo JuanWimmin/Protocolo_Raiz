@@ -25,9 +25,5 @@ jobs:
         with:
           workspaces: contracts
 
-      # El contractimport! de Pool embebe el wasm de Rewards: build en dos pasos.
-      - name: Build rewards.wasm (requisito de contractimport! en Pool)
-        run: cargo build --release --target wasm32-unknown-unknown -p rewards
-
       - name: Tests del workspace
         run: cargo test --workspace
