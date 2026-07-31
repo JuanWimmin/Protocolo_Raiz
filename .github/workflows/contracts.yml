@@ -1,0 +1,33 @@
+name: contracts
+
+on:
+  push:
+    branches: [main]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+  pull_request:
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      # El toolchain lo fija contracts/rust-toolchain.toml (rustup lo respeta
+      # automaticamente al correr cargo dentro de contracts/).
+      - name: Instalar toolchain pineado
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      # El contractimport! de Pool embebe el wasm de Rewards: build en dos pasos.
+      - name: Build rewards.wasm (requisito de contractimport! en Pool)
+        run: cargo build --release --target wasm32-unknown-unknown -p rewards
+
+      - name: Tests del workspace
+        run: cargo test --workspace

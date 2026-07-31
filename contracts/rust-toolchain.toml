@@ -1,0 +1,6 @@
+[toolchain]
+# Pin del semestre (plan_trabajo_raiz.md: congelar versiones durante F1-F6).
+# soroban-sdk 26.1.1 exige rust >= 1.91.0; wasm32v1-none es el unico target
+# de deploy que acepta el host de Soroban (ver gotcha en CLAUDE.md).
+channel = "1.97.1"
+targets = ["wasm32v1-none", "wasm32-unknown-unknown"]
