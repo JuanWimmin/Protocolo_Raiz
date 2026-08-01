@@ -21,7 +21,7 @@ propuestas → treasury ejecuta trustless si pasa → dashboard muestra todo on-
 
 | Capa | Tecnología | Notas |
 |---|---|---|
-| Contratos | Rust + `soroban-sdk` 22.x | 4 crates en un workspace bajo `contracts/` |
+| Contratos | Rust + `soroban-sdk` 26.1.1 | 5 crates en un workspace bajo `contracts/` · Rust pineado 1.97.1 (`contracts/rust-toolchain.toml`) · CI en `.github/workflows/contracts.yml` |
 | App | Android nativo, Kotlin, Jetpack Compose | minSdk 26, target 35, Material 3, Hilt |
 | Stellar SDK | `kmp-stellar-sdk` (Soneso) | Horizon, Soroban RPC, smart accounts |
 | Mapas | Mapbox Maps SDK 11.x + maps-compose | Ver `docs/raiz_mapbox_setup.md` |
@@ -34,21 +34,25 @@ propuestas → treasury ejecuta trustless si pasa → dashboard muestra todo on-
 
 ```
 Protocolo_Raiz/
-├── contracts/                  # Workspace Cargo
+├── contracts/                  # Workspace Cargo (Rust pineado 1.97.1 vía rust-toolchain.toml)
 │   ├── Cargo.toml              # workspace + soroban-sdk dep
-│   ├── pool/                   # pagos y fondo del barrio  ← borrador inicial ya escrito
+│   ├── pool/                   # pagos y fondo del barrio
 │   ├── governance/             # soulbound + votación
 │   ├── treasury/               # ejecución trustless
-│   └── rewards/                # puntos + premios
-├── android/                    # App Kotlin (vacío, se genera con Android Studio)
-├── scripts/                    # deploy_testnet.sh, seed.ts
+│   ├── rewards/                # puntos + premios
+│   └── yield_adapter/          # BlendAdapter: yield del fondo contra el pool USDC de Blend v2
+├── android/                    # App Kotlin (Jetpack Compose + Hilt)
+├── scripts/                    # deploy_testnet.sh, seed_testnet.sh, setup_admin_multisig.sh
 ├── docs/                       # Fuente de verdad y guías
 │   ├── raiz_v2_spec_contratos.md
 │   ├── RaizModels.kt           # modelos Kotlin espejo de los structs Rust
 │   ├── raiz_mapbox_setup.md
 │   ├── raiz_prompt_claude_code.md   # prompt maestro original
+│   ├── NuevaPropuesta/         # roadmap canónico F1–F6 (propuesta_raiz_ahorro_enjambre.md §8 + plan_trabajo_raiz.md)
+│   ├── ESTADO_PROYECTO_2026-07-31.md  # foto del estado para nuevos colaboradores
 │   └── pre_vistas/             # HTMLs con specs visuales de pantallas
-├── deployments.json            # IDs de contratos tras deploy (se versiona)
+├── .github/workflows/contracts.yml  # CI: build + tests de los contratos
+├── deployments.json            # IDs de contratos tras deploy (se versiona — fuente canónica)
 ├── DEMO.md                     # guion de 90 segundos
 ├── README.md                   # setup en español
 └── .claude/
@@ -73,6 +77,12 @@ Protocolo_Raiz/
 - `ProtocolFeeBps`: configurable, 50 (0.5%) por defecto.
 - En `pay_merchant`: el comercio recibe `amount - fee`, el pool recibe `tip`, el admin recibe `fee`.
 
+### Colchón líquido (yield)
+
+- `CushionBps` en Pool: por defecto 2000 (20%) del fondo se queda líquido. `set_cushion_bps` solo admin.
+- `deposit_idle_to_vault` falla con `InsufficientLiquidity` si el depósito violaría el colchón.
+- El yield fluye Pool → `yield_adapter` (BlendAdapter) → pool USDC de Blend v2. Nunca Blend directo desde Pool.
+
 ### Puntos
 
 - 1 punto por cada **0.01 USDC de tip** = `tip_stroops / 100_000`.
@@ -95,8 +105,11 @@ Protocolo_Raiz/
 ### Eventos (importantes para el dashboard de transparencia)
 
 - `Pool.pay_merchant` → `(symbol_short!("payment"), barrio_id), (tourist, merchant, amount, tip)`
+- `Pool.deposit_idle_to_vault` → `(symbol_short!("vault_dep"), barrio_id), (amount, shares)`
+- `Pool.redeem_from_vault` → `(symbol_short!("vault_red"), barrio_id), (shares, got)`
 - `Treasury.execute_proposal` → `(symbol_short!("execution"), barrio_id), (proposal_id, amount, recipient)`
-- `Rewards.redeem` → `(symbol_short!("redemption"), barrio_id), (tourist, reward_id)`
+- `Rewards.redeem` → `(symbol_short!("redeem"), barrio_id), (tourist, reward_id, redemption_id)` — ojo: "redemption" nunca cupo en `symbol_short` (máx. 9 chars)
+- `YieldAdapter.deposit` / `withdraw` → `(symbol_short!("supply") / symbol_short!("withdrw"), barrio_id)`
 
 ### Paleta UI (no negociable)
 
@@ -133,7 +146,7 @@ Lánzalos con la herramienta Agent cuando la tarea calce:
 
 # Despliegue (cuando estemos listos)
 /deploy-testnet             # corre scripts/deploy_testnet.sh
-/seed-testnet               # corre scripts/seed.ts (3 barrios, 6 comercios, etc.)
+/seed-testnet               # corre scripts/seed_testnet.sh (3 barrios, comercios, etc.)
 ```
 
 Comandos directos útiles:
@@ -145,7 +158,7 @@ cargo build --release --target wasm32-unknown-unknown -p pool
 # Test de un contrato puntual
 cargo test -p pool
 
-# Stellar CLI (instalado v23.2.1)
+# Stellar CLI (instalada 23.2.1 — funciona; upgrade a 27.1.0 recomendado, pendiente)
 stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm --network testnet
 ```
 
@@ -165,11 +178,12 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 - ❌ Inventar campos en los structs. Si falta algo, **propónlo** y actualiza la spec antes.
 - ❌ Crear archivos .md de planificación/decisiones a menos que el usuario lo pida.
-- ❌ Implementar el contrato Rewards a medias dejando Pool roto (Pool lo importa).
+- ❌ Implementar el contrato Rewards a medias dejando Pool roto (Pool lo llama vía `#[contractclient]`).
 - ❌ Cambiar la paleta o el flujo de las 6 pantallas sin avisar — ya están aprobadas.
 - ❌ Usar Google Maps "de paso" si Mapbox da guerra; primero discutir.
 - ❌ Implementar `transfer()` en Governance (es soulbound — viola la tesis).
 - ❌ Hardcodear `pk.*` o `sk.*` de Mapbox en el repo (van en `~/.gradle/gradle.properties`).
+- ❌ Llamar a Blend directamente desde Pool — SIEMPRE vía la interfaz `YieldAdapter`.
 
 ## Gotchas conocidos del proyecto
 
@@ -196,46 +210,53 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   --target wasm32-unknown-unknown`. El segundo emite instrucciones
   `reference-types` que el host de Soroban rechaza.
 
-- **`contractimport!` resuelve rutas relativas al Cargo.toml del crate**
-  (CARGO_MANIFEST_DIR), no al archivo. Desde `contracts/pool/Cargo.toml` a
-  `target/` del workspace son DOS niveles arriba en la jerarquía de archivos
-  pero UN solo `../` en la ruta del macro.
+- **`contractimport!` ya no existe en el repo** (eliminado en F1: Pool→Rewards
+  es un `#[contractclient]` a mano y murió el build en dos pasos). Si algún día
+  vuelve, recuerda: resuelve rutas relativas al Cargo.toml del crate
+  (CARGO_MANIFEST_DIR), no al archivo fuente.
 
 - **Logs Android Info/Debug filtrados**: en algunos dispositivos
   (especialmente Vivo) los logs `Log.i` se filtran por defecto. Forzar
   visibilidad con: `adb shell setprop log.tag.RAIZ VERBOSE` antes de ejecutar.
 
-- **DeFindex / Blend testnet USDC**: la integración de yield usa el vault USDC de
-  DeFindex (`CBMVK2JK…`), que SOLO acepta el USDC de **Blend** (`USDC:GATALTGT…`,
-  SAC `CAQCFVLOBK…`) — no el USDC propio de RAÍZ. Desde el re-deploy de Camino A
-  los contratos custodian ese USDC; fondear cuentas con el faucet de Blend
+- **USDC del fondo y yield (Blend v2)**: DeFindex fue **eliminado por completo
+  en F1** (contratos, app y scripts). El fondo custodia el USDC de **Blend**
+  (issuer `GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56`, SAC
+  `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU`) — no un USDC
+  propio — y el yield va directo al pool USDC de **Blend v2 TestnetV2**
+  (`CCEBVDYM32…`) vía el crate `yield_adapter` (BlendAdapter). Fondear cuentas
+  con el faucet de Blend
   (`GET https://ewqw4hx7oa.execute-api.us-east-1.amazonaws.com/getAssets?userId=<G>`
   → firmar el XDR → enviar). El admin NO puede acuñarlo.
 
-- **Lecturas que el host trata como WRITE**: `get_asset_amounts_per_shares` del
-  vault DeFindex (y cualquier lectura sobre entradas con TTL expirado de Soroban,
-  ~1 mes) añade footprint de restore → `invoke(signer=null)` falla con "Signer
-  required for write call". Calcular valores desde lecturas puras (`total_supply`
-  + `fetch_total_managed_funds`); para datos viejos, un reseed con TTL fresco lo arregla.
+- **Lecturas que el host trata como WRITE**: cualquier lectura sobre entradas
+  de Soroban con TTL expirado (~1 mes) añade footprint de restore →
+  `invoke(signer=null)` falla con "Signer required for write call". Aplica hoy a
+  `get_reserve` / `get_positions` del pool de Blend con TTL vencido (y aplicaba
+  al vault DeFindex antes de F1). Preferir lecturas puras y calcular derivados
+  en el cliente; para datos viejos, un reseed con TTL fresco lo arregla.
 
 - **Deploys/invokes a testnet son flaky en ráfaga**: `deploy_testnet.sh` y
   `seed_testnet.sh` reintentan cada operación (propagación RPC + rate-limit). Si
   un deploy "se cuelga" o un init da "Contract not found", es propagación — reintenta.
 
+- **`authorize_as_current_contract` en soroban-sdk 26.x**: debe invocarse
+  INMEDIATAMENTE antes de la llamada que dispara la sub-invocación autorizada.
+  Intercalar lecturas cross-contract (p. ej. `get_reserve` / `get_positions`)
+  entre la autorización y el submit produce `Error(Auth, InvalidAction)` en
+  tests. Documentado en `contracts/yield_adapter/src/lib.rs`.
+
 ---
 
-## Estado actual (al iniciar el proyecto)
+## Estado actual (2026-07-31)
 
-- Workspace Cargo creado con los 4 crates.
-- `contracts/pool/src/lib.rs` y `test.rs` ya tienen un **borrador funcional** del contrato Pool (escrito antes en el prompt).
-- `contracts/{governance,treasury,rewards}/` son stubs `ping()` que compilan, listos para implementar.
-- Android: carpeta vacía. Empezaremos cuando los 4 contratos estén testeados.
+- **F1 — Independencia de DeFindex: COMPLETADA hoy** (contratos + app + re-deploy a testnet, `deployed_at` 2026-07-31T20:34:53Z).
+- **5 crates** (pool, governance, treasury, rewards, `yield_adapter`) sobre soroban-sdk 26.1.1 · **85 tests verdes** (governance 21, pool 28, rewards 12, treasury 6, yield_adapter 18).
+- Yield: Pool → `yield_adapter` (BlendAdapter: `deposit / withdraw / shares_of / total_shares / value_of / apy_hint / claim_blnd`, contable por barrio, shares = bTokens) → pool USDC de Blend v2. DeFindex eliminado por completo (`DefindexClient` borrado de la app, sin API key).
+- App: `BlendClient` (lecturas puras `get_reserve` + `apy_hint`), `YieldScreen` muestra "Pool Blend v2 · USDC" con APY "estimado · variable". `deployments.json` se copia a mano a `android/app/src/main/assets/` tras cada deploy.
+- Roadmap canónico **F1–F6**: `docs/NuevaPropuesta/propuesta_raiz_ahorro_enjambre.md` §8 + `plan_trabajo_raiz.md` (el roadmap viejo del README §9 queda subordinado). Detalle del estado: `docs/ESTADO_PROYECTO_2026-07-31.md`.
+- Multisig 2-de-3 de admin: `scripts/setup_admin_multisig.sh` listo (pendiente de claves del equipo).
 
-### Próximos pasos sugeridos
+### Próximo paso
 
-1. Verificar que el workspace compila (`cargo check --workspace`).
-2. Resolver el `contractimport!` del Pool que apunta al wasm de Rewards (definir cliente manualmente con `#[contractclient]` o cambiar a build de dos pasos).
-3. Correr los tests del Pool.
-4. Implementar Governance → Treasury → Rewards completos.
-5. Deploy a testnet, llenar `deployments.json`.
-6. Setup Android, generar proyecto con Android Studio, conectar con `kmp-stellar-sdk`.
+- **F2 — Cadena de Barrio (`savings_circle`).**

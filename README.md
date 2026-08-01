@@ -5,7 +5,7 @@
 
 **RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo **on-chain**, sin backend propio y sin que nadie tenga la llave del fondo.
 
-App Android nativa + 4 contratos Soroban (Rust) desplegados y poblados en **Stellar Testnet**.
+App Android nativa + 5 contratos Soroban (Rust) desplegados y poblados en **Stellar Testnet**.
 
 ---
 
@@ -25,13 +25,13 @@ Tres ideas, una sola app:
 | **Gobernanza de residentes (soulbound)** | 1 residente = 1 voto intransferible. Proponen y votan en qué se invierte el fondo. | El voto **no se puede comprar** ni ceder. Democracia de barrio verificable. |
 | **Ejecución trustless + transparencia** | Si una propuesta pasa quórum y mayoría, el Treasury la ejecuta **sin que nadie tenga la llave**. Todo se ve en un dashboard público. | Cada pago, voto y ejecución es auditable en la cadena. |
 
-El turista gana **puntos canjeables** por artesanías locales; el comercio cobra al instante en dólar digital; el barrio acumula, **rinde** (yield DeFindex) y decide.
+El turista gana **puntos canjeables** por artesanías locales; el comercio cobra al instante en dólar digital; el barrio acumula, **rinde** (yield en Blend v2) y decide.
 
 ---
 
 ## 2. Arquitectura 🏗️
 
-RAÍZ no tiene servidor propio: **todo el estado vive on-chain** en 4 contratos Soroban + el vault de DeFindex. La app Android es un cliente delgado que **lee por simulación** (Soroban RPC, sin firmar) y **escribe** enviando transacciones firmadas con la clave del usuario.
+RAÍZ no tiene servidor propio: **todo el estado vive on-chain** en 5 contratos Soroban; el yield del fondo va directo al pool USDC de **Blend v2** a través del contrato propio `yield_adapter`. La app Android es un cliente delgado que **lee por simulación** (Soroban RPC, sin firmar) y **escribe** enviando transacciones firmadas con la clave del usuario.
 
 ```mermaid
 graph TD
@@ -39,9 +39,9 @@ graph TD
         UI["Capa UI — 7 pantallas Compose + onboarding"]
         subgraph DATA["Capa data/ (servicios singleton)"]
             WM["WalletManager<br/>(seed BIP-39 + passkey)"]
-            SC["SorobanClient<br/>(fachada 4 contratos)"]
+            SC["SorobanClient<br/>(fachada de contratos)"]
             HS["HorizonStream<br/>(balances / friendbot / faucet)"]
-            DC["DefindexClient<br/>(yield: TVL / APY)"]
+            BC["BlendClient<br/>(yield: reservas / APY)"]
             RR["RoleResolver<br/>(rol on-chain)"]
         end
         UI --> DATA
@@ -58,29 +58,32 @@ graph TD
         TRE["Treasury"]
         REW["Rewards"]
         USDC["USDC SAC (Blend)"]
-        VAULT["Vault DeFindex"]
+        ADAPTER["yield_adapter (BlendAdapter)"]
+        BLEND["Blend v2 pool USDC"]
 
         POOL -->|"accrue_points"| REW
-        POOL -->|"deposit / withdraw"| VAULT
+        POOL -->|"deposit / withdraw"| ADAPTER
+        ADAPTER -->|"supply / withdraw"| BLEND
         TRE -->|"tally · get_proposal · mark_executed"| GOV
         TRE -->|"withdraw_to · redeem_from_vault"| POOL
         POOL -->|"transfer"| USDC
     end
 ```
 
-### Los 4 contratos
+### Los 5 contratos
 
 | Contrato | Crate | Rol en una línea |
 |---|---|---|
-| **Pool** | `contracts/pool` | El corazón. Recibe el pago, separa el monto del comercio, el Tip Barrio (al pool) y el fee (al admin); custodia el fondo; gestiona el índice de comercios para el mapa y deposita/rescata el fondo ocioso en el vault DeFindex. |
+| **Pool** | `contracts/pool` | El corazón. Recibe el pago, separa el monto del comercio, el Tip Barrio (al pool) y el fee (al admin); custodia el fondo; gestiona el índice de comercios para el mapa y deposita/rescata el fondo ocioso en Blend v2 vía el YieldAdapter (con colchón líquido del 20%). |
 | **Governance** | `contracts/governance` | Democracia del barrio. Mintea tokens de residencia *soulbound*, gestiona propuestas, votación, quórum (30%) y *tally* idempotente. **Nunca implementa `transfer()`.** |
-| **Treasury** | `contracts/treasury` | Ejecución trustless. Cualquiera puede llamar `execute_proposal`: el contrato verifica en Governance que la propuesta pasó, rescata el yield del vault y ordena al Pool transferir al beneficiario. No custodia fondos: orquesta. |
+| **Treasury** | `contracts/treasury` | Ejecución trustless. Cualquiera puede llamar `execute_proposal`: el contrato verifica en Governance que la propuesta pasó, rescata el yield de Blend y ordena al Pool transferir al beneficiario. No custodia fondos: orquesta. |
 | **Rewards** | `contracts/rewards` | Puntos no transferibles + catálogo de premios (artesanías). Solo el Pool puede acumular puntos; el turista canjea (`redeem`) y el artesano confirma la entrega (`claim`). |
+| **YieldAdapter** | `contracts/yield_adapter` | BlendAdapter: puente contable por barrio hacia el pool USDC de Blend v2 (`deposit / withdraw / shares_of / total_shares / value_of / apy_hint / claim_blnd`; shares = bTokens). Hace **intercambiable** la fuente de yield. |
 
 ### Relaciones cross-contract
 
-- `Pool → Rewards.accrue_points` — vía `contractimport!` (Soroban autoriza al Pool referenciándose a sí mismo; Rewards valida `caller == pool` para que nadie infle puntos).
-- `Pool → Vault DeFindex` (`deposit` / `withdraw`) — cliente declarado a mano con `#[contractclient]`; el depósito usa `authorize_as_current_contract` para la sub-transferencia que hace el vault.
+- `Pool → Rewards.accrue_points` — cliente declarado a mano con `#[contractclient]` (Rewards valida `caller == pool` para que nadie infle puntos).
+- `Pool → YieldAdapter` (`deposit` / `withdraw`) — cliente `#[contractclient]`; el depósito usa `authorize_as_current_contract` para la sub-transferencia hacia Blend. El Pool **nunca** habla con Blend directamente.
 - `Treasury → Governance` (`tally`, `get_proposal`, `mark_executed`) y `Treasury → Pool` (`withdraw_to`, `get_vault_shares`, `redeem_from_vault`) — clientes `#[contractclient]` mantenidos en sync con las firmas reales.
 
 ### Capa Android (`data/`)
@@ -89,9 +92,9 @@ graph TD
 |---|---|
 | `WalletManager` | Custodia de claves. Prioridad: wallet guardada > demo (`BuildConfig`) > placeholder. Deriva BIP-39 / SEP-05. |
 | `PasskeyWalletManager` | Smart accounts secp256r1 (WebAuthn) vía `OZSmartAccountKit` de Soneso. |
-| `SorobanClient` | Fachada de los 4 contratos. Lecturas con `signer=null` (simulación), escrituras firmadas. Cachea un `ContractClient` por contrato. |
+| `SorobanClient` | Fachada de los contratos RAÍZ. Lecturas con `signer=null` (simulación), escrituras firmadas. Cachea un `ContractClient` por contrato. |
 | `HorizonStream` | Balances USDC/XLM (polling + `distinctUntilChanged`), trustlines, friendbot, faucet de USDC. |
-| `DefindexClient` | Lee precio-por-share, TVL y posición del vault; deposita/rescata firmando como tesorería; APY en vivo (REST opcional). |
+| `BlendClient` | Lecturas puras del yield: `get_reserve` del pool de Blend + `apy_hint` del adapter. Alimenta la pantalla Yield ("Pool Blend v2 · USDC", APY estimado · variable), sin API key. |
 | `RoleResolver` | Deriva el rol on-chain (residente → comerciante → turista). |
 | `SecureWalletStore` · `ScvalParse` · `DeploymentsLoader` | Persistencia cifrada de la seed · parseo SCVal→Kotlin · carga de `deployments.json`. |
 
@@ -137,7 +140,7 @@ cargar comercio (debe existir y estar verified)  → cargar su barrio
 (cualquiera) tally ──▶ quórum (for+against)·100 ≥ 30·residentes  +  mayoría for>against
        │                                                   └─▶ Passed | Rejected
 (cualquiera) Treasury.execute_proposal ──▶ ¿tally == Passed?
-       │            ├─ rescata yield del vault (si hay shares)
+       │            ├─ rescata yield de Blend (si hay shares)
        │            ├─ Pool.withdraw_to(recipient, amount)
        │            ├─ registra Execution (auditable)
        │            └─ Governance.mark_executed
@@ -145,20 +148,21 @@ cargar comercio (debe existir y estar verified)  → cargar su barrio
    evento execution ──▶ Dashboard de transparencia
 ```
 
-### (c) Yield con DeFindex — dos caminos
+### (c) Yield: Blend directo tras el YieldAdapter
 
-El fondo ocioso del barrio **rinde** depositándose en un vault de DeFindex (yield sobre Soroban).
+El fondo ocioso del barrio **rinde** depositándose en el pool USDC de **Blend v2**, siempre a través del contrato propio `yield_adapter` (**BlendAdapter**) — el Pool nunca habla con Blend directamente. Un solo camino, on-chain de punta a punta:
 
-- **Camino A — cross-contract (on-chain):** el contrato **Pool** deposita y rescata directamente.
-  - `Pool.deposit_idle_to_vault(caller, barrio, amount)` → mueve USDC del pool al vault (con `authorize_as_current_contract` para la transferencia anidada del vault) y guarda `VaultShares(barrio)`.
-  - `Treasury.execute_proposal` → llama `Pool.redeem_from_vault` para realizar el yield **antes** de pagar al beneficiario.
-- **Camino B — app (`ui/treasury` + `DefindexClient`):** la pantalla **"Tesorería que rinde"** lee TVL / precio-por-share / posición (on-chain) y permite depositar/rescatar firmando como tesorería; muestra APY en vivo (REST opcional).
+- `Pool.deposit_idle_to_vault(caller, barrio, amount)` → mueve USDC del fondo a Blend vía el adapter y registra las *shares* (bTokens) del barrio. Respeta un **colchón líquido** (`CushionBps`, 20% por defecto, ajustable por el admin con `set_cushion_bps`): si el depósito lo violara, falla con `InsufficientLiquidity`.
+- `Treasury.execute_proposal` → llama `Pool.redeem_from_vault` para realizar el yield **antes** de pagar al beneficiario.
+- En la app, la pantalla **Yield** (`BlendClient`) muestra "Pool Blend v2 · USDC" con APY **estimado · variable**, todo con lecturas puras (`get_reserve` del pool de Blend + `apy_hint` del adapter), sin API key.
 
 ```
-Pool (fondo ocioso)  ──deposit_idle_to_vault──▶  Vault DeFindex  ──(yield)──▶
-       ▲                                                │
-       └──────────── redeem_from_vault ◀────────────────┘  (rescata yield al pool_balance)
+Pool (fondo ocioso) ──deposit_idle_to_vault──▶ yield_adapter (BlendAdapter) ──supply──▶ Blend v2 pool USDC
+       ▲                                                                                      │ (yield)
+       └────────── redeem_from_vault ◀────────── withdraw ◀───────────────────────────────────┘
 ```
+
+> La interfaz `YieldAdapter` (`deposit / withdraw / shares_of / total_shares / value_of / apy_hint / claim_blnd`) desacopla al protocolo de su fuente de yield: cambiar Blend por otra fuente es desplegar otro adapter y aprobarlo por gobernanza. Esa intercambiabilidad **es la tesis del protocolo**: el barrio decide dónde rinde su fondo.
 
 ### (d) Onboarding de wallet nueva
 
@@ -199,15 +203,15 @@ resolve(address):
 
 | Capa | Tecnología | Notas |
 |---|---|---|
-| Contratos | **Rust + `soroban-sdk` 22.x** | `#![no_std]`, workspace Cargo con 4 crates |
+| Contratos | **Rust + `soroban-sdk` 26.1.1** | `#![no_std]`, workspace Cargo con 5 crates · Rust 1.97.1 pineado · CI en GitHub Actions |
 | Red | **Stellar Testnet** + Soroban RPC | Horizon (lecturas/balances) + Soroban RPC (contratos) |
-| Token | **USDC** vía Stellar Asset Contract (SAC) | USDC de Blend (compatible con el vault DeFindex) |
+| Token | **USDC** vía Stellar Asset Contract (SAC) | USDC de Blend (el que acepta su pool de préstamos) |
 | App | **Kotlin + Jetpack Compose + Material 3** | `minSdk 26`, `targetSdk 35`, JDK 17 |
 | DI | **Hilt (Dagger) + KSP** | módulo `DataModule` |
 | SDK Stellar | **kmp-stellar-sdk 1.6.0 (Soneso)** | Horizon, Soroban RPC, `ContractClient`, SEP-05, smart accounts |
 | Mapas | **Mapbox Maps SDK 11.x** + maps-compose | comercios geolocalizados (`lat/lng × 1e6`) |
 | Wallet | **Passkey (WebAuthn secp256r1)** + fallback **seed BIP-39** | smart account OZ (Soneso) o KeyPair clásico |
-| Yield | **DeFindex** (vault Soroban) | Camino A (cross-contract) + Camino B (app) |
+| Yield | **Blend v2 directo** (`yield_adapter` propio) | prestamista puro, sin intermediarios ni API keys; colchón líquido 20% |
 | Concurrencia | Coroutines + StateFlow | MVVM por pantalla |
 | QR | ZXing (core + embedded) | generar/escanear códigos de pago |
 | TLS | **Conscrypt** | provider de Google instalado en `RaizApplication` para testnet |
@@ -227,8 +231,8 @@ resolve(address):
 
 | Integración | Estado | Detalle |
 |---|---|---|
-| **Stellar / Soroban** | ✅ En testnet | Horizon (balances, friendbot, trustlines) + Soroban RPC (4 contratos: read por simulación, write firmado). |
-| **DeFindex** | ✅ Camino A + B | Vault de yield sobre Soroban. El vault solo acepta el **USDC de Blend**, por eso los contratos custodian ese USDC. Cuentas fondeadas con el faucet de Blend. |
+| **Stellar / Soroban** | ✅ En testnet | Horizon (balances, friendbot, trustlines) + Soroban RPC (5 contratos: read por simulación, write firmado). |
+| **Blend v2** | ✅ Directo vía `YieldAdapter` | El fondo rinde como prestamista puro en el pool USDC de Blend v2 (TestnetV2), sin vault intermediario ni API key. Cuentas fondeadas con el faucet de Blend. (Pre-F1 se usaba el vault DeFindex — eliminado el 2026-07-31.) |
 | **Mapbox** | ✅ | Mapa de comercios del barrio sobre Maps SDK 11.x + maps-compose. |
 | **Passkey / WebAuthn (smart accounts)** | ✅ Implementado y demostrado | `OZSmartAccountKit` de Soneso (contrato OpenZeppelin). Infra pública testnet: **relayer** (patrocina fees de deploy), **indexer** y **verifier** WebAuthn. Requiere Android 9 (API 28). |
 | **Anchors SEP (on/off ramp)** | 🟡 **Planeado** | SEP-10 (auth), SEP-24 (deposit/withdraw fiat↔USDC interactivo), SEP-38 (quotes RFQ). En el roadmap: anchors como **MoneyGram Access** (efectivo) o **Vibrant/Anclap** (LatAm). **Hoy** el on-ramp se simula con el faucet de Blend en testnet. |
@@ -255,14 +259,15 @@ La **clave del admin demo va embebida en el APK** (`BuildConfig.DEMO_ADMIN_SECRE
 
 | Contrato | Dirección | Explorer |
 |---|---|---|
-| **Pool** | `CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CAKYU5HW5QPLAE5YBHH5L5P433VE3RMA7OGAZV2OQCSATD57TXEVN2FK) |
-| **Governance** | `CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE) |
-| **Treasury** | `CDGGFSV74EGBEUQWLZ5OMQZJUPXBI7BYCNZJRMCGYEKZEPN3QBWQGPXA` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CDGGFSV74EGBEUQWLZ5OMQZJUPXBI7BYCNZJRMCGYEKZEPN3QBWQGPXA) |
-| **Rewards** | `CD5OET7FPJAWPID5DCBYRHDJXNICXAPLAWDRDA3NCS5IIBACEW2I6PPT` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CD5OET7FPJAWPID5DCBYRHDJXNICXAPLAWDRDA3NCS5IIBACEW2I6PPT) |
+| **Pool** | `CD775D33SPEO3BTAZIEQTQGN6HERTR5YNEQOZWWKXLDKLJ2B34LCKBE2` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CD775D33SPEO3BTAZIEQTQGN6HERTR5YNEQOZWWKXLDKLJ2B34LCKBE2) |
+| **Governance** | `CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32) |
+| **Treasury** | `CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB) |
+| **Rewards** | `CDTTEZX2QO3L2A4EC34VGVAWYAI4CQD42SGYMFQNNTEQWYU5SHFU5DZJ` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CDTTEZX2QO3L2A4EC34VGVAWYAI4CQD42SGYMFQNNTEQWYU5SHFU5DZJ) |
+| **YieldAdapter** | `CA5J6YVHZQQKB64ODHCUI65AIK24BQGLL42UZTBV7NPT5GI4ASBJPJUC` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CA5J6YVHZQQKB64ODHCUI65AIK24BQGLL42UZTBV7NPT5GI4ASBJPJUC) |
 | USDC SAC (Blend) | `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU) |
-| DeFindex Vault | `CBMVK2JK6NTOT2O4HNQAIQFJY232BHKGLIMXDVQVHIIZKDACXDFZDWHN` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CBMVK2JK6NTOT2O4HNQAIQFJY232BHKGLIMXDVQVHIIZKDACXDFZDWHN) |
+| Blend v2 pool USDC | `CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF` | [↗ ver](https://stellar.expert/explorer/testnet/contract/CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF) |
 
-> Red: **testnet** · `protocol_fee_bps = 50` (0,5%) · desplegados el **2026-06-29** con la identidad `raiz-admin` (`GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P`). El Pool expone **`list_barrios`** (RBAC dinámico). USDC = el de **Blend** (el mismo que acepta el vault DeFindex), no un USDC propio.
+> Red: **testnet** · `protocol_fee_bps = 50` (0,5%) · desplegados el **2026-07-31** con la identidad `raiz-admin` (`GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P`). El Pool expone **`list_barrios`** (RBAC dinámico). USDC = el de **Blend** (el que acepta su pool v2), no un USDC propio. La fuente canónica de IDs es **`deployments.json`** — cambian con cada re-deploy.
 
 ### Eventos on-chain (alimentan el dashboard de transparencia)
 
@@ -305,14 +310,14 @@ cargo test
 ### 2) Deploy + seed a testnet
 
 ```bash
-# Asegura la identidad raiz-admin, compila, despliega los 4 contratos +
-# referencia el USDC SAC de Blend + el vault DeFindex, inicializa en orden
-# (Rewards → Pool → Governance → Treasury) y escribe deployments.json.
+# Asegura la identidad raiz-admin, compila y despliega los 5 contratos
+# (incluido yield_adapter, apuntando al pool USDC de Blend v2), inicializa en
+# orden, escribe deployments.json Y lo copia a los assets de la app Android.
 scripts/deploy_testnet.sh
 
 # Pobla: 3 barrios, 9 comercios (lat/lng reales), 9 residentes soulbound,
-# 6 pagos con tip, depósito de prueba al vault (Camino A), 3 propuestas con
-# votos y 6 rewards. Fondea cuentas con el faucet de USDC de Blend.
+# 6 pagos con tip, depósito de prueba en Blend vía yield_adapter, 3 propuestas
+# con votos y 6 rewards. Fondea cuentas con el faucet de USDC de Blend.
 scripts/seed_testnet.sh
 ```
 
@@ -336,10 +341,6 @@ raiz.admin.secret=
 # Mapbox public token (pk.*) para descargar tiles del mapa
 mapbox.access.token=
 
-# DeFindex API key (OPCIONAL) — solo para APY en vivo; sin ella la pantalla
-# Yield funciona igual con datos on-chain
-defindex.api.key=
-
 # Passkey / smart account (WebAuthn). rpId debe coincidir con el dominio de
 # assetlinks.json en producción. Vacío → el botón de passkey se oculta.
 passkey.rp.id=
@@ -352,16 +353,20 @@ passkey.rp.name=RAIZ
 
 ### ✅ Hecho (código corriendo, no promesas)
 
-- **4 contratos** desplegados en testnet + **55 tests** pasando.
+- **5 contratos** desplegados en testnet + **85 tests** pasando (CI en GitHub Actions).
 - **App Android** con **7 pantallas**: Wallet (+ RAÍZ Passport), Pagar, Premios, Mapa (Mapbox), Dashboard de transparencia, Tesorería/Yield y Perfil — más onboarding (Welcome / crear / importar / passkey / elegir rol) y alta de comercio.
 - **Flujos verificados end-to-end on-chain:** pago con Tip Barrio + puntos, votación, ejecución trustless de propuesta, alta de comercio, onboarding de wallet nueva con rampa de USDC.
-- **DeFindex** Camino A (cross-contract Pool↔vault, auth anidada) + Camino B (app deposita/rescata, muestra TVL/APY).
+- **F1 — Independencia de DeFindex (2026-07-31):** el fondo rinde **directo en Blend v2** vía el contrato propio `yield_adapter` (verificado on-chain: 0.2 USDC del Centro Histórico en bTokens, APY calculado on-chain, colchón líquido 20%). La fuente de yield es intercambiable — primer paso del roadmap **F1–F6** hacia el protocolo de ahorro comunitario (`docs/NuevaPropuesta/` + `docs/ESTADO_PROYECTO_2026-07-31.md`).
 - **RBAC dinámico** (`RoleResolver` on-chain) + **seguridad fase 1** (bloqueo biométrico/PIN, seed cifrada).
 - **Passkey smart-wallet** (`OZSmartAccountKit` de Soneso) **implementado y demostrado**.
 
-### 🛣️ Roadmap post-hackathon
+### 🛣️ Roadmap
 
-- **Admin → backend/relayer** (quitar la clave admin del APK) — requisito de **mainnet**.
+El roadmap canónico es **F1–F6** de la propuesta de protocolo de ahorro (`docs/NuevaPropuesta/propuesta_raiz_ahorro_enjambre.md` §8 + `plan_trabajo_raiz.md`): **F1** Blend directo ✅ → **F2** Cadena de Barrio (`savings_circle`, ROSCA soulbound) → **F3** custodia de enjambre + atestación vecinal → **F4** metas/retos/sorteo → **F5** enjambre frontera (mesh, light-verify, DePIN) → **F6** voto secreto ZK.
+
+Pendientes de mainnet (subordinados al roadmap F1–F6; F3 elimina los dos primeros):
+
+- **Admin → custodia sin clave única** (multisig 2-de-3 ya preparado en `scripts/setup_admin_multisig.sh`; smart account comunal en F3) — requisito de **mainnet**.
 - **Anchors SEP** reales: SEP-10/24/38 para on/off ramp fiat↔USDC (MoneyGram, Vibrant/Anclap).
 - **Passkey con dominio propio** — hoy `github.io` choca con la Public Suffix List para el `rpId`; se resuelve con dominio propio + `assetlinks.json`.
 - **KYC de residencia (SEP-12)** en vez del mint manual del admin.
@@ -375,26 +380,27 @@ passkey.rp.name=RAIZ
 ```
 Protocolo_Raiz/
 ├── contracts/                       # Workspace Cargo (Rust + soroban-sdk)
-│   ├── pool/        src/lib.rs       # pagos, tip split, pool, comercios, vault DeFindex
+│   ├── pool/        src/lib.rs       # pagos, tip split, pool, comercios, yield vía adapter
 │   ├── governance/  src/lib.rs       # soulbound, propuestas, voto, tally, quórum
 │   ├── treasury/    src/lib.rs       # execute_proposal trustless, log de ejecuciones
-│   └── rewards/     src/lib.rs       # puntos, premios, redeem, claim
+│   ├── rewards/     src/lib.rs       # puntos, premios, redeem, claim
+│   └── yield_adapter/ src/lib.rs     # BlendAdapter: el fondo rinde en Blend v2 (F1)
 ├── android/                          # App Kotlin (Jetpack Compose + Hilt)
 │   └── app/src/main/java/com/raiz/app/
 │       ├── data/
 │       │   ├── stellar/              # WalletManager, PasskeyWalletManager,
 │       │   │                         #   SorobanClient, HorizonStream,
-│       │   │                         #   DefindexClient, RoleResolver, ScvalParse…
+│       │   │                         #   BlendClient, RoleResolver, ScvalParse…
 │       │   ├── security/             # AppLock (biométrico/PIN)
 │       │   └── model/                # data classes espejo de los structs Rust
 │       └── ui/                       # wallet, pay, rewards, map, dashboard,
 │                                     #   treasury(yield), profile, welcome,
 │                                     #   become_merchant, security
 ├── scripts/
-│   ├── deploy_testnet.sh             # despliegue de los 4 contratos
+│   ├── deploy_testnet.sh             # despliegue de los 5 contratos + sync assets
 │   └── seed_testnet.sh               # datos demo (barrios, comercios, residentes…)
 ├── docs/                             # spec, arquitectura técnica, pitch, guías
-│   ├── raiz_v2_spec_contratos.md     # spec canónica de los 4 contratos
+│   ├── raiz_v2_spec_contratos.md     # spec canónica de los 5 contratos
 │   ├── ARQUITECTURA_TECNICA.md       # estado real implementado, verificado vs código
 │   ├── RaizModels.kt                 # modelos Kotlin espejo de los structs Rust
 │   └── presentacion/pitch.md         # guion del pitch (7–10 min)
