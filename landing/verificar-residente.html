@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 <!-- Stellar SDK para consulta on-chain (Soroban RPC) -->
-<script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@13.3.0/dist/stellar-sdk.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@17.0.1/dist/stellar-sdk.min.js"></script>
 <style>
   :root{
     --negro:#1a1a1a; --amarillo:#FBBF24; --purpura:#534AB7; --verde:#0F6E56; --fondo:#FAFAF7;
@@ -87,7 +87,7 @@
     <footer class="mt-12 pt-6 border-t border-[#ece9e1] text-sm text-[#777] flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
       <span>Contrato Governance:
         <a class="mono underline" style="color:var(--verde)" target="_blank" rel="noopener"
-           href="https://stellar.expert/explorer/testnet/contract/CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE">CAENXDX7…77PVE ↗</a>
+           href="https://stellar.expert/explorer/testnet/contract/CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32">CBBYI45J…HAL32 ↗</a>
       </span>
       <span>Stellar PULSO Hackathon · testnet</span>
     </footer>
@@ -96,12 +96,18 @@
 <script>
 (function(){
   "use strict";
+  // Fuente: deployments.json del repo (re-deploy F1, 2026-07-31T20:34:53Z).
+  // Actualizar en cada redeploy: este objeto + el enlace del footer.
+  const DEPLOYMENTS = {
+    governance: 'CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32',
+    admin:      'GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P',
+  };
   const RPC_URL = 'https://soroban-testnet.stellar.org';
-  const GOV     = 'CAENXDX77SHDLNPXTQDV4M6W43SVHEJWOGOBQT5XHXDPFEO6PNB77PVE';
+  const GOV     = DEPLOYMENTS.governance;
   // Cuenta admin (existe en testnet): fuente para la simulación de lectura (NO firma nada).
-  const SOURCE  = 'GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P';
-  // Ejemplo: un residente minteado del Centro durante las pruebas.
-  const EJEMPLO = 'GDVFKUCFFQXDPOT5BM4ZSBF3E6LW2ZZQJPYNMCWCXKEMAURW4LTZOE6X';
+  const SOURCE  = DEPLOYMENTS.admin;
+  // Ejemplo: residente del Centro minteado por seed_testnet.sh (raiz-r-centro-1) en el deploy vigente.
+  const EJEMPLO = 'GAYQKE7RMBNQCP24R7UKSPWBHBGLBDYHGR2XATWNKU6LTO2V437DT7D3';
 
   const BARRIOS = {
     'ce47120000000000000000000000000000000000000000000000000000000001': {name:'Centro Histórico', city:'Cartagena', emoji:'🏛️'},

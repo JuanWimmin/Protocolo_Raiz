@@ -64,7 +64,7 @@
 
 <!-- ============ 1 · PORTADA ============ -->
 <section class="slide active items-center text-center">
-  <span class="mono" style="font-size:.75rem;font-weight:700;letter-spacing:.12em;color:var(--verde)">● STELLAR PULSO 2026 · 4 CONTRATOS VIVOS EN TESTNET</span>
+  <span class="mono" style="font-size:.75rem;font-weight:700;letter-spacing:.12em;color:var(--verde)">● STELLAR PULSO 2026 · 5 CONTRATOS VIVOS EN TESTNET</span>
   <svg width="110" height="110" viewBox="0 0 64 64" class="mt-6" aria-hidden="true">
     <circle cx="32" cy="24" r="15" fill="#0F6E56"/><circle cx="19" cy="29" r="9" fill="#0F6E56"/><circle cx="45" cy="29" r="9" fill="#0F6E56"/>
     <circle cx="32" cy="19" r="3.2" fill="#FBBF24"/><circle cx="24" cy="27" r="2.8" fill="#FBBF24"/><circle cx="40" cy="26" r="2.8" fill="#FBBF24"/>
@@ -77,7 +77,7 @@
   <div class="mt-7 flex flex-wrap gap-3 justify-center">
     <span class="pill" style="background:#fff">raizapp.xyz</span>
     <span class="pill" style="background:var(--amarillo)">App Android nativa</span>
-    <span class="pill dark" style="border-color:var(--negro)">4 contratos Soroban</span>
+    <span class="pill dark" style="border-color:var(--negro)">5 contratos Soroban</span>
   </div>
 </section>
 
@@ -196,7 +196,7 @@
   <h2 class="disp font-black mt-5 leading-none" style="font-size:clamp(3rem,7vw,5.6rem)">Esto <span style="color:var(--amarillo)">NO</span> es un mockup.</h2>
   <p class="mt-4 text-2xl" style="color:#fafaf7cc">Corre en <b style="color:#fff">testnet de Stellar</b> ahora mismo.</p>
   <div class="mt-7 flex flex-wrap gap-3 justify-center">
-    <span class="pill" style="background:#fff;color:var(--negro)">4 contratos desplegados</span>
+    <span class="pill" style="background:#fff;color:var(--negro)">5 contratos desplegados</span>
     <span class="pill" style="background:var(--amarillo);color:var(--negro)">3 barrios</span>
     <span class="pill" style="background:var(--negro);color:#fff;border-color:var(--negro)">comercios reales en el mapa</span>
   </div>
@@ -224,7 +224,7 @@
   <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4 leading-tight">El fondo del barrio <span style="color:var(--verde)">no duerme.</span></h2>
   <p class="mt-3 text-2xl text-[#444]">Mientras el barrio decide, su fondo <b>crece</b>.</p>
   <div class="mt-8 grid sm:grid-cols-3 gap-5 max-w-5xl">
-    <div class="card p-6"><div class="text-3xl">📈</div><p class="mt-2 text-[#555]">El Tip Barrio acumulado se deposita en un <b>vault de DeFindex</b> → genera <b>yield</b>.</p></div>
+    <div class="card p-6"><div class="text-3xl">📈</div><p class="mt-2 text-[#555]">El Tip Barrio acumulado presta en el <b>pool USDC de Blend v2</b> (vía nuestro YieldAdapter) → genera <b>yield</b>.</p></div>
     <div class="card p-6"><div class="text-3xl">🏦</div><p class="mt-2 text-[#555]">No es una alcancía estática: <b>trabaja</b> mientras se vota en qué invertirlo.</p></div>
     <div class="card p-6"><div class="text-3xl">🧩</div><p class="mt-2 text-[#555]">RAÍZ se <b>para sobre</b> el ecosistema Stellar — no lo reinventa.</p></div>
   </div>
@@ -256,12 +256,13 @@
 <!-- ============ 11 · ARQUITECTURA ============ -->
 <section class="slide">
   <span class="kicker self-start" style="background:var(--verde);color:#fff"><span class="nodo"></span>Arquitectura</span>
-  <h2 class="disp text-4xl sm:text-5xl font-extrabold mt-4">4 contratos Soroban + Android nativo</h2>
+  <h2 class="disp text-4xl sm:text-5xl font-extrabold mt-4">5 contratos Soroban + Android nativo</h2>
   <div class="mt-7 grid sm:grid-cols-2 gap-4 max-w-5xl">
-    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--verde)">Pool</h3><p class="text-[#555] mt-1">Pagos + custodia del Tip Barrio + integración DeFindex</p></div>
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--verde)">Pool</h3><p class="text-[#555] mt-1">Pagos + custodia del Tip Barrio + colchón líquido del 20%</p></div>
     <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--purpura)">Governance</h3><p class="text-[#555] mt-1">Token soulbound de residencia + votación por barrio</p></div>
     <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--ambar)">Treasury</h3><p class="text-[#555] mt-1">Ejecución trustless de propuestas aprobadas</p></div>
     <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:#1a1a1a">Rewards</h3><p class="text-[#555] mt-1">Puntos no transferibles + catálogo de premios</p></div>
+    <div class="card p-5"><h3 class="disp font-bold text-lg" style="color:var(--verde)">YieldAdapter</h3><p class="text-[#555] mt-1">El fondo ocioso rinde en el pool USDC de Blend v2, contable por barrio</p></div>
   </div>
   <p class="mt-6 text-[#666] max-w-4xl">App: <b>Kotlin + Jetpack Compose</b> · SDK Soneso · <b>Mapbox</b> · <b>smart wallets passkey</b> + fallback semilla.</p>
 </section>
@@ -274,7 +275,7 @@
     <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">💸</span><div><b>Fees ~0</b> — el Tip Barrio no se lo come el gas.</div></div>
     <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">💵</span><div><b>USDC nativo</b> — turista y comercio piensan en dólares.</div></div>
     <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">🦀</span><div><b>Soroban</b> — gobernanza auditable en Rust + account abstraction (passkey).</div></div>
-    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">🧩</span><div><b>Componible</b> — DeFindex para yield, anchors SEP-24/38 para la rampa fiat.</div></div>
+    <div class="card p-5 flex gap-4 items-start"><span class="text-2xl">🧩</span><div><b>Componible</b> — Blend v2 para yield, anchors SEP-24/38 para la rampa fiat.</div></div>
   </div>
 </section>
 
@@ -296,7 +297,7 @@
   <h2 class="disp text-4xl sm:text-6xl font-extrabold mt-4">Lo que YA corre</h2>
   <p class="text-[#888] mt-1 mono" style="font-size:.85rem">NO ES PROMESA. ES CÓDIGO EN PRODUCCIÓN.</p>
   <div class="mt-6 grid sm:grid-cols-2 gap-3 max-w-5xl text-lg">
-    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>4 contratos desplegados + poblados en testnet, con <b>yield DeFindex real por barrio</b>.</div></div>
+    <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>5 contratos desplegados + poblados en testnet, con <b>yield real por barrio en Blend v2</b>.</div></div>
     <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div><b>Passkey operativo end-to-end</b>: crear wallet, pagar, votar y proponer <b>con la huella</b>.</div></div>
     <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>Verificado on-chain en dispositivo: pago+Tip, puntos, <b>sellos</b>, voto, ejecución, alta de comercio, residente.</div></div>
     <div class="card p-4 flex gap-3"><span style="color:var(--verde)">✓</span><div>Landing pública (<b>raizapp.xyz</b>) con <b>datos on-chain en vivo</b> + APK descargable.</div></div>
