@@ -89,16 +89,17 @@ Soneso, no un backend de RAÍZ).
         └─────────────────────────────────────────────────────┘
 ```
 
-**4 contratos Soroban** (deploy vigente: 2026-06-29T23:12:24Z):
+**5 contratos Soroban** (deploy vigente: 2026-07-31T20:34:53Z — re-deploy F1; el deploy original del 29-jun quedó obsoleto):
 
 | Contrato | Address (testnet) | Rol |
 |---|---|---|
-| `pool` | `CAKYU5HW…N2FK` | Pagos + custodia del Tip Barrio + índice de comercios y barrios |
-| `governance` | `CAENXDX7…7PVE` | Tokens soulbound + propuestas + votación |
-| `treasury` | `CDGGFSV7…GPXA` | Ejecución trustless de propuestas aprobadas |
-| `rewards` | `CD5OET7F…6PPT` | Puntos no transferibles + catálogo de premios |
+| `pool` | `CD775D33…KBE2` | Pagos + custodia del Tip Barrio + índice de comercios y barrios |
+| `governance` | `CBBYI45J…AL32` | Tokens soulbound + propuestas + votación |
+| `treasury` | `CACZWU3B…PATB` | Ejecución trustless de propuestas aprobadas |
+| `rewards` | `CDTTEZX2…5DZJ` | Puntos no transferibles + catálogo de premios |
+| `yield_adapter` | `CA5J6YVH…PJUC` | BlendAdapter: el fondo ocioso presta en el pool USDC de Blend v2 (ver §12) |
 | USDC SAC | `CAQCFVLO…RCJU` | SAC del USDC de **Blend** testnet (issuer `GATALTGT…`) |
-| vault DeFindex | `CBMVK2JK…DWHN` | Fuente de yield actual (muere con F1, ver §12) |
+| pool Blend v2 | `CCEBVDYM…4HGF` | Destino del yield (TestnetV2) |
 | admin | `GBLS7PL5…CYC2P` | `raiz-admin`, protocol_fee_bps = 50 |
 
 > **La fuente canónica es `deployments.json`** — estos IDs cambian con cada

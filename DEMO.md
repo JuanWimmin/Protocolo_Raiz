@@ -1,7 +1,7 @@
 # DEMO.md — Guion de demo en vivo
 
 > Núcleo de **90 segundos** (negrita) + extensiones opcionales para llegar a 3-4 min
-> en el pitch de hackathon. Todo corre contra los 4 contratos en **testnet**.
+> en el pitch de hackathon. Todo corre contra los 5 contratos en **testnet**.
 > Guion completo de presentación: `docs/presentacion/pitch.md`.
 
 ---

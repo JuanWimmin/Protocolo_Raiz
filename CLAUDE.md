@@ -248,15 +248,25 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ---
 
-## Estado actual (2026-07-31)
+## Estado actual (2026-08-27)
 
-- **F1 — Independencia de DeFindex: COMPLETADA hoy** (contratos + app + re-deploy a testnet, `deployed_at` 2026-07-31T20:34:53Z).
-- **5 crates** (pool, governance, treasury, rewards, `yield_adapter`) sobre soroban-sdk 26.1.1 · **85 tests verdes** (governance 21, pool 28, rewards 12, treasury 6, yield_adapter 18).
-- Yield: Pool → `yield_adapter` (BlendAdapter: `deposit / withdraw / shares_of / total_shares / value_of / apy_hint / claim_blnd`, contable por barrio, shares = bTokens) → pool USDC de Blend v2. DeFindex eliminado por completo (`DefindexClient` borrado de la app, sin API key).
-- App: `BlendClient` (lecturas puras `get_reserve` + `apy_hint`), `YieldScreen` muestra "Pool Blend v2 · USDC" con APY "estimado · variable". `deployments.json` se copia a mano a `android/app/src/main/assets/` tras cada deploy.
-- Roadmap canónico **F1–F6**: `docs/NuevaPropuesta/propuesta_raiz_ahorro_enjambre.md` §8 + `plan_trabajo_raiz.md` (el roadmap viejo del README §9 queda subordinado). Detalle del estado: `docs/ESTADO_PROYECTO_2026-07-31.md`.
-- Multisig 2-de-3 de admin: `scripts/setup_admin_multisig.sh` listo (pendiente de claves del equipo).
+- **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
+- **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
+  Plan, decisiones y prompts: `docs/PLAN_CLAUDE_CODE_SOW.md`. Revisión de contexto:
+  `docs/REVISION_2026-08-27.md` (hallazgos H1–H10).
+- F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
+  puede avanzar (WP5).
+- Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
+  censo y strings acotados (herencia de la revisión H2/H4/H8).
+- Skills de Stellar disponibles en Claude Code (plugin `stellar-dev`): `smart-contracts`
+  (storage/TTL/auth/testing/security), `dapp` (stellar-sdk JS — útil para el relayer D1),
+  `data` (RPC/Horizon/getEvents — D2), `standards` (SEPs — D3), `assets`, `agentic-payments`, `zk-proofs`.
+- La landing (`landing/`) se publica a mano en el repo Pages `JuanWimmin/JuanWimmin.github.io`
+  (raizapp.xyz): tras cada cambio en `landing/` hay que copiar los HTML allí. Los IDs de contratos
+  viven en un objeto `DEPLOYMENTS` al inicio del `<script>` de cada HTML — sincronizar con
+  `deployments.json` en cada redeploy.
 
 ### Próximo paso
 
-- **F2 — Cadena de Barrio (`savings_circle`).**
+- **WP0 cerrado (2026-08-27).** WP activo: **WP1 — D1 Admin Relayer** según
+  `docs/PLAN_CLAUDE_CODE_SOW.md` §1 (calendario). Al cerrar cada WP, actualizar esta línea.

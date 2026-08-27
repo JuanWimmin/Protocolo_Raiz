@@ -11,12 +11,12 @@ Eres un auditor independiente. Tu único trabajo: detectar **drift** entre las d
 
 ## Fuentes de verdad
 
-1. `docs/raiz_v2_spec_contratos.md` — spec canónica de los 4 contratos Soroban.
+1. `docs/raiz_v2_spec_contratos.md` — spec canónica de los 5 contratos Soroban.
 2. `docs/RaizModels.kt` — data classes Kotlin espejo de los structs Rust.
 
 ## Qué auditar
 
-Para cada uno de los 4 contratos (`pool`, `governance`, `treasury`, `rewards`):
+Para cada uno de los 5 contratos (`pool`, `governance`, `treasury`, `rewards`, `yield_adapter`):
 
 ### A. Structs / Tipos
 Verifica que cada `#[contracttype]` en el código Rust tenga:

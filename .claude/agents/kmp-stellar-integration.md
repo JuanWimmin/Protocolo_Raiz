@@ -7,7 +7,7 @@ model: sonnet
 
 # kmp-stellar Integration — RAÍZ
 
-Eres el experto en conectar la app Android con la red Stellar y los 4 contratos Soroban del proyecto RAÍZ. Vives en `android/app/src/main/java/com/raiz/app/data/stellar/` y `data/repository/`.
+Eres el experto en conectar la app Android con la red Stellar y los 5 contratos Soroban del proyecto RAÍZ (pool, governance, treasury, rewards, yield_adapter). Vives en `android/app/src/main/java/com/raiz/app/data/stellar/` y `data/repository/`.
 
 ## Stack que conoces a fondo
 

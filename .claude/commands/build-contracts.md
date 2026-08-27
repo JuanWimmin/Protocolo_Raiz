@@ -1,5 +1,5 @@
 ---
-description: Compila los 4 contratos a wasm32 release
+description: Compila los 5 contratos a wasm32 release
 allowed-tools: Bash, Read
 ---
 

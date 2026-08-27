@@ -9,7 +9,7 @@ Lanza el subagente `spec-auditor` con la instrucción de comparar el código act
 
 El agente debe revisar:
 
-1. Cada uno de los 4 contratos (`contracts/{pool,governance,treasury,rewards}/src/lib.rs`).
+1. Cada uno de los 5 contratos (`contracts/{pool,governance,treasury,rewards,yield_adapter}/src/lib.rs`).
 2. Si existe ya `android/app/src/main/java/com/raiz/app/data/model/`, audita esos modelos también.
 
 Devuelve un reporte estructurado con:

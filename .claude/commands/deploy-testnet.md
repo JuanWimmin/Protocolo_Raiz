@@ -1,5 +1,5 @@
 ---
-description: Despliega los 4 contratos a Stellar Testnet (requiere scripts/deploy_testnet.sh)
+description: Despliega los 5 contratos a Stellar Testnet (requiere scripts/deploy_testnet.sh)
 allowed-tools: Bash, Read, Write
 argument-hint: [--rebuild] (opcional, fuerza compilar antes de desplegar)
 ---
