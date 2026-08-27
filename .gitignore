@@ -18,7 +18,8 @@ android/*.iml
 android/.kotlin/
 # secretos locales que NUNCA suben (Mapbox sk., API keys)
 android/keystore.properties
-gradle.properties
+# solo el de la raíz del repo; android/gradle.properties SÍ se versiona (flags AndroidX, sin secretos)
+/gradle.properties
 
 # ─── IDE / SO ───────────────────────────────────────────────────────
 .idea/
@@ -41,10 +42,15 @@ deployments.local.json
 # Screenshots adb temporales
 raiz_screen*.png
 # Capturas de debugging (los screenshots "buenos" de android/.shots/ raíz sí se versionan)
-android/.shots/ErroresPasskey/
+# Capturas nuevas de debugging no se versionan por defecto (las 3 de referencia ya trackeadas se mantienen; `git add -f` para añadir otra)
+android/.shots/
 
 # ─── Claude Code ────────────────────────────────────────────────────
 .claude/settings.local.json
+# Vault de stellar-memory (índice de sesiones de agente, regenerable) — no se versiona
+.stellar-memory/
+# Snapshots/backups locales pendientes de borrar
+_to_delete/
 
 # ─── Documentos(toda la carpeta) ────────────────────────────────────────────────────
 .docs/

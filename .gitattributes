@@ -1,0 +1,20 @@
+# Normaliza fin de línea: LF en el índice, nativo en el working tree (mata el churn CRLF/LF).
+* text=auto
+
+# Binarios: nunca normalizar ni diffear como texto
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.wasm binary
+*.tgz binary
+*.zip binary
+*.jar binary
+*.keystore binary
+*.jks binary
+
+# Scripts de shell siempre LF (se ejecutan en bash/CI)
+*.sh text eol=lf
+gradlew text eol=lf
