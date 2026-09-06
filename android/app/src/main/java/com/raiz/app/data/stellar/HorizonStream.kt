@@ -10,7 +10,6 @@ import com.soneso.stellar.sdk.AssetTypeCreditAlphaNum4
 import com.soneso.stellar.sdk.ChangeTrustOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
-import com.soneso.stellar.sdk.PaymentOperation
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
 import kotlinx.coroutines.CancellationException
@@ -51,8 +50,8 @@ import javax.inject.Singleton
  *    with hostname"
  * causados por breves pérdidas de conectividad (cambio WiFi→datos, VPN, etc.)
  * El polling [usdcBalanceFlow] los absorbe (devuelve 0L y reintenta en el
- * próximo tick). Las operaciones de escritura ([enableUsdcTrustline],
- * [sendUsdcFromAdmin]) usan [withRetryOnDns] con backoff 1s/2s.
+ * próximo tick). La escritura ([enableUsdcTrustline]) usa [withRetryOnDns]
+ * con backoff 1s/2s.
  */
 @Singleton
 class HorizonStream @Inject constructor(
@@ -352,42 +351,10 @@ class HorizonStream @Inject constructor(
         )
     }
 
-    /**
-     * Envía USDC del admin del protocolo a `destination` como Payment classic.
-     * Usado SOLO como faucet demo: cuando un usuario nuevo necesita USDC para
-     * probar el flow de pago. En producción no existe — los anchors (SEP-24)
-     * harían el on-ramp desde fiat.
-     *
-     * Reintenta hasta 3 veces ante errores DNS transitorios (backoff 1s/2s).
-     */
-    suspend fun sendUsdcFromAdmin(
-        adminSigner: KeyPair,
-        destination: String,
-        amountStroops: Long,
-    ): RaizResult<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            withRetryOnDns {
-                val source = horizonServer.loadAccount(adminSigner.getAccountId())
-                val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
-                val amount = amountStroops.toUsdcDecimal()
-                val op = PaymentOperation(destination, asset, amount)
-                val tx = TransactionBuilder(source, Network.TESTNET)
-                    .setBaseFee(100L)
-                    .addOperation(op)
-                    .setTimeout(60L)
-                    .build()
-                tx.sign(adminSigner)
-                horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
-                Log.i(TAG, "Admin envió $amount USDC a $destination")
-            }
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e ->
-                Log.e(TAG, "sendUsdcFromAdmin falló: ${e.message}")
-                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
-            },
-        )
-    }
+    // Los flujos admin (faucet, registro de comercio, soulbound, vault) viven
+    // en el relayer (data/relayer/RelayerClient) desde 0.2.0: el APK ya no
+    // lleva autoridad admin. Aquí vivía el faucet clásico (`payment` de USDC
+    // firmado por el admin hacia una cuenta G…); hoy es `POST /v1/faucet`.
 
     /**
      * Reintento con backoff exponencial para errores DNS/conexión transitorios
@@ -436,15 +403,6 @@ class HorizonStream @Inject constructor(
             }
         }
         throw lastEx ?: error("withRetryOnDns: sin excepción tras $maxAttempts intentos")
-    }
-
-    /** Long stroops → "10.0000000" (7 decimales fijos) que Stellar exige. */
-    private fun Long.toUsdcDecimal(): String {
-        val unit = this / RaizConstants.USDC_STROOPS_PER_UNIT
-        val frac = (this % RaizConstants.USDC_STROOPS_PER_UNIT)
-            .toString()
-            .padStart(RaizConstants.USDC_DECIMALS, '0')
-        return "$unit.$frac"
     }
 
     /**

@@ -1,6 +1,5 @@
 package com.raiz.app.data.stellar
 
-import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Execution
@@ -14,21 +13,13 @@ import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.ResidentToken
 import com.raiz.app.data.model.Reward
-import com.soneso.stellar.sdk.Address
 import com.soneso.stellar.sdk.Asset
-import com.soneso.stellar.sdk.InvokeHostFunctionOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
-import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.contract.ContractClient
 import com.soneso.stellar.sdk.rpc.requests.GetEventsRequest
 import com.soneso.stellar.sdk.rpc.responses.GetEventsResponse
-import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
-import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
 import com.soneso.stellar.sdk.scval.Scv
-import com.soneso.stellar.sdk.xdr.HostFunctionXdr
-import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
-import com.soneso.stellar.sdk.xdr.SCSymbolXdr
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -197,97 +188,14 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Pool: deposit_idle_to_vault / redeem_from_vault (Camino A, F1) ─────
+    // ── Pool: deposit_idle_to_vault / redeem_from_vault ───────────────────
     //
-    // Único camino de escritura hacia la fuente de yield: el "Camino B"
-    // (depositar/rescatar directo contra el vault, como hacía DefindexClient)
-    // murió con F1. Firma admin O treasury_contract del barrio (ver
-    // WalletManager.demoAdminKeyPair para el modo demo).
-
-    /**
-     * Deposita `amountStroops` del fondo ocioso de un barrio en la fuente de
-     * yield configurada en el Pool (F1: Blend v2 vía `yield_adapter`).
-     *
-     * `caller` debe ser el admin del protocolo o el `treasury_contract` del
-     * barrio — el contrato valida y falla con `Unauthorized` si no.
-     * `amount` debe ser positivo y no exceder el `pool_balance` del barrio
-     * (falla con `InvalidAmount`); en F1 además valida el colchón líquido
-     * gobernable (falla con `InsufficientLiquidity` si lo rompe).
-     */
-    suspend fun depositIdleToVault(
-        caller: KeyPair,
-        barrioId: String,
-        amountStroops: Long,
-    ): RaizResult<Unit> {
-        val bytes = barrioId.hexToBytes()
-            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
-        return runCatching {
-            withNetworkRetry {
-                poolClient().invoke<Unit>(
-                    functionName = "deposit_idle_to_vault",
-                    arguments = mapOf(
-                        "caller" to caller.getAccountId(),
-                        "barrio_id" to bytes,
-                        "amount" to amountStroops,
-                    ),
-                    source = caller.getAccountId(),
-                    signer = caller,
-                    parseResultXdrFn = { /* void */ },
-                )
-            }
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e -> RaizResult.Error(mapVaultError(e.message), "depositIdleToVault: ${e.message}") },
-        )
-    }
-
-    /**
-     * Rescata `shares` del barrio desde la fuente de yield de vuelta al
-     * `pool_balance` (realiza el yield acumulado). `caller` debe ser el
-     * admin del protocolo o el `treasury_contract` del barrio.
-     *
-     * `shares` debe ser positivo y no exceder las shares del barrio (falla
-     * con `InsufficientShares` en F1 — el adapter valida `shares <= shares_of(barrio_id)`,
-     * corrigiendo el bug pre-F1 donde `VaultShares` podía quedar negativo).
-     */
-    suspend fun redeemFromVault(
-        caller: KeyPair,
-        barrioId: String,
-        shares: Long,
-    ): RaizResult<Unit> {
-        val bytes = barrioId.hexToBytes()
-            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
-        return runCatching {
-            withNetworkRetry {
-                poolClient().invoke<Unit>(
-                    functionName = "redeem_from_vault",
-                    arguments = mapOf(
-                        "caller" to caller.getAccountId(),
-                        "barrio_id" to bytes,
-                        "shares" to shares,
-                    ),
-                    source = caller.getAccountId(),
-                    signer = caller,
-                    parseResultXdrFn = { /* void */ },
-                )
-            }
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e -> RaizResult.Error(mapVaultError(e.message), "redeemFromVault: ${e.message}") },
-        )
-    }
-
-    /** Mapea errores de deposit_idle_to_vault/redeem_from_vault a un [RaizErrorCode] semántico. */
-    private fun mapVaultError(msg: String?): RaizErrorCode = when {
-        msg == null -> RaizErrorCode.NETWORK_ERROR
-        "Unauthorized" in msg -> RaizErrorCode.UNAUTHORIZED
-        "BarrioNotFound" in msg -> RaizErrorCode.NOT_FOUND
-        "VaultNotConfigured" in msg -> RaizErrorCode.NOT_FOUND
-        "InsufficientLiquidity" in msg -> RaizErrorCode.INSUFFICIENT_BALANCE
-        "InsufficientShares" in msg -> RaizErrorCode.INSUFFICIENT_BALANCE
-        "InvalidAmount" in msg || "balance" in msg.lowercase() -> RaizErrorCode.INSUFFICIENT_BALANCE
-        else -> RaizErrorCode.NETWORK_ERROR
-    }
+    // Los flujos admin (faucet, registro de comercio, soulbound, vault) viven
+    // en el relayer (data/relayer/RelayerClient) desde 0.2.0: el APK ya no
+    // lleva autoridad admin. Aquí vivían las escrituras `deposit_idle_to_vault`
+    // y `redeem_from_vault` firmadas por el admin (hoy `POST /v1/vault/deposit`
+    // y `POST /v1/vault/redeem` del relayer). Las lecturas `getVaultShares` /
+    // `getVaultValue` siguen aquí.
 
     // ── Pool: list_barrios (RBAC dinámico) ───────────────────────────────
 
@@ -391,64 +299,12 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Pool: register_merchant (admin only) ─────────────────────────────
-
-    /**
-     * Registra un comercio en el contrato Pool. Solo el admin del protocolo
-     * puede llamar esto on-chain. La app lo expone con el demoAdminKeyPair
-     * en modo demo para que cualquier usuario pueda volverse comerciante
-     * sin coordinar offline.
-     *
-     * El struct MerchantData se construye desde los campos planos y se pasa
-     * como un Map al SDK, que lo serializa automáticamente.
-     */
-    suspend fun registerMerchant(
-        admin: KeyPair,
-        merchantAddress: String,
-        name: String,
-        barrioId: String,
-        latE6: Int,
-        lngE6: Int,
-        categorySymbol: String,
-    ): RaizResult<Unit> {
-        val barrioBytes = barrioId.hexToBytes()
-            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
-
-        // Para structs en el SDK Soneso, se pasa un Map<String, Any> donde
-        // cada key es el nombre del campo y el valor su contenido.
-        val merchantData = linkedMapOf<String, Any>(
-            "address" to merchantAddress,
-            "name" to name,
-            "barrio_id" to barrioBytes,
-            "verified" to true,
-            "lat_e6" to latE6,
-            "lng_e6" to lngE6,
-            "category" to com.soneso.stellar.sdk.scval.Scv.toSymbol(categorySymbol),
-        )
-
-        return runCatching {
-            poolClient().invoke<Unit>(
-                functionName = "register_merchant",
-                arguments = mapOf("data" to merchantData),
-                source = admin.getAccountId(),
-                signer = admin,
-                parseResultXdrFn = { /* void */ },
-            )
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e ->
-                val msg = e.message.orEmpty()
-                val code = when {
-                    "BarrioNotFound" in msg ||
-                        "Error(Contract, #6)" in msg -> RaizErrorCode.NOT_FOUND
-                    "Unauthorized" in msg ||
-                        "Error(Contract, #3)" in msg -> RaizErrorCode.UNAUTHORIZED
-                    else -> RaizErrorCode.NETWORK_ERROR
-                }
-                RaizResult.Error(code, "registerMerchant: ${e.message}")
-            },
-        )
-    }
+    // ── Pool: register_merchant ───────────────────────────────────────────
+    //
+    // Los flujos admin (faucet, registro de comercio, soulbound, vault) viven
+    // en el relayer (data/relayer/RelayerClient) desde 0.2.0: el APK ya no
+    // lleva autoridad admin. Aquí vivía la escritura `register_merchant`
+    // firmada por el admin del protocolo (hoy `POST /v1/register-merchant`).
 
     // ── Pool: get_merchant ────────────────────────────────────────────────
 
@@ -635,76 +491,12 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── Governance: mint_resident (admin del barrio) ─────────────────────
-
-    /**
-     * Mintea un ResidentToken soulbound a una address. On-chain solo el admin
-     * del barrio puede llamar `mint_resident`; la app lo expone con el
-     * demoAdminKeyPair en modo demo para que un usuario que eligió "Soy
-     * residente" se verifique al instante sin coordinar offline. En producción
-     * esto pasaría por validación de documentos de residencia / KYC.
-     *
-     * Espejo EXACTO de [registerMerchant]: el admin firma por el usuario.
-     * La firma del contrato es `mint_resident(barrio_admin, resident, barrio_id)`.
-     *
-     * @param adminSigner  KeyPair del admin del barrio (= demoAdminKeyPair en demo).
-     * @param resident     Address G.../C... que recibirá el soulbound.
-     * @param barrioId     hex de 32 bytes del barrio del residente.
-     */
-    suspend fun mintResident(
-        adminSigner: KeyPair,
-        resident: String,
-        barrioId: String,
-    ): RaizResult<Unit> {
-        val barrioBytes = barrioId.hexToBytes()
-            ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
-
-        return runCatching {
-            governanceClient().invoke<Unit>(
-                functionName = "mint_resident",
-                arguments = mapOf(
-                    "barrio_admin" to adminSigner.getAccountId(),
-                    "resident" to resident,
-                    "barrio_id" to barrioBytes,
-                ),
-                source = adminSigner.getAccountId(),
-                signer = adminSigner,
-                parseResultXdrFn = { /* void */ },
-            )
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e ->
-                val msg = e.message.orEmpty()
-                when {
-                    // Ya residente (#5): el estado final deseado ya se cumple
-                    // (puede votar/proponer), así que lo tratamos como éxito
-                    // idempotente en lugar de un error.
-                    "AlreadyResident" in msg ||
-                        "Error(Contract, #5)" in msg ->
-                        RaizResult.Success(Unit)
-                    // El barrio no tiene admin configurado (#4).
-                    "BarrioAdminNotSet" in msg ||
-                        "Error(Contract, #4)" in msg ->
-                        RaizResult.Error(
-                            RaizErrorCode.NOT_FOUND,
-                            "El barrio no tiene admin configurado on-chain",
-                        )
-                    // El firmante no es el admin de este barrio (#3).
-                    "Unauthorized" in msg ||
-                        "Error(Contract, #3)" in msg ->
-                        RaizResult.Error(
-                            RaizErrorCode.UNAUTHORIZED,
-                            "El admin no está autorizado para este barrio",
-                        )
-                    else ->
-                        RaizResult.Error(
-                            RaizErrorCode.NETWORK_ERROR,
-                            "mintResident: ${e.message}",
-                        )
-                }
-            },
-        )
-    }
+    // ── Governance: mint_resident ─────────────────────────────────────────
+    //
+    // Los flujos admin (faucet, registro de comercio, soulbound, vault) viven
+    // en el relayer (data/relayer/RelayerClient) desde 0.2.0: el APK ya no
+    // lleva autoridad admin. Aquí vivía la escritura `mint_resident` firmada
+    // por el admin del barrio (hoy `POST /v1/mint-resident`).
 
     // ── Governance: vote (ESCRITURA firmada) ─────────────────────────────
 
@@ -1001,98 +793,13 @@ class SorobanClient @Inject constructor(
         )
     }
 
-    // ── USDC SAC: balance y fondeo de smart accounts ─────────────────────
-
-    /**
-     * Envía USDC del admin (G...) al smart account del turista (C...) invocando
-     * el SAC de Blend directamente con SCVal crudos — sin spec descargable.
-     *
-     * El SAC (Stellar Asset Contract) es un contrato nativo del host; NO tiene
-     * WASM descargable, así que `ContractClient.forContract()` fallaría con
-     * "Contract spec not found". En su lugar construimos la operación a mano:
-     *
-     *   InvokeHostFunctionOperation(SAC.transfer(from, to, amount_i128))
-     *
-     * `prepareTransaction` simula + ensambla (soroban data + fee). Para cuentas
-     * clásicas (G...) la auth en `require_auth()` se satisface con la firma
-     * estándar de la transacción — no hace falta firmar auth entries por separado.
-     *
-     * @param adminSigner      KeyPair del admin que transfiere (G...).
-     * @param contractAddress  Dirección C... del smart account destino.
-     * @param amountStroops    Cantidad en stroops (7 decimales). 1 USDC = 10_000_000.
-     */
-    suspend fun fundContractUsdc(
-        adminSigner: KeyPair,
-        contractAddress: String,
-        amountStroops: Long,
-    ): RaizResult<Unit> {
-        return try {
-            val server = poolClient().server
-            val adminAccount = server.getAccount(adminSigner.getAccountId())
-
-            val invokeArgs = InvokeContractArgsXdr(
-                contractAddress = Address(deployments.usdcSac).toSCAddress(),
-                functionName = SCSymbolXdr("transfer"),
-                args = listOf(
-                    Address(adminSigner.getAccountId()).toSCVal(),
-                    Address(contractAddress).toSCVal(),
-                    Scv.toInt128(BigInteger.fromLong(amountStroops)),
-                ),
-            )
-            val op = InvokeHostFunctionOperation(
-                hostFunction = HostFunctionXdr.InvokeContract(invokeArgs),
-                auth = emptyList(),
-            )
-            val unsignedTx = TransactionBuilder(adminAccount, network)
-                .addOperation(op)
-                .setBaseFee(500_000L)
-                .setTimeout(30L)
-                .build()
-
-            val prepared = server.prepareTransaction(unsignedTx)
-            prepared.sign(adminSigner)
-
-            val sendResp = server.sendTransaction(prepared)
-            if (sendResp.status == SendTransactionStatus.ERROR) {
-                return RaizResult.Error(
-                    code = RaizErrorCode.NETWORK_ERROR,
-                    message = "fundContractUsdc: send error ${sendResp.errorResultXdr}",
-                )
-            }
-
-            val txHash = sendResp.hash
-                ?: return RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "fundContractUsdc: hash nulo en sendTransaction")
-
-            for (attempt in 0 until 10) {
-                delay(3_000L)
-                val txResp = server.getTransaction(txHash)
-                when (txResp.status) {
-                    GetTransactionStatus.SUCCESS ->
-                        return RaizResult.Success(Unit)
-                    GetTransactionStatus.FAILED ->
-                        return RaizResult.Error(
-                            code = RaizErrorCode.SIMULATION_FAILED,
-                            message = "fundContractUsdc: tx FAILED ${txResp.resultXdr}",
-                        )
-                    GetTransactionStatus.NOT_FOUND -> { /* todavía propagando, seguir esperando */ }
-                }
-            }
-            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "fundContractUsdc: timeout esperando $txHash")
-
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val msg = e.message.orEmpty()
-            val code = when {
-                "InsufficientBalance" in msg || "Error(Contract, #7)" in msg ->
-                    RaizErrorCode.INSUFFICIENT_BALANCE
-                "Unauthorized" in msg || "Error(Contract, #3)" in msg ->
-                    RaizErrorCode.UNAUTHORIZED
-                else -> RaizErrorCode.NETWORK_ERROR
-            }
-            RaizResult.Error(code, "fundContractUsdc: ${e.message}")
-        }
-    }
+    // ── USDC SAC: balance de smart accounts ──────────────────────────────
+    //
+    // Los flujos admin (faucet, registro de comercio, soulbound, vault) viven
+    // en el relayer (data/relayer/RelayerClient) desde 0.2.0: el APK ya no
+    // lleva autoridad admin. Aquí vivía el faucet para smart accounts
+    // (`transfer` del SAC de USDC firmado por el admin, con SCVal crudos);
+    // hoy es `POST /v1/faucet` del relayer, que cubre G… y C….
 
     /**
      * Lee el balance USDC (stroops) de un smart account on-chain (C...) usando
