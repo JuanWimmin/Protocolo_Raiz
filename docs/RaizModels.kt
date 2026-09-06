@@ -250,6 +250,7 @@ sealed class RaizResult<out T> {
 }
 
 enum class RaizErrorCode {
+    /** Saldo insuficiente. Desde el relayer: `503 FAUCET_EMPTY` (el admin se quedó sin USDC para el faucet). */
     INSUFFICIENT_BALANCE,
     INSUFFICIENT_POINTS,
     OUT_OF_STOCK,
@@ -257,10 +258,28 @@ enum class RaizErrorCode {
     ALREADY_VOTED,
     PROPOSAL_CLOSED,
     QUORUM_NOT_REACHED,
+    /** Desde el relayer: `401 UNAUTHORIZED_APP`, `422 TRUSTLINE_DEAUTHORIZED`, `502 UNAUTHORIZED_ADMIN`. */
     UNAUTHORIZED,
+    /**
+     * Fallo de red o servicio no disponible. Desde el relayer: `RPC_UNREACHABLE`,
+     * `QUEUE_FULL`, `RESTORE_REQUIRED`, `TX_TIMEOUT` y los timeouts de Ktor. Ojo:
+     * en los dos últimos la transacción PUEDE estar en vuelo — el mensaje lo dice
+     * y el reintento debe reutilizar la misma `idempotency-key`
+     * (`RelayerClient.isPendingTransactionError`).
+     */
     NETWORK_ERROR,
     SIMULATION_FAILED,
-    UNKNOWN
+    PARSE_ERROR,        // respuesta/XDR que no se pudo decodificar
+    NOT_FOUND,          // barrio, cuenta o recurso inexistente
+    UNKNOWN,
+
+    /**
+     * El relayer admin (raiz-relayer, D1 del SOW) respondió 429 `RATE_LIMITED`:
+     * cupo por IP, por address (faucet) o cupo diario del endpoint agotado. El
+     * mensaje incluye el `retryAfterSeconds` cuando viene en `details`.
+     * Ver android/.../data/relayer/RelayerClient.kt.
+     */
+    RATE_LIMITED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
