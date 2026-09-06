@@ -245,13 +245,13 @@ resolve(address):
 - **Biometría al confirmar pago** — la autorización del usuario se exige antes de firmar.
 - **Soulbound NO transferible** — Governance jamás implementa `transfer()`; el voto no se puede comprar ni ceder (es la tesis del proyecto).
 - **Montos siempre en stroops** (`i128`/`Long`) — sin floats, sin pérdida de precisión.
-- **Secrets fuera del repo** — claves demo, token de Mapbox y config de passkey viven en `local.properties` (no versionado), inyectados como `BuildConfig`.
+- **Secrets fuera del repo** — las 2 claves de las wallets demo (turista y residente, **solo en el build debug**), el token de Mapbox, la config de passkey y la API key del relayer (`raiz.relayer.key`) viven en `local.properties` (no versionado), inyectados como `BuildConfig`. **La autoridad admin del protocolo no está en la app**: vive en el servicio [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (D1 del SOW) y el APK release no lleva ninguna clave privada `S…`.
 - **Seed cifrada** en el dispositivo con `EncryptedSharedPreferences` + clave del Android Keystore.
 - **Validación de inputs** en cada escritura on-chain (`require_auth`, montos > 0, `tip_bps ≤ 10_000`, comercio `verified`, residencia del barrio correcto, sin doble voto, stock/puntos suficientes).
 
-### ⚠️ Limitación conocida (bloqueante de mainnet)
+### ✅ Resuelto en 0.2.0 (D1 del SOW): la clave del admin ya no va en el APK
 
-La **clave del admin demo va embebida en el APK** (`BuildConfig.DEMO_ADMIN_SECRET`) para poder demostrar el alta de comercios y el mint de residentes sin coordinación offline. **No publicar como release.** El fix post-hackathon es mover esa autoridad a un **backend/relayer** que firme las operaciones de admin (registro de comercios, mint de residencia, faucet), de modo que la app del usuario nunca tenga la clave del admin.
+Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_SECRET`) para demostrar el alta de comercios y el mint de residentes sin coordinación offline. Desde **0.2.0** esa autoridad vive en [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (TypeScript + Fastify, open source): la app hace HTTP con una API key de aplicación (`raiz.relayer.key`) y el relayer firma server-side el **registro de comercios**, el **soulbound de residente**, el **faucet** de USDC y el **vault** de yield. La app sigue firmando con la wallet del usuario todo lo demás (pagos, votos, propuestas, canjes). Verificación por descompilación (0 claves `S…` en el APK release): `docs/evidencia_sow/d1/verificacion_apk.md`.
 
 ---
 
@@ -333,10 +333,19 @@ cd android
 Crea `android/local.properties` con tus claves (no se versiona). Solo **nombres**, sin valores:
 
 ```properties
-# Claves demo (secrets S...) para demostrar los 3 roles sin coordinar offline
+# Relayer admin (raiz-relayer, D1 del SOW). La KEY es OBLIGATORIA para los 4 flujos que
+# firma el relayer (alta de comercio, verificar residente, faucet USDC y vault de yield):
+# sin ella esos botones aparecen deshabilitados con aviso. La URL es opcional
+# (default https://raiz-relayer.fly.dev).
+raiz.relayer.key=
+raiz.relayer.url=
+
+# Claves demo (secrets S...) de las wallets turista y residente, SOLO para el build debug
+# (el buildType release las fuerza a "": el APK release no lleva ninguna S... y no tiene
+# modo demo). La autoridad admin del protocolo NO se configura aquí: vive en
+# https://github.com/JuanWimmin/raiz-relayer (variable de entorno del servidor).
 raiz.tourist.secret=
 raiz.resident.secret=
-raiz.admin.secret=
 
 # Mapbox public token (pk.*) para descargar tiles del mapa
 mapbox.access.token=

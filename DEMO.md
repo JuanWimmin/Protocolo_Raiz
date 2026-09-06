@@ -14,6 +14,8 @@
 - [ ] App abierta en **Inicio** (WalletScreen), mostrando el saldo.
 - [ ] Tener listo el QR de un comercio para escanear (segundo teléfono o impreso).
 - [ ] Modo demo activo: el cambio de rol (turista/residente/comercio) está en **Perfil → Mi rol**.
+- [ ] APK **debug** compilado con `raiz.tourist.secret` en `local.properties` (el release no tiene modo demo).
+- [ ] Relayer vivo: `curl -s $RELAYER/v1/health` → `ok:true`, `faucet.enabled:true`, `vaultEndpoints:true` (`RELAYER` = URL del relayer; default `https://raiz-relayer.fly.dev`).
 
 ---
 
@@ -74,6 +76,7 @@
 | Pago lento / timeout | Narra el Tip Barrio sobre el desglose ya visible; no esperes confirmación en vivo. |
 | Sin red | Abre el **Dashboard de transparencia**: muestra estado on-chain ya cargado. Pivota a la slide de arquitectura. |
 | Onboarding falla | Sáltalo — es opcional. La wallet principal ya está lista. |
+| Relayer caído | Salta **Alta de comercio** y **Onboarding** (son los que pasan por el relayer); pagos, votos y transparencia no dependen del relayer. |
 
 ---
 

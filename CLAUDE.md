@@ -248,12 +248,21 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ---
 
-## Estado actual (2026-08-27)
+## Estado actual (2026-09-06)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
 - **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
   Plan, decisiones y prompts: `docs/PLAN_CLAUDE_CODE_SOW.md`. Revisión de contexto:
   `docs/REVISION_2026-08-27.md` (hallazgos H1–H10).
+- **D1 (WP1):** relayer público en https://github.com/JuanWimmin/raiz-relayer (TS + Fastify +
+  stellar-sdk 17, 150 tests, integración real en testnet). La app (0.2.0) consume el relayer vía
+  `data/relayer/RelayerClient` y el APK release **no lleva ninguna clave `S…`** (evidencia en
+  `docs/evidencia_sow/d1/`). Config de la app: `raiz.relayer.key` (obligatoria) y
+  `raiz.relayer.url` (default `https://raiz-relayer.fly.dev`) en `android/local.properties`.
+  Pendiente: deploy en Fly (`fly deploy --ha=false`, una sola máquina) y regresión en dispositivo.
+- **D2 (WP2):** ejecuciones de evidencia sembradas el 6-sep (`docs/evidencia_sow/d2/`): #1 Norte y
+  #2 Costa ejecutadas; #3 Centro y #4 Norte votadas, ejecutables desde el **9-sep**. Código
+  pendiente (diseño en `docs/PLAN_CLAUDE_CODE_SOW.md` WP2 + notas de sesión).
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
 - Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
@@ -268,5 +277,6 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ### Próximo paso
 
-- **WP0 cerrado (2026-08-27).** WP activo: **WP1 — D1 Admin Relayer** según
-  `docs/PLAN_CLAUDE_CODE_SOW.md` §1 (calendario). Al cerrar cada WP, actualizar esta línea.
+- **WP1 en cierre (2026-09-06):** falta deploy del relayer en Fly y regresión en dispositivo
+  (`docs/evidencia_sow/d1/regresion_dispositivo.md`). WP activo a partir del 9-sep: **WP2 — D2
+  tx hash real** según `docs/PLAN_CLAUDE_CODE_SOW.md`. Al cerrar cada WP, actualizar esta línea.
