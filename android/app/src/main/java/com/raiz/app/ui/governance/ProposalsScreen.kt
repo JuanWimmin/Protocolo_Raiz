@@ -497,7 +497,7 @@ private fun PendingRegistrationBox(
                 color = RaizBlack,
             )
             Text(
-                text = "Para proponer y votar necesitas un token de residencia on-chain (soulbound). En esta demo el admin lo aprueba al instante.",
+                text = "Para proponer y votar necesitas un token de residencia on-chain (soulbound). En esta demo el relayer del barrio lo aprueba al instante.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
             )
@@ -511,13 +511,22 @@ private fun PendingRegistrationBox(
                 )
             }
 
+            // Relayer no configurado (local.properties incompleto) — bloquea el botón.
+            if (!state.relayerConfigured) {
+                Text(
+                    text = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB00020),
+                )
+            }
+
             Spacer(modifier = Modifier.size(4.dp))
 
             if (state.pendingBarrioName != null) {
-                // Botón de verificación: el admin demo mintea el soulbound.
+                // Botón de verificación: el relayer del barrio mintea el soulbound.
                 Button(
                     onClick = onVerify,
-                    enabled = !state.verifying,
+                    enabled = !state.verifying && state.relayerConfigured,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
@@ -543,6 +552,13 @@ private fun PendingRegistrationBox(
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
+                }
+                if (state.verifying) {
+                    Text(
+                        text = "Verificando con el barrio… puede tardar hasta 1 minuto",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = RaizBlack.copy(alpha = 0.6f),
+                    )
                 }
             } else {
                 // Sin barrio elegido: no podemos mintear. Guía al usuario.

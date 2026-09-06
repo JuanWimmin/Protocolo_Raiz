@@ -2,6 +2,7 @@ package com.raiz.app.ui.become_merchant
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,8 +63,10 @@ import com.mapbox.maps.plugin.gestures.gestures
 import com.raiz.app.data.model.MerchantCategory
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGreen
+import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
+import com.raiz.app.ui.util.StellarExpert
 
 /**
  * Pantalla "Registrarme como comerciante" — flujo en dos pasos:
@@ -90,7 +95,12 @@ fun BecomeMerchantScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         when {
-            state.success -> SuccessContent(padding = padding, onDone = onSuccess)
+            state.success -> SuccessContent(
+                padding = padding,
+                onDone = onSuccess,
+                txHash = state.txHash,
+                note = state.successNote,
+            )
             state.step == OnboardingStep.INFO -> StepInfo(
                 state = state,
                 padding = padding,
@@ -474,6 +484,30 @@ private fun StepLocation(
             )
         }
 
+        // ── Relayer no configurado (local.properties incompleto) ───────
+        if (!state.relayerConfigured) {
+            RelayerNotConfiguredNotice()
+        }
+
+        // ── Verificando con el relayer del barrio ──────────────────────
+        if (state.submitting) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(
+                    color = RaizGreen,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    "Verificando con el barrio… puede tardar hasta 1 minuto",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = RaizBlack.copy(alpha = 0.7f),
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         DemoNote()
@@ -521,9 +555,28 @@ private fun DemoNote() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Demo: el registro se aprueba al instante con la cuenta de admin del seed. En producción pasaría por revisión del admin del barrio.",
+            "Demo: el registro lo aprueba al instante el relayer del barrio (admin firma server-side). En producción pasaría por revisión del admin del barrio.",
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
             color = RaizBlack.copy(alpha = 0.7f),
+        )
+    }
+}
+
+/** Aviso cuando `raiz.relayer.url` / `raiz.relayer.key` faltan en local.properties. */
+@Composable
+private fun RelayerNotConfiguredNotice() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFB00020).copy(alpha = 0.08f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFB00020),
         )
     }
 }
@@ -550,8 +603,19 @@ private fun ChipChoice(
     )
 }
 
+/**
+ * Pantalla de éxito. [txHash] es null cuando el relayer respondió
+ * `409 MERCHANT_EXISTS` (éxito idempotente, H3): entonces [note] explica que
+ * el comercio ya estaba registrado y no hay transacción nueva que enlazar.
+ */
 @Composable
-private fun SuccessContent(padding: PaddingValues, onDone: () -> Unit) {
+private fun SuccessContent(
+    padding: PaddingValues,
+    onDone: () -> Unit,
+    txHash: String? = null,
+    note: String? = null,
+) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -587,6 +651,30 @@ private fun SuccessContent(padding: PaddingValues, onDone: () -> Unit) {
             color = RaizBlack.copy(alpha = 0.7f),
             modifier = Modifier.fillMaxWidth(),
         )
+        // Éxito idempotente (ya estaba registrado): nota en vez de enlace a la tx.
+        if (note != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizPurple,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        // Hash de la tx del relayer — visible como evidencia on-chain del registro.
+        if (txHash != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Ver transacción en Stellar Expert →",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizGreen,
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onTap = {
+                        StellarExpert.open(context, StellarExpert.txUrl(txHash))
+                    })
+                },
+            )
+        }
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = onDone,

@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.raiz.app.BuildConfig
 import com.raiz.app.data.model.MerchantCategory
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.RoleResolver
-import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +56,22 @@ data class BecomeMerchantUiState(
     val addressQuery: String = "",
     val geocodingLoading: Boolean = false,
     val pickedAddress: String? = null,
+    // ── Relayer (D1) ──────────────────────────────────────────────────
+    /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+    val relayerConfigured: Boolean = true,
+    /** Hash de la tx de registro devuelta por el relayer, solo tras éxito (null si ya estaba registrado). */
+    val txHash: String? = null,
+    /**
+     * `idempotency-key` del intento en curso (H1). Se genera al enviar, se
+     * CONSERVA en los reintentos (misma key + mismo body → el relayer devuelve
+     * el mismo resultado en vez de firmar dos veces) y se descarta al llegar el
+     * éxito o al cambiar el formulario ([attemptFingerprint] deja de coincidir).
+     */
+    val attemptKey: String? = null,
+    /** Huella del body enviado con [attemptKey]; si cambia, el próximo envío estrena key. */
+    val attemptFingerprint: String? = null,
+    /** Nota bajo el éxito, p. ej. "Este comercio ya estaba registrado" (409 MERCHANT_EXISTS, H3). */
+    val successNote: String? = null,
 ) {
     val barrioOptions: List<Pair<String, String>>
         get() = BARRIO_INFO.entries.map { it.key to it.value.first }
@@ -69,7 +85,7 @@ data class BecomeMerchantUiState(
 
     /** Habilita el botón final "Registrarme" en el paso de ubicación. */
     val canSubmit: Boolean
-        get() = name.trim().length >= 2 && !submitting && !success
+        get() = name.trim().length >= 2 && !submitting && !success && relayerConfigured
 
     /** Latitud del centro del barrio en grados para inicializar el mapa. */
     val barrioCenterLat: Double
@@ -97,11 +113,13 @@ data class BecomeMerchantUiState(
 @HiltViewModel
 class BecomeMerchantViewModel @Inject constructor(
     private val walletManager: WalletManager,
-    private val sorobanClient: SorobanClient,
+    private val relayerClient: RelayerClient,
     private val roleResolver: RoleResolver,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(BecomeMerchantUiState())
+    private val _state = MutableStateFlow(
+        BecomeMerchantUiState(relayerConfigured = relayerClient.isConfigured()),
+    )
     val state: StateFlow<BecomeMerchantUiState> = _state.asStateFlow()
 
     // ── Paso 1: datos del negocio ─────────────────────────────────────
@@ -255,21 +273,17 @@ class BecomeMerchantViewModel @Inject constructor(
     fun submit() {
         val s = _state.value
         if (!s.canSubmit) return
+        if (!relayerClient.isConfigured()) {
+            _state.update {
+                it.copy(error = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)")
+            }
+            return
+        }
         _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
             val merchantAccount = walletManager.currentAccountId()
             if (merchantAccount == null) {
                 _state.update { it.copy(submitting = false, error = "No hay wallet activa.") }
-                return@launch
-            }
-            val admin = walletManager.demoAdminKeyPair()
-            if (admin == null) {
-                _state.update {
-                    it.copy(
-                        submitting = false,
-                        error = "Admin no configurado en local.properties. En producción pasaría por revisión del admin del barrio.",
-                    )
-                }
                 return@launch
             }
 
@@ -278,30 +292,60 @@ class BecomeMerchantViewModel @Inject constructor(
             val latE6 = s.finalLatE6
             val lngE6 = s.finalLngE6
 
+            // H1: la idempotency-key es por INTENTO de usuario. Si el body no cambió
+            // desde el último intento fallido (misma huella), se reutiliza la misma
+            // key: el relayer devuelve el resultado cacheado (también un TX_TIMEOUT
+            // con hash) en vez de firmar otra transacción. Si el formulario cambió,
+            // key nueva (misma key + body distinto sería 422 IDEMPOTENCY_MISMATCH).
+            val fingerprint = listOf(merchantAccount, s.name, s.barrioId, latE6, lngE6, s.category.symbol)
+                .joinToString("|")
+            val attemptKey = s.attemptKey?.takeIf { s.attemptFingerprint == fingerprint }
+                ?: RelayerClient.newIdempotencyKey()
+            _state.update { it.copy(attemptKey = attemptKey, attemptFingerprint = fingerprint) }
+
             Log.i(
                 TAG,
-                "registerMerchant addr=$merchantAccount name=${s.name} " +
+                "registerMerchant (relayer) addr=$merchantAccount name=${s.name} " +
                     "cat=${s.category.symbol} barrio=${s.barrioName} " +
-                    "lat=$latE6 lng=$lngE6",
+                    "lat=$latE6 lng=$lngE6 attempt=${attemptKey.take(8)}",
             )
 
-            val result = sorobanClient.registerMerchant(
-                admin = admin,
-                merchantAddress = merchantAccount,
-                name = s.name,
-                barrioId = s.barrioId,
-                latE6 = latE6,
-                lngE6 = lngE6,
-                categorySymbol = s.category.symbol,
-            )
-
-            when (result) {
+            when (
+                val result = relayerClient.registerMerchant(
+                    address = merchantAccount,
+                    name = s.name,
+                    barrioId = s.barrioId,
+                    latE6 = latE6,
+                    lngE6 = lngE6,
+                    categorySymbol = s.category.symbol,
+                    idempotencyKey = attemptKey,
+                )
+            ) {
                 is RaizResult.Success -> {
-                    Log.i(TAG, "Merchant registrado on-chain con lat=$latE6 lng=$lngE6")
+                    // H3: Success(null) = 409 MERCHANT_EXISTS absorbido como éxito idempotente
+                    // (el address ya es comercio; no hay tx nueva que enseñar).
+                    val alreadyRegistered = result.data == null
+                    Log.i(
+                        TAG,
+                        if (alreadyRegistered) "Merchant ya registrado (MERCHANT_EXISTS): éxito idempotente"
+                        else "Merchant registrado vía relayer, tx=${result.data}",
+                    )
                     // Invalida el cache para que RoleResolver detecte al usuario como MERCHANT.
                     roleResolver.invalidate()
-                    _state.update { it.copy(submitting = false, success = true) }
+                    _state.update {
+                        it.copy(
+                            submitting = false,
+                            success = true,
+                            txHash = result.data,
+                            successNote = if (alreadyRegistered) MSG_ALREADY_REGISTERED else null,
+                            // Intento cerrado con éxito definitivo: la key no se reutiliza más.
+                            attemptKey = null,
+                            attemptFingerprint = null,
+                        )
+                    }
                 }
+                // Error: se conserva attemptKey — "Reintentar" (volver a pulsar el botón
+                // sin tocar el formulario) reutiliza la misma key.
                 is RaizResult.Error -> _state.update {
                     it.copy(submitting = false, error = result.message)
                 }
@@ -312,6 +356,8 @@ class BecomeMerchantViewModel @Inject constructor(
     private companion object {
         const val TAG = "RAIZ"
         const val MAX_NAME = 40
+        /** Texto del éxito idempotente (409 MERCHANT_EXISTS). Citado en docs/evidencia_sow/d1/regresion_dispositivo.md. */
+        const val MSG_ALREADY_REGISTERED = "Este comercio ya estaba registrado"
         val CONTROL_CHARS = Regex("""\p{Cntrl}""")
     }
 }

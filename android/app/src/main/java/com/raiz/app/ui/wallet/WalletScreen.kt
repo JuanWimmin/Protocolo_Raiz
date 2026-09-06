@@ -269,6 +269,7 @@ private fun WalletReady(
                     step = state.setupStep,
                     inProgress = state.setupInProgress,
                     error = state.setupError,
+                    relayerConfigured = state.relayerConfigured,
                     onFundXlm = onFundXlm,
                     onActivateTrustline = onActivateUsdc,
                     onRequestUsdc = onRequestUsdc,
@@ -355,6 +356,7 @@ private fun AccountSetupBanner(
     step: AccountSetupStep,
     inProgress: Boolean,
     error: String?,
+    relayerConfigured: Boolean,
     onFundXlm: () -> Unit,
     onActivateTrustline: () -> Unit,
     onRequestUsdc: () -> Unit,
@@ -363,6 +365,9 @@ private fun AccountSetupBanner(
     val body: String
     val cta: String
     val action: () -> Unit
+    // Solo el paso 3 (faucet) depende del relayer — friendbot y el trustline
+    // los sigue firmando/pidiendo el propio usuario, sin admin de por medio.
+    val usesRelayer = step == AccountSetupStep.REQUEST_USDC
     when (step) {
         AccountSetupStep.FUND_XLM -> {
             title = "Paso 1 · Activa tu cuenta"
@@ -378,7 +383,7 @@ private fun AccountSetupBanner(
         }
         AccountSetupStep.REQUEST_USDC -> {
             title = "Paso 3 · Pide USDC de prueba"
-            body = "El admin te enviará 20 USDC de testnet para que puedas hacer pagos. Solo modo demo."
+            body = "El relayer del barrio te enviará 20 USDC de testnet para que puedas hacer pagos. Solo modo demo."
             cta = "Pedir USDC de prueba"
             action = onRequestUsdc
         }
@@ -410,9 +415,16 @@ private fun AccountSetupBanner(
                 color = androidx.compose.ui.graphics.Color(0xFFB00020),
             )
         }
+        if (usesRelayer && !relayerConfigured) {
+            Text(
+                text = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = androidx.compose.ui.graphics.Color(0xFFB00020),
+            )
+        }
         Button(
             onClick = action,
-            enabled = !inProgress,
+            enabled = !inProgress && (!usesRelayer || relayerConfigured),
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = RaizGreen,
@@ -427,6 +439,13 @@ private fun AccountSetupBanner(
             } else {
                 Text(cta, style = MaterialTheme.typography.labelLarge)
             }
+        }
+        if (inProgress && usesRelayer) {
+            Text(
+                text = "Verificando con el barrio… puede tardar hasta 1 minuto",
+                style = MaterialTheme.typography.bodyMedium,
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
         }
     }
 }

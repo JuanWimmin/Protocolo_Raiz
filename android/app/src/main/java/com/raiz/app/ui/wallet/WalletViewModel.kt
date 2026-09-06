@@ -8,6 +8,7 @@ import com.raiz.app.data.model.PassportLevel
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
+import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.DeploymentsLoader
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
@@ -43,6 +44,16 @@ sealed interface WalletUiState {
         val setupStep: AccountSetupStep = AccountSetupStep.DONE,
         val setupInProgress: Boolean = false,
         val setupError: String? = null,
+        /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+        val relayerConfigured: Boolean = true,
+        /**
+         * `idempotency-key` del intento de faucet en curso (H1): se conserva en
+         * los reintentos (misma key → el relayer devuelve el mismo `txHash`, no
+         * paga dos veces) y se descarta al llegar el éxito.
+         */
+        val faucetAttemptKey: String? = null,
+        /** Address (body del faucet) con la que se generó [faucetAttemptKey]; si cambia, key nueva. */
+        val faucetAttemptFingerprint: String? = null,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -53,6 +64,7 @@ class WalletViewModel @Inject constructor(
     private val sorobanClient: SorobanClient,
     private val horizonStream: HorizonStream,
     private val deploymentsLoader: DeploymentsLoader,
+    private val relayerClient: RelayerClient,
 ) : ViewModel() {
 
     private val deployments by lazy { deploymentsLoader.load() }
@@ -63,6 +75,7 @@ class WalletViewModel @Inject constructor(
             // demás propiedades del wallet vienen del mock por ahora.
             wallet = walletManager.mockWallet().copy(points = 0L),
             poolBalanceLabel = "Conectando…",
+            relayerConfigured = relayerClient.isConfigured(),
         ),
     )
     val state: StateFlow<WalletUiState> = _state.asStateFlow()
@@ -150,42 +163,56 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    /** Step 3: pedir USDC al admin (faucet demo). */
+    /**
+     * Step 3: pedir USDC de prueba (faucet demo, ahora vía `raiz-relayer`).
+     *
+     * El relayer decide server-side el método de entrega según el prefijo de
+     * la dirección: `payment` clásico para G… o `sac_transfer` para C… (smart
+     * account passkey, solo si ya está desplegada). La app ya no firma nada
+     * como admin — solo pide el faucet con la API key estática.
+     */
     fun requestUsdcFaucet() {
         viewModelScope.launch {
             val accountId = walletManager.currentAccountId() ?: return@launch
-            val admin = walletManager.demoAdminKeyPair()
-            if (admin == null) {
+            if (!relayerClient.isConfigured()) {
                 _state.update { current ->
                     if (current is WalletUiState.Ready) current.copy(
                         setupInProgress = false,
-                        setupError = "Admin no configurado en local.properties. No se puede usar como faucet.",
+                        setupError = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
                     ) else current
                 }
                 return@launch
             }
+            // H1: idempotency-key por INTENTO. Volver a pulsar "Pedir USDC de prueba"
+            // tras un error (timeout, red) reutiliza la key → el relayer devuelve el
+            // mismo resultado (10 min de caché) en vez de pagar un segundo faucet.
+            val ready = _state.value as? WalletUiState.Ready
+            val attemptKey = ready?.let { r -> r.faucetAttemptKey?.takeIf { r.faucetAttemptFingerprint == accountId } }
+                ?: RelayerClient.newIdempotencyKey()
+            _state.update { current ->
+                if (current is WalletUiState.Ready) {
+                    current.copy(faucetAttemptKey = attemptKey, faucetAttemptFingerprint = accountId)
+                } else current
+            }
             beginSetupAction()
 
-            // Rama passkey: el smart account C... NO tiene trustline — el USDC vive
-            // en el storage del SAC (Stellar Asset Contract). El admin transfiere
-            // vía SAC.transfer(from=admin, to=C..., amount=200_000_000 stroops = 20 USDC).
-            // Rama clásica: el admin envía vía Horizon (pago clásico G→G con trustline).
-            val result = if (walletManager.isPasskeyWallet()) {
-                Log.i(TAG, "Faucet passkey: fundContractUsdc → $accountId ($FAUCET_USDC_STROOPS stroops)")
-                sorobanClient.fundContractUsdc(
-                    adminSigner     = admin,
-                    contractAddress = accountId,
-                    amountStroops   = FAUCET_USDC_STROOPS, // 20 USDC = 200_000_000 stroops
+            Log.i(TAG, "Faucet vía relayer → $accountId attempt=${attemptKey.take(8)}")
+            val result = relayerClient.faucet(accountId, idempotencyKey = attemptKey)
+            if (result is RaizResult.Success) {
+                Log.i(
+                    TAG,
+                    "Faucet OK: tx=${result.data.txHash} amount=${result.data.amountStroops} " +
+                        "method=${result.data.method}",
                 )
-            } else {
-                Log.i(TAG, "Faucet clásico: sendUsdcFromAdmin → $accountId ($FAUCET_USDC_STROOPS stroops)")
-                horizonStream.sendUsdcFromAdmin(
-                    adminSigner   = admin,
-                    destination   = accountId,
-                    amountStroops = FAUCET_USDC_STROOPS,
-                )
+                // Éxito definitivo: la key no se reutiliza más (el próximo faucet es otro intento).
+                _state.update { current ->
+                    if (current is WalletUiState.Ready) {
+                        current.copy(faucetAttemptKey = null, faucetAttemptFingerprint = null)
+                    } else current
+                }
             }
-            finishSetupAction(result)
+            // En error se conserva faucetAttemptKey: el reintento es el mismo intento.
+            finishSetupAction(result.map { Unit })
         }
     }
 
@@ -447,8 +474,6 @@ class WalletViewModel @Inject constructor(
         const val TAG = "RAIZ"
         /** Intervalo del loop de auto-refresco periódico (20 s). */
         const val AUTO_REFRESH_INTERVAL_MS = 20_000L
-        /** 20 USDC = 20 * 10_000_000 stroops. Suficiente para varios pagos demo. */
-        const val FAUCET_USDC_STROOPS = 200_000_000L
         const val BARRIO_CENTRO_ID = "ce47120000000000000000000000000000000000000000000000000000000001"
         val BARRIOS: LinkedHashMap<String, String> = linkedMapOf(
             BARRIO_CENTRO_ID to "Centro Histórico",
