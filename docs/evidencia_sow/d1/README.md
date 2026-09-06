@@ -14,16 +14,16 @@ servidor); el APK solo tiene direcciones públicas y una API key de aplicación.
 | Entregable SOW D1 | Evidencia | Dónde / enlace | Estado |
 |---|---|---|---|
 | Repositorio público del relayer (open source) | Código TypeScript + Fastify + `@stellar/stellar-sdk`, README en español con endpoints, modelo de amenazas y runbook; 150 tests (`vitest`, 7 archivos) + integración contra testnet; CI | https://github.com/JuanWimmin/raiz-relayer | Publicado |
-| Servicio corriendo en testnet | `GET /v1/live` y `GET /v1/health` (contratos = `deployments.json`, `network: testnet`, admin `GBLS7PL5…YC2P`) | `<<pendiente: URL Fly>>` · `raiz-relayer/docs/evidencia/deploy_fly.md` | `<<pendiente>>` |
-| Transacción real firmada por el relayer | Hash del mint/faucet de prueba del deploy | `https://stellar.expert/explorer/testnet/tx/<<pendiente>>` | `<<pendiente>>` |
+| Servicio corriendo en testnet | `GET /v1/live` y `GET /v1/health` (contratos = `deployments.json`, `network: testnet`, admin `GBLS7PL5…YC2P`) | https://raiz-relayer.fly.dev · `raiz-relayer/docs/evidencia/deploy_fly.md` | **Desplegado 2026-09-06** (Fly, región `iad`, 1 máquina, `/v1/health` 200 con los 6 contratos) |
+| Transacción real firmada por el relayer | Hash del mint/faucet de prueba del deploy | https://stellar.expert/explorer/testnet/tx/d8eee5faa0a7f710151c9dc9b6933ca59a67ff8367f2ee2a637ade15182419af | **Verificado** (faucet de 20 USDC a `GC4ASV6W…` firmado por el admin desde Fly; Horizon `successful: true`, ledger 4539759) |
 | App migrada al relayer (faucet, comercio, residente, vault) | Cliente HTTP `android/app/src/main/java/com/raiz/app/data/relayer/RelayerClient.kt` + test unitario de mapeo de errores (`RelayerClientTest`, MockEngine); ViewModels sin clave admin | Este repo, rama `feat/wp1-app-relayer` | En esta rama |
-| APK release sin secretos | `app-release.apk` 0.2.0 (`versionCode 2`), firmado con la clave debug de Android para que sea instalable (H9; keystore propio en WP4) | GitHub Release del monorepo `<<pendiente>>` | `<<pendiente>>` |
-| Verificable por descompilación | Comandos y salida del `unzip` + `grep` (0 claves `S…`; la `G…` pública del admin solo como dato público en `assets/deployments.json` y en una preview de UI) | [`verificacion_apk.md`](verificacion_apk.md) | **Verificado 2026-09-06** (`app-release.apk` firmado con clave debug, 97 731 596 bytes, SHA-256 `95fd9b90…cad7c`, 0 claves; 24 tests JVM verdes) |
-| Regresión en dispositivo físico | Checklist de 4 flujos (+ negativo sin relayer) en Motorola G04 con capturas y hashes | [`regresion_dispositivo.md`](regresion_dispositivo.md) · `capturas/` | `<<pendiente>>` |
+| APK release sin secretos | `app-release.apk` 0.2.0 (`versionCode 2`), firmado con la clave debug de Android para que sea instalable (H9; keystore propio en WP4) | GitHub Release del monorepo (se publica en WP4) | APK generado (`74ec7529…`), publicación en Release pendiente de WP4 |
+| Verificable por descompilación | Comandos y salida del `unzip` + `grep` (0 claves `S…`; la `G…` pública del admin solo como dato público en `assets/deployments.json` y en una preview de UI) | [`verificacion_apk.md`](verificacion_apk.md) | **Verificado 2026-09-06** (`app-release.apk` firmado con clave debug y compilado con `RELAYER_URL`/`RELAYER_APP_KEY` reales, 97 731 596 bytes, SHA-256 `74ec7529…dff0a`, 0 claves; 24 tests JVM verdes) |
+| Regresión en dispositivo físico | Checklist de 4 flujos (+ negativo sin relayer) en Motorola G04 con capturas y hashes | [`regresion_dispositivo.md`](regresion_dispositivo.md) · `capturas/` | Pendiente: la corre Juan en el Motorola G04 con el APK `74ec7529…` |
 
 ## Cómo lo verifica un revisor en 10 minutos
 
-1. **Servicio vivo (1 min):** abrir `<<URL Fly>>/v1/health` en el navegador → `ok: true`,
+1. **Servicio vivo (1 min):** abrir `https://raiz-relayer.fly.dev/v1/health` en el navegador → `ok: true`,
    `network: "testnet"`, y los IDs de contratos coinciden con `deployments.json` de este repo.
 2. **Código abierto (2 min):** en https://github.com/JuanWimmin/raiz-relayer leer el README
    (§ Endpoints y § Modelo de amenazas) y comprobar que la clave admin solo entra por

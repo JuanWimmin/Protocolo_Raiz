@@ -14,12 +14,12 @@ esperado es **0**.
 |---|---|
 | APK | `android/app/build/outputs/apk/release/app-release.apk` (`versionName 0.2.0`, `versionCode 2`, `applicationId com.raiz.app`) |
 | Tamaño | 97 731 596 bytes (93,2 MiB) |
-| SHA-256 | `95fd9b90b7f92d4f33dffd24652344ed1f9292c31e94f9db8b72157231dcad7c` |
+| SHA-256 | `74ec75292bee1ad443eefdf365e8e869f2c0ec90a779958075536719a40dff0a` (APK definitivo, compilado con `RELAYER_URL`/`RELAYER_APP_KEY`; la pasada anterior sobre `95fd9b90…` sin key dio resultados idénticos) |
 | Firma | **Firmado con la clave debug de Android para evidencia** (H9): `apksigner verify` → `Verifies`, esquema v2, 1 firmante, DN `C=US, O=Android, CN=Android Debug`. No es una clave Stellar; el keystore propio llega en WP4 |
 | Commit del monorepo | `bbeab83` + cambios de la rama `feat/wp1-app-relayer` (sin commit al verificar; el commit definitivo se anota en el README de esta carpeta) |
-| Fecha de la verificación | 2026-09-06 18:11 UTC (recompilación e integración tras la revisión adversarial H1–H10) |
+| Fecha de la verificación | 2026-09-06 19:30 UTC (APK definitivo con la key del relayer); pasadas previas 17:25 UTC (unsigned) y 18:11 UTC (firmado sin key) con resultados idénticos |
 | Compilado con | `./gradlew assembleRelease --console=plain -q` (Gradle 8.10.2, AGP del catálogo, `signingConfig = signingConfigs.getByName("debug")` en el `buildType` `release`) |
-| Relayer que consume | `<<pendiente: URL Fly>>` (default en `BuildConfig.RELAYER_URL`: `https://raiz-relayer.fly.dev`) |
+| Relayer que consume | https://raiz-relayer.fly.dev (desplegado en Fly el 2026-09-06; `BuildConfig.RELAYER_URL` desde `raiz.relayer.url`, `RELAYER_APP_KEY` desde `raiz.relayer.key` — la API key viaja en el APK a propósito: no es un secreto, ver modelo de amenazas del relayer) |
 
 > **Historial.** La primera verificación del 2026-09-06 (17:25 UTC) se hizo sobre
 > `app-release-unsigned.apk` (97 715 212 bytes, SHA-256 `39f0c788…69eb4`), antes de H9. Tras
@@ -72,7 +72,8 @@ Salida de la verificación del 2026-09-06 18:11 UTC (APK **firmado**, tras H9):
 ```
 RELEASE_EXIT=0
 -rw-r--r-- 1 juanp 197609 97731596 Sep  6 13:11 app-release.apk
-95fd9b90b7f92d4f33dffd24652344ed1f9292c31e94f9db8b72157231dcad7c *app/build/outputs/apk/release/app-release.apk
+95fd9b90b7f92d4f33dffd24652344ed1f9292c31e94f9db8b72157231dcad7c *app/build/outputs/apk/release/app-release.apk   (pasada 18:11 UTC, sin key)
+74ec75292bee1ad443eefdf365e8e869f2c0ec90a779958075536719a40dff0a *app/build/outputs/apk/release/app-release.apk   (pasada 19:30 UTC, APK definitivo con key)
 ```
 
 `output-metadata.json` del build: `"variantName": "release"`, `"versionCode": 2`,
@@ -317,6 +318,6 @@ en Stellar Expert queda para la regresión en dispositivo contra la URL de Fly
 | §6 contrato HTTP del relayer vs cliente | coincide | **coincide** (health, 401, 400, 409 idempotente) |
 
 Verificado por: sesión de Claude Code (fase 3 WP1, integración post-revisión H1–H10) para Juan ·
-2026-09-06 18:11 UTC · APK firmado `app-release.apk` `95fd9b90…cad7c` (97 731 596 bytes). La
+2026-09-06 19:30 UTC · APK definitivo `app-release.apk` `74ec7529…dff0a` (97 731 596 bytes, con `RELAYER_URL`/`RELAYER_APP_KEY`): mismos resultados que la pasada 18:11 UTC (`95fd9b90…`, sin key): 0 claves `S…` en dex/assets/res, las 32 cadenas del APK completo son de `libmapbox-common.so`, 0 `DEMO_ADMIN`/`raiz.admin.secret`, URL del relayer embebida 1 vez. La
 primera pasada (17:25 UTC) fue sobre `app-release-unsigned.apk` `39f0c788…69eb4` con resultados
 idénticos en §2–§5.

@@ -8,9 +8,9 @@ van a `docs/evidencia_sow/d1/capturas/` con el nombre indicado en cada paso.
 |---|---|
 | Dispositivo de referencia | Motorola G04 · Android 14 (TLS contra `*.stellar.org` confirmado) |
 | APK | `app-release.apk` 0.2.0 (`versionCode 2`, firmado con la clave debug de Android desde H9) instalado con `adb install -r` — o el debug equivalente del mismo commit |
-| Relayer | `<<pendiente: URL Fly>>` — antes de empezar: `curl -s <URL>/v1/health` → `ok: true`, `network: testnet`, `vaultEndpoints: true` |
-| Commit | `<<git rev-parse --short HEAD>>` |
-| Fecha / quién prueba | `<<fecha>>` / `<<nombre>>` |
+| Relayer | https://raiz-relayer.fly.dev — antes de empezar: `curl -s https://raiz-relayer.fly.dev/v1/health` → `ok: true`, `network: testnet`, `vaultEndpoints: true` |
+| Commit | rama `feat/wp1-app-relayer` — anotar el `git rev-parse --short HEAD` con el que se compiló el APK instalado (el APK de evidencia `74ec7529…` sale del último commit de la rama) |
+| Fecha / quién prueba | (rellenar al probar: fecha) / (rellenar: nombre) |
 
 Convención de capturas: `d1_<flujo>_<nn>.png` (p. ej. `d1_faucet_passkey_02.png`). Para cada
 transacción, además, el enlace `https://stellar.expert/explorer/testnet/tx/<txHash>` (si la app
@@ -132,4 +132,4 @@ monto reutiliza la `idempotency-key` → no se mueve el fondo dos veces. Captúr
 | Yield depositar | — | | | ☐ |
 | Yield rescatar | — | | | ☐ |
 
-Incidencias encontradas: `<<ninguna / descripción + captura>>`
+Incidencias encontradas: `(rellenar: ninguna / descripción + captura)`
