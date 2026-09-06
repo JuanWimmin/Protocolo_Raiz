@@ -9,8 +9,8 @@ van a `docs/evidencia_sow/d1/capturas/` con el nombre indicado en cada paso.
 | Dispositivo de referencia | Motorola G04 · Android 14 (TLS contra `*.stellar.org` confirmado) |
 | APK | `app-release.apk` 0.2.0 (`versionCode 2`, firmado con la clave debug de Android desde H9) instalado con `adb install -r` — o el debug equivalente del mismo commit |
 | Relayer | https://raiz-relayer.fly.dev — antes de empezar: `curl -s https://raiz-relayer.fly.dev/v1/health` → `ok: true`, `network: testnet`, `vaultEndpoints: true` |
-| Commit | rama `feat/wp1-app-relayer` — anotar el `git rev-parse --short HEAD` con el que se compiló el APK instalado (el APK de evidencia `74ec7529…` sale del último commit de la rama) |
-| Fecha / quién prueba | (rellenar al probar: fecha) / (rellenar: nombre) |
+| Commit | `056af2a` (rama `feat/wp1-app-relayer`) — APK `app-release.apk` sha256 `74ec7529…` instalado con `adb install -r` sobre la 0.1.0 (la sesión passkey previa se conservó) |
+| Fecha / quién prueba | 2026-09-06 19:35–20:10 UTC / Claude Code por adb (Juan conectó el Motorola por USB) |
 
 Convención de capturas: `d1_<flujo>_<nn>.png` (p. ej. `d1_faucet_passkey_02.png`). Para cada
 transacción, además, el enlace `https://stellar.expert/explorer/testnet/tx/<txHash>` (si la app
@@ -120,16 +120,60 @@ monto reutiliza la `idempotency-key` → no se mueve el fondo dos veces. Captúr
 
 ---
 
-## Tabla final de transacciones (rellenar)
+## Tabla final de transacciones
 
 | Flujo | Cuenta del usuario | txHash | Stellar Expert | OK |
 |---|---|---|---|---|
-| Faucet passkey (`C…`) | | | | ☐ |
-| Faucet semilla (`G…`) | | | | ☐ |
-| Faucet sin trustline (`curl`, esperado 422 `NO_TRUSTLINE`) | | — | — | ☐ |
-| Volverse comercio | | | | ☐ |
-| Verificar residente | | | | ☐ |
-| Yield depositar | — | | | ☐ |
-| Yield rescatar | — | | | ☐ |
+| Faucet passkey (`C…`) | `CC6A3UM7ZHRHTGUVOHJBQFXHUZD2QVVOKX7JV6V2W4XATGLBTHUCDQHQ` | `7259006504a1fc303fdef139edfcfc7c47f663f365ccaf1d610da30e32eb9a7e` (SAC `transfer`, ledger 4539979) | https://stellar.expert/explorer/testnet/tx/7259006504a1fc303fdef139edfcfc7c47f663f365ccaf1d610da30e32eb9a7e | ☑ |
+| Faucet semilla (`G…`) | `GAIRZRSHCMBHAYZFNB5PJLJE3IRBVWUDH2PCKU36RRANVE5EO6WG274H` | `268d5adeb2e4998e70baaaa90c5fbede46d00ee2dbcbe0089499d129639ac7c7` (`payment` 20 USDC, ledger 4540282) | https://stellar.expert/explorer/testnet/tx/268d5adeb2e4998e70baaaa90c5fbede46d00ee2dbcbe0089499d129639ac7c7 | ☑ |
+| Faucet sin trustline (`curl`, esperado 422 `NO_TRUSTLINE`) | verificado en el deploy (`raiz-relayer/docs/evidencia/deploy_fly.md`) y en la integración del relayer (`docs/evidencia/it-testnet-2026-08-27-post-fixes.json`) | — | — | ☑ |
+| Volverse comercio | `CC6A3UM7…UCDQHQ` ("Café Regresión D1", cafe, Centro) | `d0cfe39ec93a428e0ad4d46259d6dbfdecc27c77446c72cb1aa077553a894a91` (ledger 4540013) | https://stellar.expert/explorer/testnet/tx/d0cfe39ec93a428e0ad4d46259d6dbfdecc27c77446c72cb1aa077553a894a91 | ☑ |
+| Verificar residente | `GAIRZRSH…WG274H` (Centro) | `fdd664f170790d58728958b68d4ffd8210f75f1a39a78b5d8086bff533fb68fb` (ledger 4540295) | https://stellar.expert/explorer/testnet/tx/fdd664f170790d58728958b68d4ffd8210f75f1a39a78b5d8086bff533fb68fb | ☑ |
+| Yield depositar (Norte, 0.03 USDC) | — | `7acbd339b433b24580118ae8fd734acf42f67d84d12af939deb1c3d26ea33d64` (ledger 4540168) | https://stellar.expert/explorer/testnet/tx/7acbd339b433b24580118ae8fd734acf42f67d84d12af939deb1c3d26ea33d64 | ☑ |
+| Yield rescatar (Norte, 284 078 shares) | — | `bc19c24125dacd3048f39efaabf4d4a5fed03951c607d2ef3d84dfb170f402ec` (ledger 4540206; vía `POST /v1/vault/redeem`, ver incidencia 1) | https://stellar.expert/explorer/testnet/tx/bc19c24125dacd3048f39efaabf4d4a5fed03951c607d2ef3d84dfb170f402ec | ☑ |
 
-Incidencias encontradas: `(rellenar: ninguna / descripción + captura)`
+## Resultado de la corrida (2026-09-06, Motorola G04, APK `74ec7529…`)
+
+| Flujo / paso | Resultado | Capturas |
+|---|---|---|
+| 1a faucet passkey (pasos 1–2) | **OK**: spinner + "Verificando con el barrio… puede tardar hasta 1 minuto" → banner fuera → **20 USDC** (SAC transfer, ~3 s en el relayer) | `d1_faucet_passkey_01.png`, `d1_faucet_passkey_02.png` |
+| 1a paso 3 (repetir → 429) | No alcanzable desde la UI (el banner desaparece al completarse); el 429 con `Retry-After` está verificado por HTTP contra Fly (`deploy_fly.md`) | — |
+| 1b faucet semilla (pasos 1–3) | **OK**: friendbot (13 s) y trustline (8 s) firmados por el usuario; faucet vía relayer → banner fuera → **20 USDC** (`payment`) | `d1_faucet_seed_00..03.png`, `d1_faucet_seed_03_espera.png` |
+| 2 volverse comercio (1–2) | **OK**: "¡Negocio registrado!" con "Ver transacción en Stellar Expert →"; on-chain en `list_merchants(Centro)` | `d1_comercio_00..02.png`, `d1_comercio_02_espera.png` |
+| 2 paso 3 (mapa) | Parcial: el mapa se centra en la ubicación del dispositivo (Bogotá) y muestra "0 comercios" para ese viewport; el dashboard de Centro sí cuenta **6 comercios** tras la incidencia 2 | `d1_comercio_03.png`, `d1_dashboard_00.png` |
+| 2 paso 4 (repetir) | **OK idempotente**: "¡Negocio registrado!" + "Este comercio ya estaba registrado", sin enlace a tx; el relayer registró **una sola** tx (409 `MERCHANT_EXISTS` en el preflight) | `d1_comercio_04.png` |
+| 3 verificar residente (1) | **OK**: "Verificando con el barrio…" → lista de propuestas del Centro (#3, 3↑·0↓, quórum alcanzado) | `d1_residente_00..02.png` |
+| 3 paso 2 (repetir) | Verificado por HTTP: `POST /v1/mint-resident` para la misma `G…` → `409 ALREADY_RESIDENT` (la app lo trata como éxito) | — |
+| 3 paso 3 (votar) | **OK**: voto firmado por la wallet del usuario → "4↑ · 0↓", "Tu voto quedó on-chain", botones "Ya votaste" | `d1_residente_04_espera.png`, `d1_residente_04.png` |
+| 4 paso 0 | **OK**: lecturas on-chain (APY, TVL) sin esperar al relayer; botones de "Mover fondos" habilitados al responder `/v1/health` | `d1_yield_00a.png` (carga), `d1_yield_00.png` |
+| 4 paso 1 (depositar 0.03 en Norte) | **OK**: "Confirmado on-chain: Depósito confirmado on-chain"; on-chain shares 284 078 (0.03 USDC) | `d1_yield_01.png`, `d1_yield_02.png` |
+| 4 paso 2 (violar colchón, 0.06 en Norte) | **OK**: "El depósito violaría el colchón líquido del barrio." (422 `CONTRACT_ERROR`, Pool #10). Con 0.5 USDC (> líquido) la app mostró "Monto inválido." (Pool #7), también correcto | `d1_yield_03.png` |
+| 4 paso 3 (rescatar todo) | Bloqueado en la UI por la incidencia 1 (la app leía 0 shares); el rescate se ejecutó vía `POST /v1/vault/redeem` con la misma app key → Norte volvió a vault 0 / líquido ≈ 0.07 USDC. Tras el fix de TTL la pantalla ya muestra las posiciones | — |
+| 5.1 sin red | **OK**: Tesorería muestra su propio estado de lectura ("No pudimos cargar el vault. blend.getReserveData: null"), sin crash; las llamadas al relayer nunca llegan a lanzarse porque las lecturas fallan antes | `d1_sinrelayer_01.png` |
+| 5.2 / 5.3 (key vacía / incorrecta) | No corridos en dispositivo (requieren recompilar). 5.2 cubierto por el APK sin key de la pasada 18:11 UTC (`verificacion_apk.md` §0: botones deshabilitados con aviso) y por `RelayerClientTest`; 5.3 por el test `unauthorizedAppMapeaAUnauthorizedConTextoPropio` | — |
+| 6 pago QR | No cubierto por adb (requiere escanear un QR con la cámara); el código de `pay_merchant` no cambió en esta rama (`git diff main -- ui/pay data/stellar/SorobanClient.kt` no toca ese flujo) | — |
+
+### Incidencias encontradas
+
+1. **Lecturas "Signer required for write call" en el dispositivo (pre-existente, no de esta rama).**
+   `list_merchants`, `get_points`, `get_vault_shares` y `list_rewards` fallaban en la app con
+   `Signer required for write call to '…'` → mapa "0 comercios", puntos 0 y posiciones de Tesorería
+   en 0. Causa verificada: desde **Protocol 23+ (testnet en P28) las entradas persistentes
+   archivadas se auto-restauran dentro de la transacción**: la simulación las devuelve en el
+   `readWrite` del footprint con el fee de restauración (p. ej. `get_points`: 9 767 800 stroops) en
+   vez del `restorePreamble` antiguo, y el SDK Soneso trata cualquier `readWrite` como escritura
+   (exige firmante). Las entradas del seed del 31-jul (comercios, índices por barrio, rewards,
+   shares del adapter) habían caducado (~1 mes). **Fix aplicado el 2026-09-06 (fuera de la
+   rama, on-chain):** una tx firmada por el admin por cada lectura afectada (auto-restore:
+   `1f7203ca…`, `63e56cb6…`, `40e52e34…`, `1abe3167…`, `55048bf3…`, `5fb38f37…`, `f47cb78c…`,
+   `6ca47c6f…`, `74e041ba…`) y `ExtendFootprintTtl` de las 74 claves tocadas hasta +1 500 000
+   ledgers (≈3 meses; txs `66bbe315…`, `5b3b7300…`, `d1572dfa…`). Después: dashboard "Comercios
+   RAÍZ: 6" y Tesorería con Centro depositado 0.189 / valor 0.2 / +0.011 USDC. Deuda a registrar
+   (H2): las lecturas de la app deberían tolerar `readWrite` de restauración (simular y parsear sin
+   exigir firmante) o los contratos extender TTL on-touch; y hay que renovar el TTL antes de que
+   venza (script reutilizable en `raiz-relayer`… pendiente de versionar).
+2. Mapa centrado en la ubicación del dispositivo: con el tester en Bogotá el viewport no incluye
+   los comercios (Cartagena/Centro), de ahí "0 comercios" aunque `list_merchants` devuelva 6.
+   Cosmético; pendiente de WP6 (centrar en el barrio activo).
+3. `curl` de Windows (schannel) falla intermitentemente el handshake TLS con Fly (`HTTP 000`);
+   la app (Ktor CIO) y Node no lo sufren. Solo afecta a scripts de smoke locales.

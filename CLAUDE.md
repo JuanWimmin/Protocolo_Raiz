@@ -229,6 +229,14 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   (`GET https://ewqw4hx7oa.execute-api.us-east-1.amazonaws.com/getAssets?userId=<G>`
   → firmar el XDR → enviar). El admin NO puede acuñarlo.
 
+- **Protocol 23+ (testnet en P28): las entradas archivadas se AUTO-RESTAURAN en la tx**. La
+  simulación ya no devuelve `restorePreamble`: mete las entradas caducadas en el `readWrite` del
+  footprint con el fee de restauración, y el SDK Soneso (`invoke(signer=null)`) lo rechaza con
+  "Signer required for write call" → la app ve 0 comercios / 0 puntos / 0 shares. Remedio
+  aplicado el 2026-09-06: una tx firmada por el admin por cada lectura afectada (auto-restore) +
+  `ExtendFootprintTtl` de las 74 claves a +1.5M ledgers (script en la sesión, ver
+  `docs/evidencia_sow/d1/regresion_dispositivo.md` incidencia 1). Hay que renovar el TTL antes de
+  ~3 meses o hacer que las lecturas de la app toleren `readWrite` (H2).
 - **Lecturas que el host trata como WRITE**: cualquier lectura sobre entradas
   de Soroban con TTL expirado (~1 mes) añade footprint de restore →
   `invoke(signer=null)` falla con "Signer required for write call". Aplica hoy a
