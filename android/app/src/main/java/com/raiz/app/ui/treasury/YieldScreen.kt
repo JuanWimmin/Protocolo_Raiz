@@ -372,6 +372,19 @@ private fun BarrioYieldStat(
 @Composable
 private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
     val submitting = state.action is TreasuryAction.Submitting
+    // Modo lectura: sin relayer configurado, health() todavía sin responder (H6),
+    // o relayer sin los endpoints /v1/vault/deposit|redeem (RelayerHealth.vaultEndpoints).
+    val vaultDisabled = !state.relayerConfigured || !state.vaultEndpoints
+    // Bloqueo de 60 s tras un error "transacción pendiente" (H1d): el reintento
+    // reutiliza la misma idempotency-key, pero antes hay que dar tiempo a la red.
+    val pendingCooldown = state.retryLocked
+    val readOnlyText: String? = when {
+        !state.relayerConfigured ->
+            "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)"
+        !state.relayerChecked -> "Comprobando el relayer…"
+        !state.vaultEndpoints -> YieldViewModel.readOnlyMessage(state.vaultUnavailableReason)
+        else -> null
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,10 +398,18 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
             style = MaterialTheme.typography.labelLarge,
             color = RaizBlack,
         )
+        if (readOnlyText != null) {
+            Text(
+                text = readOnlyText,
+                style = MaterialTheme.typography.bodyMedium,
+                // "Comprobando…" es un estado transitorio, no un error.
+                color = if (state.relayerConfigured && !state.relayerChecked) RaizBlack.copy(alpha = 0.6f) else RaizError,
+            )
+        }
         BarrioSelector(
             barrios = state.barriosYield,
             selectedBarrioId = state.selectedBarrioId,
-            enabled = !submitting,
+            enabled = !submitting && !vaultDisabled,
             onSelect = viewModel::onBarrioSelected,
         )
         OutlinedTextField(
@@ -396,14 +417,14 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
             onValueChange = viewModel::onAmountChange,
             label = { Text("Monto en USDC") },
             singleLine = true,
-            enabled = !submitting,
+            enabled = !submitting && !vaultDisabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = viewModel::deposit,
-                enabled = !submitting,
+                enabled = !submitting && !vaultDisabled && !pendingCooldown,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp),
@@ -414,11 +435,15 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
                 ),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Text("Depositar", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = if (pendingCooldown) "Transacción pendiente…" else "Depositar",
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
             OutlinedButton(
                 onClick = viewModel::withdrawAll,
-                enabled = !submitting && (state.selectedBarrioItem?.depositadoStroops ?: 0L) > 0L,
+                enabled = !submitting && !vaultDisabled && !pendingCooldown &&
+                    (state.selectedBarrioItem?.depositadoStroops ?: 0L) > 0L,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp),
@@ -430,6 +455,13 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
                     color = RaizBlack,
                 )
             }
+        }
+        if (pendingCooldown) {
+            Text(
+                text = "Transacción pendiente… podrás reintentar en un minuto (mismo intento, sin firmar dos veces).",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
         }
         ActionFeedback(action = state.action)
     }
@@ -480,7 +512,7 @@ private fun ActionFeedback(action: TreasuryAction) {
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                text = "Enviando a la red…",
+                text = "Verificando con el barrio… puede tardar hasta 1 minuto",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
             )

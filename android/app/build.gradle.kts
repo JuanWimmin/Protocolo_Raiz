@@ -27,8 +27,8 @@ android {
         applicationId = "com.raiz.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -37,7 +37,6 @@ android {
         // En release real estarían vacíos y la app pediría seed phrase / passkey.
         buildConfigField("String", "DEMO_TOURIST_SECRET", "\"${localProp("raiz.tourist.secret")}\"")
         buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"${localProp("raiz.resident.secret")}\"")
-        buildConfigField("String", "DEMO_ADMIN_SECRET", "\"${localProp("raiz.admin.secret")}\"")
         // Mapbox public token (pk.*) — runtime de la app para descargar tiles.
         buildConfigField("String", "MAPBOX_TOKEN", "\"${localProp("mapbox.access.token")}\"")
 
@@ -50,12 +49,34 @@ android {
         //   passkey.rp.name=RAIZ
         buildConfigField("String", "PASSKEY_RP_ID",   "\"${localProp("passkey.rp.id")}\"")
         buildConfigField("String", "PASSKEY_RP_NAME", "\"${localProp("passkey.rp.name", "RAIZ")}\"")
+
+        // Relayer admin (D1 SOW): la app ya no lleva la clave privada del admin del
+        // protocolo (antes un buildConfigField más aquí); llama por HTTP a
+        // raiz-relayer (ver data/relayer/RelayerClient.kt). La API key
+        // viaja en el APK (no es secreto real, ver README del relayer § modelo de
+        // amenazas) — se rota con `fly secrets set` + republish si hace falta.
+        buildConfigField("String", "RELAYER_URL", "\"${localProp("raiz.relayer.url", "https://raiz-relayer.fly.dev")}\"")
+        buildConfigField("String", "RELAYER_APP_KEY", "\"${localProp("raiz.relayer.key")}\"")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // D1 SOW: el APK release NO lleva ninguna clave privada `S…`, tampoco
+            // las wallets demo (turista/residente), aunque estén en local.properties.
+            // Un buildConfigField en el buildType pisa al de defaultConfig; así la
+            // verificación por descompilación (docs/evidencia_sow/d1/verificacion_apk.md)
+            // no depende del local.properties de quien compile. En release el
+            // botón "Probar modo demo" se oculta (WelcomeScreen) y la app pide
+            // passkey / frase semilla.
+            buildConfigField("String", "DEMO_TOURIST_SECRET", "\"\"")
+            buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"\"")
+            // Firma de evidencia D1 (instalable en dispositivo); WP4 la sustituye por
+            // keystore propio leído de local.properties/env. La clave de firma debug
+            // NO es un secreto de Stellar: el APK sigue sin ninguna `S…` (ver
+            // docs/evidencia_sow/d1/verificacion_apk.md).
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             isMinifyEnabled = false
@@ -73,6 +94,18 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Primer test JVM del módulo (RelayerClientTest): sin esto, cualquier
+    // android.util.Log.* que el código de producción llame durante el test
+    // (p. ej. RelayerClient logueando errores del relayer) lanza
+    // "Method ... not mocked" — el stub de android.jar para unit tests no
+    // implementa Log por defecto. Fix estándar de AGP (enlazado desde el
+    // propio mensaje de error), no un mock framework nuevo.
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
 
     packaging {
@@ -126,6 +159,13 @@ dependencies {
     implementation(libs.conscrypt.android)
     // Ktor core — necesario para referenciar HttpClient en HorizonStream.
     implementation(libs.ktor.client.core)
+    // Ktor — cliente HTTP hacia el relayer admin (D1 SOW). CIO = mismo engine que
+    // usa el Stellar SDK (mantiene consistencia con Conscrypt instalado en
+    // RaizApplication); content-negotiation + serialization-json para el envelope
+    // JSON del relayer (ver data/relayer/RelayerModels.kt).
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
     // ZXing para QR: core (generación) + embedded (Activity de escaneo).
     implementation(libs.zxing.core)
     implementation(libs.zxing.android.embedded)
@@ -150,4 +190,9 @@ dependencies {
 
     // Debug
     debugImplementation(libs.compose.ui.tooling)
+
+    // Test JVM puro (src/test) — RelayerClientTest y sucesores.
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.ktor.client.mock)
 }

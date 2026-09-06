@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.Proposal
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.RoleResolver
 import com.raiz.app.data.stellar.SorobanClient
@@ -46,6 +47,8 @@ data class ProposalsUiState(
     val barrioName: String = "Mi barrio",
     val voteState: Map<Long, VoteStatus> = emptyMap(),
     val isDemoMode: Boolean = false,
+    /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+    val relayerConfigured: Boolean = true,
     // ── Verificación de residente (no registrado on-chain) ─────────────────
     /** Barrio (hex) al que el usuario puede verificarse, o null si no eligió. */
     val pendingBarrioId: String? = null,
@@ -55,6 +58,14 @@ data class ProposalsUiState(
     val verifying: Boolean = false,
     /** Mensaje de error de la última verificación fallida, o null. */
     val verifyError: String? = null,
+    /**
+     * `idempotency-key` del intento de verificación en curso (H1): se conserva
+     * en los reintentos (misma key → el relayer devuelve el mismo resultado, no
+     * mintea dos veces) y se descarta al llegar el éxito.
+     */
+    val verifyAttemptKey: String? = null,
+    /** Huella (`address|barrio`) del body enviado con [verifyAttemptKey]; si cambia, key nueva. */
+    val verifyAttemptFingerprint: String? = null,
 ) {
     companion object {
         const val DEMO_BARRIO_ID =
@@ -88,10 +99,14 @@ class ProposalsViewModel @Inject constructor(
     private val sorobanClient: SorobanClient,
     private val roleResolver: RoleResolver,
     private val passkeyWalletManager: PasskeyWalletManager,
+    private val relayerClient: RelayerClient,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
-        ProposalsUiState(isDemoMode = walletManager.isDemoMode),
+        ProposalsUiState(
+            isDemoMode = walletManager.isDemoMode,
+            relayerConfigured = relayerClient.isConfigured(),
+        ),
     )
     val state: StateFlow<ProposalsUiState> = _state.asStateFlow()
 
@@ -177,23 +192,41 @@ class ProposalsViewModel @Inject constructor(
                 }
                 return@launch
             }
-            val admin = walletManager.demoAdminKeyPair()
-            if (admin == null) {
+            if (!relayerClient.isConfigured()) {
                 _state.update {
                     it.copy(
-                        verifyError = "Admin no configurado en local.properties. " +
-                            "En producción te registraría el admin de tu barrio.",
+                        verifyError = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
                     )
                 }
                 return@launch
             }
 
-            _state.update { it.copy(verifying = true, verifyError = null) }
-            Log.i(TAG, "mint_resident: resident=$address barrio=${barrioNameFor(barrio)}")
+            // H1: idempotency-key por INTENTO. Un reintento con el mismo body reutiliza
+            // la key (el relayer responde lo cacheado, no mintea otra vez); si el
+            // address/barrio cambió, key nueva.
+            val fingerprint = "$address|$barrio"
+            val previous = _state.value
+            val attemptKey = previous.verifyAttemptKey?.takeIf { previous.verifyAttemptFingerprint == fingerprint }
+                ?: RelayerClient.newIdempotencyKey()
+            _state.update {
+                it.copy(
+                    verifying = true,
+                    verifyError = null,
+                    verifyAttemptKey = attemptKey,
+                    verifyAttemptFingerprint = fingerprint,
+                )
+            }
+            Log.i(
+                TAG,
+                "mint_resident (relayer): resident=$address barrio=${barrioNameFor(barrio)} attempt=${attemptKey.take(8)}",
+            )
 
-            when (val r = sorobanClient.mintResident(admin, address, barrio)) {
+            // 409 ALREADY_RESIDENT llega como Success(null) — mismo tratamiento
+            // de éxito que un mint nuevo: el estado final deseado (puede
+            // votar/proponer) ya se cumple.
+            when (val r = relayerClient.mintResident(address, barrio, idempotencyKey = attemptKey)) {
                 is RaizResult.Success -> {
-                    Log.i(TAG, "Residente verificado on-chain.")
+                    Log.i(TAG, "Residente verificado vía relayer (tx=${r.data ?: "ya era residente"}).")
                     // El rol del usuario cambió on-chain → invalida el cache.
                     roleResolver.invalidate()
                     // Re-chequea el registro: ahora getResident debe devolver el token.
@@ -206,6 +239,9 @@ class ProposalsViewModel @Inject constructor(
                                     isRegisteredOnChain = true,
                                     barrioId = barrioId,
                                     barrioName = barrioNameFor(barrioId),
+                                    // Éxito definitivo: la key de este intento ya no se reutiliza.
+                                    verifyAttemptKey = null,
+                                    verifyAttemptFingerprint = null,
                                 )
                             }
                             loadProposalsAndCount(barrioId)
@@ -219,12 +255,15 @@ class ProposalsViewModel @Inject constructor(
                                     isRegisteredOnChain = true,
                                     barrioId = barrio,
                                     barrioName = barrioNameFor(barrio),
+                                    verifyAttemptKey = null,
+                                    verifyAttemptFingerprint = null,
                                 )
                             }
                             loadProposalsAndCount(barrio)
                         }
                     }
                 }
+                // Error: se conserva verifyAttemptKey para que el reintento sea el mismo intento.
                 is RaizResult.Error -> {
                     Log.e(TAG, "Verificación falló: ${r.code} — ${r.message}")
                     _state.update { it.copy(verifying = false, verifyError = r.message) }
