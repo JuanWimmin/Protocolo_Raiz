@@ -54,3 +54,6 @@ _to_delete/
 
 # ─── Documentos(toda la carpeta) ────────────────────────────────────────────────────
 .docs/
+
+# Worktrees temporales de Claude Code
+.claude/worktrees/
