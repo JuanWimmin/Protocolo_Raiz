@@ -69,8 +69,10 @@ import com.raiz.app.ui.theme.RaizYellow
  * Sin login (accesible desde Welcome). Muestra para cada barrio:
  *   - Stats del Pool (pool_balance / total_collected / tx_count / unique_tourists).
  *   - Barra apilada: % usado del fondo (ejecuciones) vs % disponible.
- *   - Lista de ejecuciones registradas en Treasury, con link a Stellar Expert
- *     por txHash (apre el navegador externo).
+ *   - Lista de ejecuciones registradas en Treasury. Cada una enlaza a su
+ *     transacción REAL en Stellar Expert cuando el hash se conoce (evento
+ *     `execution` del RPC o capturado al ejecutar desde esta app); si no,
+ *     se marca como "histórica" sin link (D2 del SOW).
  *
  * Selector de barrio en chips arriba.
  */
@@ -225,12 +227,20 @@ private fun DashboardBody(
 
         // ── Ejecuciones registradas ──────────────────────────────────
         item("executions-title") {
-            Text(
-                text = "Ejecuciones registradas (${state.executions.size})",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    text = "Ejecuciones registradas (${state.executions.size})",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                )
+                if (state.executions.isNotEmpty()) {
+                    Text(
+                        text = "${state.verifiedExecutions} con transacción verificable en Stellar Expert",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                        color = RaizBlack.copy(alpha = 0.55f),
+                    )
+                }
+            }
         }
         if (state.executions.isEmpty()) {
             item("exec-empty") {
@@ -242,8 +252,8 @@ private fun DashboardBody(
                 )
             }
         } else {
-            items(state.executions, key = { it.txHash + it.executedAt }) { exec ->
-                ExecutionRow(exec)
+            items(state.executions, key = { "exec-${it.proposalId}" }) { exec ->
+                ExecutionRow(exec, eventsOk = state.executionEventsOk)
             }
         }
 
@@ -359,11 +369,35 @@ private fun ProposalRow(
                 Spacer(modifier = Modifier.size(6.dp))
                 Text("Enviando a la red…", style = MaterialTheme.typography.bodyMedium, color = RaizBlack.copy(alpha = 0.7f))
             }
-            ProposalActionState.Ok -> Text(
-                "✓ Acción confirmada on-chain",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizGreen,
-            )
+            is ProposalActionState.Ok -> {
+                val txHash = action.txHash
+                if (txHash == null) {
+                    Text(
+                        "✓ Acción confirmada on-chain",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = RaizGreen,
+                    )
+                } else {
+                    // Camino feliz D2: el hash lo devolvió el sendTransaction de ESTA app.
+                    val context = LocalContext.current
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "✓ Ejecutada on-chain · tx ${txHash.take(8)}…${txHash.takeLast(6)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = RaizGreen,
+                        )
+                        AssistChip(
+                            onClick = { StellarExpert.open(context, StellarExpert.txUrl(txHash)) },
+                            label = { Text("Ver en Stellar Expert", style = MaterialTheme.typography.labelLarge, color = RaizWhite) },
+                            trailingIcon = {
+                                Icon(Icons.Outlined.OpenInNew, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(14.dp))
+                            },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = RaizGreen),
+                            border = null,
+                        )
+                    }
+                }
+            }
             is ProposalActionState.Failed -> Text(
                 action.message,
                 style = MaterialTheme.typography.bodyMedium,
@@ -568,54 +602,104 @@ private fun UsageBar(state: DashboardUiState) {
 // Execution row (link a Stellar Expert)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Fila de ejecución (D2 del SOW): si conocemos el hash REAL de la transacción
+ * (evento `execution` del RPC o capturado por esta app al ejecutar), mostramos
+ * el chip "Ver en Stellar Expert" que abre la tx. Si no, la ejecución es
+ * "histórica": está en `get_execution_log` pero su evento ya salió de la
+ * ventana de retención del RPC — y NUNCA inventamos un link.
+ *
+ * `Execution.txHash` (sha256 determinístico del contrato) es un ID de
+ * auditoría, no un tx hash: no se muestra como tal.
+ */
 @Composable
-private fun ExecutionRow(exec: Execution) {
+private fun ExecutionRow(exec: Execution, eventsOk: Boolean) {
     val context = LocalContext.current
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(RaizWhite)
             .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(RaizYellow.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.Storefront, contentDescription = null, tint = RaizYellow)
-        }
-        Spacer(modifier = Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(RaizYellow.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Storefront, contentDescription = null, tint = RaizYellow)
+            }
+            Spacer(modifier = Modifier.size(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Propuesta #${exec.proposalId}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = RaizBlack,
+                )
+                Text(
+                    text = "→ ${exec.recipient.take(8)}…${exec.recipient.takeLast(6)}",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    color = RaizBlack.copy(alpha = 0.5f),
+                    modifier = Modifier.clickable {
+                        StellarExpert.open(context, StellarExpert.addressUrl(exec.recipient))
+                    },
+                )
+            }
             Text(
-                text = "Propuesta #${exec.proposalId}",
-                style = MaterialTheme.typography.labelLarge,
-                color = RaizBlack,
-            )
-            Text(
-                text = "${exec.recipient.take(8)}…${exec.recipient.takeLast(6)}",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                ),
-                color = RaizBlack.copy(alpha = 0.5f),
+                text = exec.amountStroops.formatUsdc(),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = RaizGreen,
             )
         }
-        Text(
-            text = exec.amountStroops.formatUsdc(),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-            color = RaizGreen,
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        // El txHash de Execution es sha256 determinístico del contrato — no es un txHash
-        // de Stellar real. Linkeamos al recipient para que el auditor vea el saldo recibido.
-        IconButton(onClick = {
-            StellarExpert.open(context, StellarExpert.addressUrl(exec.recipient))
-        }) {
-            Icon(Icons.Outlined.OpenInNew, contentDescription = "Ver recipient en Stellar Expert", tint = RaizGreen)
+
+        val realHash = exec.realTxHash
+        if (realHash != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AssistChip(
+                    onClick = { StellarExpert.open(context, StellarExpert.txUrl(realHash)) },
+                    label = {
+                        Text(
+                            "Ver en Stellar Expert",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = RaizWhite,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Verified, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(16.dp))
+                    },
+                    trailingIcon = {
+                        Icon(Icons.Outlined.OpenInNew, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(14.dp))
+                    },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = RaizGreen),
+                    border = null,
+                )
+                Spacer(modifier = Modifier.size(10.dp))
+                Text(
+                    text = "tx ${realHash.take(8)}…${realHash.takeLast(6)}",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    color = RaizBlack.copy(alpha = 0.55f),
+                )
+            }
+        } else {
+            Text(
+                text = if (eventsOk) {
+                    "Histórica · sin evento en la ventana del RPC (sin enlace a la tx)"
+                } else {
+                    "Hash de transacción no disponible ahora (RPC sin respuesta) · reintenta"
+                },
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = RaizBlack.copy(alpha = 0.55f),
+            )
         }
     }
 }

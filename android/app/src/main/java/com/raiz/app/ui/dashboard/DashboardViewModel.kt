@@ -3,6 +3,7 @@ package com.raiz.app.ui.dashboard
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.raiz.app.data.local.ExecutionHashStore
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Execution
 import com.raiz.app.data.model.Proposal
@@ -24,7 +25,13 @@ import javax.inject.Inject
 sealed interface ProposalActionState {
     data object Submitting : ProposalActionState
     data class Failed(val message: String) : ProposalActionState
-    data object Ok : ProposalActionState
+
+    /**
+     * Acción confirmada. `txHash` es el hash real de la transacción cuando la
+     * acción fue `execute_proposal` (camino feliz de D2: lo devuelve el
+     * `sendTransaction`); null para `tally`.
+     */
+    data class Ok(val txHash: String? = null) : ProposalActionState
 }
 
 data class DashboardUiState(
@@ -33,7 +40,14 @@ data class DashboardUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val barrio: Barrio? = null,
+    /** Ejecuciones de `get_execution_log`, ya correlacionadas con su hash real cuando existe. */
     val executions: List<Execution> = emptyList(),
+    /**
+     * false si la lectura de eventos `execution` del RPC falló (red/RPC), en
+     * cuyo caso una ejecución sin hash puede ser reciente y la UI no debe
+     * llamarla "histórica" con seguridad.
+     */
+    val executionEventsOk: Boolean = true,
     val merchantCount: Int = 0,
     val proposals: List<Proposal> = emptyList(),
     val proposalAction: Map<Long, ProposalActionState> = emptyMap(),
@@ -50,6 +64,8 @@ data class DashboardUiState(
             ?: selectedBarrioId.take(8)
 
     val totalExecutedStroops: Long get() = executions.sumOf { it.amountStroops }
+
+    val verifiedExecutions: Int get() = executions.count { it.verified }
 
     val usedPct: Int
         get() {
@@ -71,6 +87,7 @@ class DashboardViewModel @Inject constructor(
     private val sorobanClient: SorobanClient,
     private val walletManager: WalletManager,
     private val deploymentsLoader: DeploymentsLoader,
+    private val executionHashStore: ExecutionHashStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardUiState())
@@ -120,7 +137,7 @@ class DashboardViewModel @Inject constructor(
                 is RaizResult.Success -> {
                     Log.i(TAG, "Tally propuesta $proposalId → ${r.data}")
                     _state.update {
-                        it.copy(proposalAction = it.proposalAction + (proposalId to ProposalActionState.Ok))
+                        it.copy(proposalAction = it.proposalAction + (proposalId to ProposalActionState.Ok()))
                     }
                     loadFor(_state.value.selectedBarrioId)
                 }
@@ -131,7 +148,14 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Ejecuta una propuesta Passed via Treasury — trustless. */
+    /**
+     * Ejecuta una propuesta Passed via Treasury — trustless.
+     *
+     * Camino feliz de D2: el hash real de la transacción lo devuelve el propio
+     * `sendTransaction`; se muestra al instante en la card de la propuesta y se
+     * persiste en [ExecutionHashStore] para que la fila de "Ejecuciones" siga
+     * enlazando a Stellar Expert cuando el evento salga de la ventana del RPC.
+     */
     fun executeProposal(proposalId: Long) {
         viewModelScope.launch {
             _state.update {
@@ -148,9 +172,11 @@ class DashboardViewModel @Inject constructor(
             }
             when (val r = sorobanClient.executeProposal(signer, proposalId)) {
                 is RaizResult.Success -> {
-                    Log.i(TAG, "Propuesta $proposalId ejecutada on-chain")
+                    val txHash = r.data
+                    Log.i(TAG, "Propuesta $proposalId ejecutada on-chain → tx $txHash")
+                    executionHashStore.save(proposalId, txHash)
                     _state.update {
-                        it.copy(proposalAction = it.proposalAction + (proposalId to ProposalActionState.Ok))
+                        it.copy(proposalAction = it.proposalAction + (proposalId to ProposalActionState.Ok(txHash)))
                     }
                     loadFor(_state.value.selectedBarrioId)
                 }
@@ -178,10 +204,32 @@ class DashboardViewModel @Inject constructor(
             val vaultSharesResult = sorobanClient.getVaultShares(barrioId)
 
             val barrio = (barrioResult as? RaizResult.Success)?.data
-            val executions = (executionsResult as? RaizResult.Success)?.data.orEmpty()
+            val rawExecutions = (executionsResult as? RaizResult.Success)?.data.orEmpty()
             val merchants = (merchantsResult as? RaizResult.Success)?.data.orEmpty()
             val proposals = (proposalsResult as? RaizResult.Success)?.data.orEmpty()
             val vaultShares = (vaultSharesResult as? RaizResult.Success)?.data ?: 0L
+
+            // Correlación D2: hash real por proposal_id. Solo consultamos eventos si
+            // hay ejecuciones que enlazar (ahorra ~13 páginas de getEvents en barrios
+            // sin ejecuciones). Fuente 1: evento `execution` del RPC (manda);
+            // fuente 2: hash capturado por esta app al ejecutar (caché local).
+            var eventsOk = true
+            val hashByProposal: Map<Long, String> = if (rawExecutions.isEmpty()) {
+                emptyMap()
+            } else {
+                val fromEvents = when (val ev = sorobanClient.executionEvents(barrioId)) {
+                    is RaizResult.Success -> ev.data.associate { it.proposalId to it.txHash }
+                    is RaizResult.Error -> {
+                        Log.w(TAG, "Dashboard $barrioId: eventos execution no disponibles: ${ev.message}")
+                        eventsOk = false
+                        emptyMap()
+                    }
+                }
+                executionHashStore.all() + fromEvents
+            }
+            val executions = rawExecutions.map { exec ->
+                exec.copy(realTxHash = hashByProposal[exec.proposalId])
+            }
 
             val firstError = listOfNotNull(
                 (barrioResult as? RaizResult.Error)?.message,
@@ -190,7 +238,8 @@ class DashboardViewModel @Inject constructor(
 
             Log.i(
                 TAG,
-                "Dashboard $barrioId: pool=${barrio?.poolBalanceUsdc} executions=${executions.size} proposals=${proposals.size}",
+                "Dashboard $barrioId: pool=${barrio?.poolBalanceUsdc} executions=${executions.size} " +
+                    "(verificadas=${executions.count { it.verified }}) proposals=${proposals.size}",
             )
 
             _state.update {
@@ -199,12 +248,16 @@ class DashboardViewModel @Inject constructor(
                     error = if (barrio == null) firstError else null,
                     barrio = barrio,
                     executions = executions,
+                    executionEventsOk = eventsOk,
                     merchantCount = merchants.size,
                     proposals = proposals,
                     vaultSharesStroops = vaultShares,
-                    // Limpia acciones resueltas para la nueva carga.
+                    // Limpia acciones resueltas para la nueva carga. Se conserva el
+                    // Ok de una ejecución (lleva el hash real) para que la card lo
+                    // siga mostrando mientras la propuesta aparezca en la lista.
                     proposalAction = it.proposalAction.filterValues { v ->
-                        v is ProposalActionState.Submitting
+                        v is ProposalActionState.Submitting ||
+                            (v is ProposalActionState.Ok && v.txHash != null)
                     },
                 )
             }

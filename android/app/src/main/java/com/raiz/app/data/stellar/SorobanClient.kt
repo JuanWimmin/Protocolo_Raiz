@@ -3,6 +3,7 @@ package com.raiz.app.data.stellar
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Execution
+import com.raiz.app.data.model.ExecutionEvent
 import com.raiz.app.data.model.Merchant
 import com.raiz.app.data.model.MerchantCategory
 import com.raiz.app.data.model.PaymentRecord
@@ -699,21 +700,34 @@ class SorobanClient @Inject constructor(
      *
      * El firmante paga el gas pero no necesita rol especial. Aquí usamos
      * el demoKeyPair del turista como cualquier "auditor" del barrio.
+     *
+     * Devuelve el **hash real de la transacción** (D2 del SOW): es el momento
+     * barato de capturarlo — el `sendTransaction` lo devuelve y no hace falta
+     * esperar a `getEvents`. El ViewModel lo muestra al instante y lo persiste
+     * en [com.raiz.app.data.local.ExecutionHashStore].
      */
     suspend fun executeProposal(
         signer: KeyPair,
         proposalId: Long,
-    ): RaizResult<Unit> {
+    ): RaizResult<String> {
         return runCatching {
-            treasuryClient().invoke<Unit>(
+            // buildInvoke + signAndSubmit en vez de invoke(): así conservamos
+            // el AssembledTransaction y podemos leer el hash tras el envío.
+            val assembled = treasuryClient().buildInvoke<Unit>(
                 functionName = "execute_proposal",
                 arguments = mapOf("proposal_id" to proposalId.toULong()),
                 source = signer.getAccountId(),
                 signer = signer,
                 parseResultXdrFn = { /* void */ },
             )
+            assembled.signAndSubmit(signer)
+            val hash = assembled.getTransactionResponse?.txHash?.takeIf { it.isNotBlank() }
+                ?: assembled.sendTransactionResponse?.hash?.takeIf { it.isNotBlank() }
+                ?: error("execute_proposal enviada pero el RPC no devolvió txHash")
+            Log.i(TAG, "executeProposal #$proposalId → tx $hash")
+            hash
         }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
+            onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
                 val msg = e.message.orEmpty()
                 val code = when {
@@ -1087,6 +1101,161 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Treasury: eventos `execution` vía getEvents (D2 — tx hash real) ──
+    //
+    // El contrato Treasury no puede conocer el hash de la transacción que lo
+    // ejecuta: `Execution.tx_hash` on-chain es un sha256 determinístico (ID de
+    // auditoría). El hash real solo existe fuera del contrato, en el evento que
+    // el RPC indexa: `getEvents` devuelve `txHash` por evento. Aquí leemos TODOS
+    // los eventos `execution` del Treasury dentro de la ventana de retención del
+    // RPC y el dashboard los correlaciona con `get_execution_log` por
+    // `proposal_id` (único a nivel de Governance; una propuesta se ejecuta una vez).
+    //
+    // DOS GOTCHAS del RPC (Protocol 28, medidos el 2026-09-12 contra testnet):
+    //   1. La retención NO es 24h: `getHealth` reporta ledgerRetentionWindow =
+    //      120 960 ledgers (~7 días). Usamos `oldestLedger` de getHealth como
+    //      inicio (con margen, porque la ventana avanza mientras paginamos) en
+    //      vez de una ventana fija.
+    //   2. `getEvents` escanea como máximo ~10 000 ledgers por llamada y devuelve
+    //      `cursor` AUNQUE la página venga vacía; al llegar al último ledger el
+    //      cursor se repite en vez de volver `null`. Por eso NO se puede cortar
+    //      en la primera página vacía (tourPaymentEvents sí lo hace porque su
+    //      ventana es corta) y hay que parar cuando el cursor deja de avanzar.
+    //      El cursor codifica el ledger en sus 32 bits altos (formato TOID).
+
+    /**
+     * Eventos `execution` del Treasury para un barrio, más recientes primero.
+     * Lista vacía si no hay ninguno en la ventana de retención del RPC (las
+     * ejecuciones más viejas siguen en `get_execution_log`, pero sin hash real:
+     * la UI las muestra como "históricas", nunca inventa un link).
+     */
+    suspend fun executionEvents(barrioId: String): RaizResult<List<ExecutionEvent>> {
+        val barrioHex = barrioId.removePrefix("0x").lowercase()
+        if (barrioHex.hexToBytes() == null) {
+            return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
+        }
+        Log.i(TAG, "executionEvents: barrio=$barrioHex treasury=${deployments.treasury}")
+        return runCatching {
+            val server = treasuryClient().server
+            val health = server.getHealth()
+            val latest = health.latestLedger ?: server.getLatestLedger().sequence
+            val oldest = health.oldestLedger ?: (latest - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L)
+            Log.i(TAG, "executionEvents: latest=$latest oldest=$oldest retention=${health.ledgerRetentionWindow}")
+
+            val eventFilter = GetEventsRequest.EventFilter(
+                type = GetEventsRequest.EventFilterType.CONTRACT,
+                contractIds = listOf(deployments.treasury),
+                topics = emptyList(), // el Treasury solo emite `execution`; filtramos en cliente igualmente
+            )
+
+            // Ventana principal = toda la retención; fallback corto si el RPC la rechaza.
+            val windowCandidates = listOf(
+                (oldest + EXEC_RETENTION_MARGIN).coerceAtMost(latest),
+                (latest - EVENTS_LOOKBACK_FALLBACK).coerceAtLeast(1L),
+            ).distinct()
+
+            var firstPage: GetEventsResponse? = null
+            for (candidateStart in windowCandidates) {
+                try {
+                    firstPage = server.getEvents(
+                        GetEventsRequest(
+                            startLedger = candidateStart,
+                            endLedger = null,
+                            filters = listOf(eventFilter),
+                            pagination = GetEventsRequest.Pagination(cursor = null, limit = 100L),
+                        ),
+                    )
+                    Log.i(TAG, "executionEvents: 1ª pág start=$candidateStart → ${firstPage.events.size} ev cursor=${firstPage.cursor?.take(20)}")
+                    break
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (e: Exception) {
+                    val msg = e.message.orEmpty().lowercase()
+                    Log.w(TAG, "executionEvents: getEvents(startLedger=$candidateStart) FALLÓ: $msg")
+                    val isRetentionError = "startledger" in msg ||
+                        "event retention" in msg ||
+                        "minimum ledger" in msg ||
+                        "ledger range" in msg
+                    if (!isRetentionError) throw e
+                }
+            }
+            if (firstPage == null) {
+                Log.w(TAG, "executionEvents: sin respuesta en ninguna ventana → vacío")
+                return@runCatching emptyList<ExecutionEvent>()
+            }
+
+            val allEvents = mutableListOf<GetEventsResponse.EventInfo>()
+            allEvents.addAll(firstPage.events)
+            var pageCursor: String? = firstPage.cursor?.takeIf { it.isNotEmpty() }
+            var previousCursor: String? = null
+            var pageCount = 1
+
+            while (pageCursor != null && pageCursor != previousCursor && pageCount < EXEC_EVENTS_MAX_PAGES) {
+                val nextPage = server.getEvents(
+                    GetEventsRequest(
+                        startLedger = null,   // OBLIGATORIO null cuando cursor está presente
+                        endLedger = null,
+                        filters = listOf(eventFilter),
+                        pagination = GetEventsRequest.Pagination(cursor = pageCursor, limit = 100L),
+                    ),
+                )
+                pageCount++
+                allEvents.addAll(nextPage.events)
+                previousCursor = pageCursor
+                pageCursor = nextPage.cursor?.takeIf { it.isNotEmpty() }
+                Log.i(TAG, "executionEvents: pág $pageCount → ${nextPage.events.size} ev (total=${allEvents.size}) nextCursor=${pageCursor?.take(20)}")
+                // Cursor TOID: ledger en los 32 bits altos. Si ya cubre el último
+                // ledger conocido al empezar, no queda nada por escanear.
+                val cursorLedger = pageCursor?.substringBefore('-')?.toLongOrNull()?.shr(32)
+                if (cursorLedger != null && cursorLedger >= latest) break
+            }
+            if (pageCount >= EXEC_EVENTS_MAX_PAGES && pageCursor != null && pageCursor != previousCursor) {
+                Log.w(TAG, "executionEvents: cap EXEC_EVENTS_MAX_PAGES=$EXEC_EVENTS_MAX_PAGES alcanzado — posibles eventos sin leer")
+            }
+
+            val parsed = allEvents
+                .sortedByDescending { it.ledger }
+                .mapNotNull { event ->
+                    runCatching { parseExecutionEvent(event) }
+                        .onFailure { Log.w(TAG, "executionEvents: parse falló event=${event.id}: ${it.message}") }
+                        .getOrNull()
+                }
+                .filter { it.barrioId.equals(barrioHex, ignoreCase = true) }
+            Log.i(TAG, "executionEvents: RESULTADO → ${parsed.size} eventos de ${allEvents.size} crudos en $pageCount págs para $barrioHex")
+            parsed
+        }.fold(
+            onSuccess = { RaizResult.Success(it) },
+            onFailure = { e ->
+                Log.w(TAG, "executionEvents: error no recuperable: ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "executionEvents: ${e.message}")
+            },
+        )
+    }
+
+    /**
+     * Parsea un evento del Treasury como [ExecutionEvent]. Devuelve null si el
+     * topic[0] no es Symbol("execution") o si el payload no tiene la forma
+     * (proposal_id u64, amount i128, recipient Address).
+     */
+    private fun parseExecutionEvent(event: GetEventsResponse.EventInfo): ExecutionEvent? {
+        val topics = event.parseTopic()
+        if (topics.size < 2) return null
+        val symbol = runCatching { Scv.fromSymbol(topics[0]) }.getOrNull() ?: return null
+        if (symbol != "execution") return null
+        val barrio = ScvalParse.asHex(topics[1])
+        val dataVec = Scv.fromVec(event.parseValue())
+        if (dataVec.size < 3) return null
+        return ExecutionEvent(
+            proposalId = ScvalParse.asULongAsLong(dataVec[0]),
+            barrioId = barrio,
+            amountStroops = ScvalParse.asLong(dataVec[1]),
+            recipient = ScvalParse.asAddressString(dataVec[2]),
+            txHash = event.transactionHash,
+            ledger = event.ledger,
+            ledgerClosedAt = event.ledgerClosedAt,
+        )
+    }
+
     // ── Diagnóstico ──────────────────────────────────────────────────────
 
     fun debugDeployments(): Deployments = deployments
@@ -1178,5 +1347,19 @@ class SorobanClient @Inject constructor(
          * contratos con miles de eventos que harían el fetch inmanejable.
          */
         const val MAX_PAGES = 20
+
+        /**
+         * Margen sobre `oldestLedger` de getHealth al pedir eventos `execution`:
+         * la ventana de retención avanza ~1 ledger/5s y el RPC rechaza un
+         * startLedger que ya quedó fuera (medido: 4 ledgers en 10 s).
+         */
+        const val EXEC_RETENTION_MARGIN = 200L
+
+        /**
+         * Páginas máximas para barrer toda la retención de eventos `execution`:
+         * el RPC escanea ~10 000 ledgers por llamada → 120 960 ledgers ≈ 13
+         * páginas. 30 deja holgura si la retención crece.
+         */
+        const val EXEC_EVENTS_MAX_PAGES = 30
     }
 }
