@@ -507,6 +507,23 @@
     .live-chips .chip .estado { color: rgba(250,250,247,.85); }
     .live-chips .chip .estado.vivo { color: var(--amarillo); }
 
+    /* D2 (SOW): ejecuciones del Treasury con su transacción real — sobre fondo verde */
+    .exec-block { margin-top: 30px; border: 1.5px solid rgba(250,250,247,.35); border-radius: 14px; padding: 18px 20px; color: var(--crema); }
+    .exec-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .exec-title { font-weight: 700; letter-spacing: .04em; font-size: .95rem; }
+    .exec-tag { font-size: .72rem; color: rgba(250,250,247,.75); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .exec-tag.vivo { color: var(--amarillo); }
+    .exec-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+    .exec-row { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; font-size: .88rem; border-top: 1px dashed rgba(250,250,247,.25); padding-top: 10px; }
+    .exec-row:first-child { border-top: 0; padding-top: 0; }
+    .exec-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; color: var(--amarillo); }
+    .exec-main b { color: var(--crema); }
+    .exec-link { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; font-weight: 700; color: var(--amarillo); text-decoration: none; white-space: nowrap; }
+    .exec-link:hover { text-decoration: underline; }
+    .exec-note { font-size: .74rem; color: rgba(250,250,247,.7); margin: 14px 0 0; line-height: 1.5; }
+    .exec-note code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 560px) { .exec-row { grid-template-columns: auto 1fr; } .exec-row .exec-link { grid-column: 2; } }
+
     .demo-ctas { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
     .btn--crema-borde { background: transparent; color: var(--crema); border-color: var(--crema); }
     .btn--crema-borde:hover { box-shadow: 4px 4px 0 rgba(250,250,247,.35); }
@@ -1112,6 +1129,43 @@
           <span class="chip">5 contratos · re-desplegados 31·jul·2026 (F1)</span>
         </div>
 
+        <!-- D2 (SOW): cada ejecución del fondo enlaza a su transacción REAL en Stellar Expert.
+             Snapshot estático (fuente: docs/evidencia_sow/d2/) que el JS reemplaza con getEvents del Treasury. -->
+        <div class="reveal exec-block">
+          <div class="exec-head">
+            <span class="exec-title">Ejecuciones del fondo · Treasury</span>
+            <span class="exec-tag" data-exec-tag>snapshot 12·sep·2026</span>
+          </div>
+          <ul class="exec-list" data-exec-list>
+            <li class="exec-row">
+              <span class="exec-id">#4</span>
+              <span class="exec-main"><b>Barrio Norte</b> · 0.05 USDC · Kit de reciclaje comunitario · 12·sep·2026</span>
+              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3" target="_blank" rel="noopener">tx db0bcd5f…94eac3 ↗</a>
+            </li>
+            <li class="exec-row">
+              <span class="exec-id">#3</span>
+              <span class="exec-main"><b>Centro Histórico</b> · 0.05 USDC · Luces para el parque infantil · 12·sep·2026</span>
+              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/aa303a0f7ed6459994650d28c426a0fda02389085fe80853208b3dc09290f5f1" target="_blank" rel="noopener">tx aa303a0f…90f5f1 ↗</a>
+            </li>
+            <li class="exec-row">
+              <span class="exec-id">#2</span>
+              <span class="exec-main"><b>Costa Vieja</b> · 0.30 USDC · Limpieza de la playa · 6·sep·2026</span>
+              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18" target="_blank" rel="noopener">tx 9ca06287…3a4a18 ↗</a>
+            </li>
+            <li class="exec-row">
+              <span class="exec-id">#1</span>
+              <span class="exec-main"><b>Barrio Norte</b> · 0.15 USDC · Bancas para el parque · 6·sep·2026</span>
+              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d" target="_blank" rel="noopener">tx 91c1c35c…04596d ↗</a>
+            </li>
+          </ul>
+          <p class="exec-note">
+            Cada fila enlaza a la transacción real de <code>execute_proposal</code>, tomada del evento
+            <code>execution</code> que emite el Treasury y que indexa el RPC de Stellar. El <code>tx_hash</code> que
+            guarda el contrato es un ID de auditoría reproducible (sha256), no el hash de la transacción:
+            un contrato no puede conocer el hash de la transacción que lo ejecuta.
+          </p>
+        </div>
+
         <div class="demo-ctas">
           <a class="btn btn--purpura" href="verificar-residente.html">Verificar residente</a>
           <a class="btn btn--crema-borde" href="https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing" target="_blank" rel="noopener">Enlace a entrevistas&nbsp;↗</a>
@@ -1495,7 +1549,88 @@
                 el.classList.add('vivo');
               });
             }).catch(function () { /* silencio: queda el snapshot */ });
+            leerEjecuciones(SDK, RpcNS, server);
           } catch (_) { /* silencio */ }
+      }
+
+      // (3) D2 (SOW): ejecuciones del Treasury con su transacción REAL.
+      //     El contrato guarda un ID de auditoría (sha256 determinístico), no el hash de la
+      //     transacción; el hash real viene del evento `execution` que indexa el RPC
+      //     (getEvents → txHash). Gotchas medidos en testnet (Protocol 28, 12-sep-2026):
+      //       · retención ≈ 7 días → arrancar en getHealth().oldestLedger (+ margen);
+      //       · getEvents escanea ~10 000 ledgers por llamada y devuelve `cursor` aunque la
+      //         página venga vacía; al llegar al último ledger el cursor se REPITE en vez de
+      //         volver null → parar cuando deja de avanzar (o cubre el último ledger).
+      //     Si algo falla, queda el snapshot estático del HTML: nunca un hueco.
+      var BARRIOS = {
+        'ce47120000000000000000000000000000000000000000000000000000000001': 'Centro Histórico',
+        'bba17e0000000000000000000000000000000000000000000000000000000002': 'Barrio Norte',
+        'c057a9000000000000000000000000000000000000000000000000000000000a': 'Costa Vieja'
+      };
+      function bytesAHex(u8) {
+        return Array.prototype.map.call(u8, function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+      }
+      function leerEjecuciones(SDK, RpcNS, server) {
+        var lista = document.querySelector('[data-exec-list]');
+        var tag = document.querySelector('[data-exec-tag]');
+        if (!lista || !tag) return;
+        var filtro = { type: 'contract', contractIds: [DEPLOYMENTS.treasury] };
+        var ultimo = 0;
+        function scv(x) { return (typeof x === 'string') ? SDK.xdr.ScVal.fromXDR(x, 'base64') : x; }
+        function parsear(e) {
+          var topics = (e.topic || []).map(scv);
+          if (topics.length < 2 || SDK.scValToNative(topics[0]) !== 'execution') return null;
+          var v = SDK.scValToNative(scv(e.value)); // [proposal_id u64, amount i128, recipient Address]
+          if (!v || v.length < 3) return null;
+          return {
+            id: Number(v[0]),
+            barrio: bytesAHex(SDK.scValToNative(topics[1])),
+            monto: Number(v[1]) / 1e7,
+            recipient: String(v[2]),
+            tx: e.txHash,
+            ledger: Number(e.ledger),
+            fecha: e.ledgerClosedAt
+          };
+        }
+        function recorrer(acum, res, cursorPrevio, n) {
+          (res.events || []).forEach(function (e) { acum.push(e); });
+          var cursor = res.cursor;
+          if (!cursor || cursor === cursorPrevio || n >= 30) return acum;
+          // Cursor TOID: ledger en los 32 bits altos. Si ya cubre el último ledger, no hay más.
+          var ledgerCursor = Number(BigInt(String(cursor).split('-')[0]) / BigInt(4294967296));
+          if (ledgerCursor >= ultimo) return acum;
+          return server.getEvents({ filters: [filtro], cursor: cursor, limit: 100 })
+            .then(function (r) { return recorrer(acum, r, cursor, n + 1); });
+        }
+        var lectura = server.getHealth().then(function (h) {
+          ultimo = Number(h.latestLedger);
+          var inicio = Number(h.oldestLedger) + 200;
+          return server.getEvents({ startLedger: inicio, filters: [filtro], limit: 100 });
+        }).then(function (res) { return recorrer([], res, null, 1); });
+
+        conTimeout(lectura, 45000).then(function (eventos) {
+          var filas = eventos.map(function (e) { try { return parsear(e); } catch (_) { return null; } })
+            .filter(Boolean)
+            .sort(function (a, b) { return b.ledger - a.ledger; });
+          if (!filas.length) return; // sin eventos en ventana: se queda el snapshot
+          lista.innerHTML = '';
+          filas.forEach(function (f) {
+            var li = document.createElement('li'); li.className = 'exec-row';
+            var id = document.createElement('span'); id.className = 'exec-id'; id.textContent = '#' + f.id;
+            var main = document.createElement('span'); main.className = 'exec-main';
+            var b = document.createElement('b'); b.textContent = BARRIOS[f.barrio] || ('Barrio ' + f.barrio.slice(0, 6) + '…');
+            var fecha = f.fecha ? new Date(f.fecha).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+            main.appendChild(b);
+            main.appendChild(document.createTextNode(' · ' + f.monto.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC · ' + fecha));
+            var a = document.createElement('a'); a.className = 'exec-link'; a.target = '_blank'; a.rel = 'noopener';
+            a.href = 'https://stellar.expert/explorer/testnet/tx/' + f.tx;
+            a.textContent = 'tx ' + f.tx.slice(0, 8) + '…' + f.tx.slice(-6) + ' ↗';
+            li.appendChild(id); li.appendChild(main); li.appendChild(a);
+            lista.appendChild(li);
+          });
+          tag.textContent = 'en vivo · ' + filas.length + ' con tx verificable ●';
+          tag.classList.add('vivo');
+        }).catch(function () { /* silencio: queda el snapshot */ });
       }
 
       // Arranque diferido: nada de esto bloquea el primer render.
