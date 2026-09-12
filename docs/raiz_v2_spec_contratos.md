@@ -252,9 +252,22 @@ pub struct Execution {
     pub amount: i128,
     pub recipient: Address,
     pub executed_at: u64,
-    pub tx_hash: BytesN<32>,        // referencia auditable
+    pub tx_hash: BytesN<32>,        // ID de auditoría reproducible — NO es el hash de la tx (ver nota)
 }
 ```
+
+> **Nota sobre `tx_hash` (D2 del SOW, 2026-09-12).** Un contrato Soroban no puede conocer el
+> hash de la transacción que lo está ejecutando, así que `tx_hash` es
+> `sha256(proposal_id ‖ barrio_id ‖ executed_at)`: un **ID de auditoría reproducible** (cualquiera
+> puede recalcularlo desde el registro) y único por ejecución. **No es buscable en Stellar Expert**
+> y la UI no debe presentarlo como hash de transacción. El hash real de la transacción se obtiene
+> **fuera del contrato**, del evento `execution` que emite `execute_proposal`: el RPC (`getEvents`)
+> devuelve `txHash` por evento y el cliente lo correlaciona con `get_execution_log` por
+> `proposal_id` (único en Governance; una propuesta se ejecuta una sola vez). Si el evento ya
+> salió de la ventana de retención del RPC (~7 días en testnet, `getHealth.ledgerRetentionWindow`),
+> la ejecución se muestra como "histórica" sin enlace. Eliminar `tx_hash` o renombrarlo a
+> `audit_id` es una decisión de redeploy futuro, no del sprint SOW. Espejo Kotlin:
+> `Execution.realTxHash` / `ExecutionEvent` en `RaizModels.kt` (solo cliente).
 
 ### Funciones
 ```rust

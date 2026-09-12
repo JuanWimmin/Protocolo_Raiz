@@ -256,7 +256,15 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ---
 
-## Estado actual (2026-09-06)
+- **`getEvents` en testnet (P28, medido 2026-09-12): retención ≈ 7 días, NO 24 h**
+  (`getHealth.ledgerRetentionWindow = 120 960`). El RPC escanea ~10 000 ledgers por llamada y
+  devuelve `cursor` AUNQUE la página venga vacía; al llegar al último ledger el cursor se repite en
+  vez de volver `null`. Para barrer toda la retención hay que seguir el cursor ~13 páginas y parar
+  cuando deja de avanzar (o cuando su ledger — 32 bits altos del TOID — alcanza el último). Cortar
+  en la primera página vacía devuelve 0 eventos. Patrón correcto: `SorobanClient.executionEvents`
+  y `leerEjecuciones` en `landing/index.html`; `tourPaymentEvents` sigue con ventana corta a propósito.
+
+## Estado actual (2026-09-12)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
 - **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
@@ -269,9 +277,14 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `raiz.relayer.url` (default `https://raiz-relayer.fly.dev`) en `android/local.properties`.
   **Relayer desplegado en Fly** (https://raiz-relayer.fly.dev, región `iad`, una sola máquina) y
   **regresión en Motorola G04 aprobada** el 6-sep (`docs/evidencia_sow/d1/regresion_dispositivo.md`).
-- **D2 (WP2):** ejecuciones de evidencia sembradas el 6-sep (`docs/evidencia_sow/d2/`): #1 Norte y
-  #2 Costa ejecutadas; #3 Centro y #4 Norte votadas, ejecutables desde el **9-sep**. Código
-  pendiente (diseño en `docs/PLAN_CLAUDE_CODE_SOW.md` WP2 + notas de sesión).
+- **D2 (WP2):** código hecho el 12-sep (rama `worktree-wp2-tx-hash-real`): `SorobanClient.executionEvents`
+  (getEvents del Treasury, paginación completa por cursor), `executeProposal` devuelve el hash real,
+  `Execution.realTxHash` + `ExecutionHashStore` (caché local del camino feliz), Dashboard con chip
+  "Ver en Stellar Expert" / estado "histórica", landing con bloque "Ejecuciones del fondo" en vivo.
+  **4 ejecuciones con evento en ventana** (#1 Norte, #2 Costa del 6-sep; #3 Centro `aa303a0f…`,
+  #4 Norte `db0bcd5f…` del 12-sep) y **#5 Centro / #6 Norte sembradas, ejecutables desde el 15-sep
+  ≈ 21:03 UTC** para el camino feliz desde la app. Evidencia y pendientes (capturas en dispositivo,
+  copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
 - Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
@@ -286,6 +299,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ### Próximo paso
 
-- **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** WP activo a partir del 9-sep: **WP2 — D2
-  tx hash real** según `docs/PLAN_CLAUDE_CODE_SOW.md` (las propuestas #3 Centro y #4 Norte son
-  ejecutables desde el 9-sep 16:49 UTC). Al cerrar cada WP, actualizar esta línea.
+- **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2 tx hash real: código listo el
+  12-sep** en la rama `worktree-wp2-tx-hash-real` (pendiente: merge a `main`, capturas del dashboard
+  en el Motorola, ejecutar #5 desde la app a partir del 15-sep ≈ 21:03 UTC, copiar `landing/index.html`
+  al repo Pages). Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+  Al cerrar cada WP, actualizar esta línea.

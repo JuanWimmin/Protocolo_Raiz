@@ -144,17 +144,43 @@ data class Proposal(
 // Contrato Treasury
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Espejo de Execution en Treasury. */
+/**
+ * Espejo de Execution en Treasury.
+ *
+ * `txHash` es el ID de auditoría on-chain (sha256 determinístico de
+ * proposal_id || barrio_id || executed_at), NO el hash de la transacción de
+ * Stellar. El hash real vive en `realTxHash` y viene de fuera del contrato:
+ * del evento `execution` (RPC getEvents → txHash) o del sendTransaction de la
+ * propia app. Null = ejecución "histórica" (evento fuera de la retención del
+ * RPC), la UI no enlaza a Stellar Expert.
+ */
 data class Execution(
     val proposalId: Long,
     val barrioId: String,
     val amountStroops: Long,
     val recipient: String,
     val executedAt: Long,
-    val txHash: String              // hex de BytesN<32>
+    val txHash: String,             // hex de BytesN<32> — ID de auditoría, no tx hash
+    val realTxHash: String? = null  // hash real de la tx (evento RPC / sendTransaction), solo cliente
 ) {
     val amountUsdc: Double get() = amountStroops.toUsdc()
+    val verified: Boolean get() = !realTxHash.isNullOrBlank()
 }
+
+/**
+ * Evento `execution` del Treasury según lo devuelve el RPC (getEvents):
+ * topic = (Symbol("execution"), barrio_id), value = (proposal_id, amount, recipient),
+ * más el txHash de la transacción que lo emitió. Solo cliente (no es un struct del contrato).
+ */
+data class ExecutionEvent(
+    val proposalId: Long,
+    val barrioId: String,
+    val amountStroops: Long,
+    val recipient: String,
+    val txHash: String,
+    val ledger: Long,
+    val ledgerClosedAt: String
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Contrato Rewards
