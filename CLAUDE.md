@@ -264,7 +264,18 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   en la primera página vacía devuelve 0 eventos. Patrón correcto: `SorobanClient.executionEvents`
   y `leerEjecuciones` en `landing/index.html`; `tourPaymentEvents` sigue con ventana corta a propósito.
 
-## Estado actual (2026-09-12)
+- **El Treasury crea sus entradas con TTL de 7 días y no lo extiende (H2, medido 2026-09-19).** Toda
+  entrada persistente nueva (`Execution(n)`, contadores, índice por barrio) nace con
+  `liveUntil = ledger + 120 960`. Una semana después de una ejecución, `get_execution_log` de ese barrio
+  deja de ser lectura pura (auto-restore de P28) y la app falla con `Signer required for write call
+  to 'get_execution_log'` → el Dashboard se queda sin ejecuciones. Remedio: `stellar contract restore`
+  de las archivadas + `stellar contract extend --ledgers-to-extend 1500000` (hecho el 19-sep para las
+  13 claves; viven hasta ~15-dic-2026). **Tras cada ejecución nueva hay que extender su `Execution(n)`**
+  (comando y script de TTL en `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`). Ojo también: la CLI
+  `stellar contract invoke` ENVÍA una tx firmada cuando una "lectura" trae auto-restore; para solo
+  simular usar `--send=no`.
+
+## Estado actual (2026-09-19)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
 - **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
@@ -283,10 +294,13 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   "Ver en Stellar Expert" / estado "histórica", landing con bloque "Ejecuciones del fondo" en vivo.
   4 ejecuciones con hash real documentado (#1 Norte, #2 Costa del 6-sep; #3 Centro `aa303a0f…`,
   #4 Norte `db0bcd5f…` del 12-sep): los links de Stellar Expert son permanentes, pero **sus eventos
-  ya salieron de la ventana del RPC (comprobado el 19-sep: 0 eventos del Treasury en ventana)**, así
-  que la app y la landing las muestran como "histórica". **#5 Centro / #6 Norte están `Active`,
-  cerradas y con quórum** (censo vivo 19-sep: Centro 6, Norte 3) → ejecutarlas desde la app da 2 filas
-  verificadas durante 7 días; el SOW pide ≥3, hace falta una tercera ejecución dentro de la misma ventana. Evidencia y pendientes (capturas en dispositivo,
+  ya salieron de la ventana del RPC**, así que la app y la landing las muestran como "histórica".
+  **19-sep: probado en el Motorola G04 y corregido tras revisión adversarial** (10 defectos; el grave:
+  "Ejecutar trustless" era inalcanzable porque `list_active_proposals` solo devuelve `Active` — ahora
+  se ofrece en propuestas cerradas aún `Active`). **#5 Centro (`c891ec26…`) y #6 Norte (`76452c3a…`)
+  ejecutadas DESDE LA APP** con la wallet semilla del dispositivo; hash en la card, fila verificada y
+  chip que abre Stellar Expert (9 capturas en `docs/evidencia_sow/d2/capturas/`). Van 2 filas
+  verificadas; el SOW pide ≥3 → **#7 Centro y #8 Costa, ejecutables desde el 22-sep ≈ 23:10 UTC**. Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
@@ -303,8 +317,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 ### Próximo paso
 
 - **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2 tx hash real: código listo el
-  12-sep** en la rama `worktree-wp2-tx-hash-real` (pendiente: merge a `main`; ejecutar #5 y #6 desde
-  la app en el Motorola — ya ejecutables; ejecutar #7 Centro y #8 Costa, sembradas el 19-sep, desde
-  el 22-sep ≈ 23:10 UTC; capturas del dashboard con ≥3 filas verificadas entre el 22 y el 26-sep,
-  mientras los eventos sigan en la ventana de 7 días del RPC; copiar `landing/index.html` al repo Pages). Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+  12-sep y probado/corregido en dispositivo el 19-sep** en la rama `worktree-wp2-tx-hash-real`
+  (#5 y #6 ya ejecutadas desde la app). Pendiente: merge a `main`; ejecutar #7 Centro y #8 Costa desde
+  la app a partir del 22-sep ≈ 23:10 UTC y **extender el TTL de sus `Execution(6)` y `Execution(7)`**;
+  capturas finales con ≥3 filas verificadas; copiar `landing/index.html` al repo Pages. Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.

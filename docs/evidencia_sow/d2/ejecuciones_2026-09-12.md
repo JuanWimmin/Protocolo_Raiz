@@ -72,6 +72,103 @@ a un comercio de Norte: `pay_merchant` de 5 USDC con Tip Barrio del 2 % → +0.1
 sus eventos viven hasta el 26/27-sep; #7 y #8 se pueden ejecutar desde el 22-sep ≈ 23:10 UTC. Las
 capturas con tres o cuatro filas verificadas hay que tomarlas **entre el 22-sep 23:10 UTC y el 26-sep**.
 
+## Primera prueba en dispositivo y revisión adversarial (2026-09-19)
+
+Motorola G04 (`ZY22K5FHRL`), APK debug de la rama instalado sobre la 0.2.0. Resultados:
+
+- `executionEvents` en el teléfono real: 13 páginas en ≈15 s, parada correcta, 0 eventos (lo esperado hoy).
+- **"Ejecuciones 0" en Centro aunque #3 existe.** Causa: una entrada de ledger archivada en el camino
+  de `get_execution_log`. En Protocol 28 el RPC la mete como auto-restore en el footprint
+  (`readWrite`) y el SDK Soneso, que lee sin firmante, lo rechaza; la app lo convertía en lista vacía
+  y pintaba "0 ejecuciones / Ejecutado 0 %" como si fuera un dato. Al reproducirlo por CLI, la CLI
+  **envió** la lectura como transacción firmada por `raiz-admin`
+  (`ed851a40d905ceb9d3f6181f2f7d44c0b8fd99e3194004609d25a00303bf7ac8`), lo que restauró la entrada; tras
+  eso el teléfono leyó la ejecución de #3. No se identificó qué entrada estaba archivada. Arreglo en
+  la app: el fallo de lectura se muestra como error ("No se pudo leer el registro…", contador "—").
+- Revisión adversarial del código (4 revisores + 1 escéptico por hallazgo; 10 confirmados, 1 rechazado).
+  Los que cambiaban el resultado de la evidencia, ya corregidos:
+  1. **"Ejecutar trustless" era inalcanzable**: solo se ofrecía con estado `Passed`, pero la lista
+     viene de `list_active_proposals` (solo `Active`); pulsar "Cerrar votación" hacía desaparecer la
+     propuesta. Ahora se ofrece en propuestas cerradas y aún `Active` (el Treasury hace el `tally`
+     dentro de `execute_proposal`), y la card de la propuesta ejecutada se conserva con su hash.
+  2. Si el sondeo posterior al envío fallaba (timeout de 30 s del SDK, corte de red), se perdía un hash
+     ya conocido y se reportaba como fallida una tx que podía confirmarse. Ahora el hash se fija al
+     firmar (`hashHex`) y hay sondeo propio de hasta 60 s.
+  3. Carreras entre cargas del dashboard (cambio rápido de barrio) podían dejar ejecuciones y hashes
+     de un barrio bajo el nombre de otro — justo el flujo de las capturas. Token de generación +
+     limpieza del estado al cambiar de barrio.
+  4. El barrido de eventos retenía todo el dashboard (~14 llamadas) y se lanzaba aunque ninguna
+     ejecución pudiera tener evento. Ahora: estado en dos fases, barrido solo para ejecuciones
+     recientes sin hash en caché, arrancando cerca de su `executed_at` (1 llamada en vez de 13).
+  5. Landing: la lista en vivo **reemplazaba** el snapshot (al ejecutar #5 habrían desaparecido #1–#4
+     de la página pública). Ahora fusiona por `proposal_id`. Corregida además una errata en la etiqueta
+     del hash de #2 (`…3a4a18` → `…3b4a18`; el enlace era correcto).
+  Menores aplicados: caché de hashes con clave por contrato Treasury (un redeploy reinicia los
+  `proposal_id`), reintento por página, guarda de reentrada en la landing, fechas en UTC, mensaje
+  específico para wallets passkey.
+
+## Camino feliz desde la app — #5 y #6 ejecutadas en el Motorola (2026-09-19)
+
+Ejecutadas pulsando "Ejecutar trustless" en el Dashboard, firmadas por la wallet semilla del
+dispositivo `GAIRZRSHCMBHAYZFNB5PJLJE3IRBVWUDH2PCKU36RRANVE5EO6WG274H`. El hash lo muestra la propia
+app al confirmar; cada uno se verificó después fuera de la app (Horizon + evento `execution` del RPC).
+
+| # | Barrio | Propuesta | Monto | Ejecutada (UTC) | Ledger | tx `execute_proposal` | Stellar Expert |
+|---|---|---|---|---|---|---|---|
+| 5 | Centro | Bancas y sombra para la plaza | 0.05 USDC | 2026-09-19 23:37:02 | 4767487 | `c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc` | https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc |
+| 6 | Norte | Huerta comunitaria del barrio | 0.05 USDC | 2026-09-19 23:45:27 | 4767588 | `76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1` | https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1 |
+
+Sus eventos están en la ventana del RPC hasta el **26-sep ≈ 23:40 UTC**. Como la app guarda ya el hash
+en el dispositivo (también el que llega por evento), en ESE teléfono el enlace sobrevive a la ventana.
+
+Capturas (`capturas/`, Moto G04 720×1612):
+
+| Archivo | Qué muestra |
+|---|---|
+| `01_centro_antes_de_ejecutar_5.png` | #5 "Votación cerrada · lista para ejecutar" con el botón Ejecutar trustless |
+| `02_centro_5_ejecutada_hash_en_card.png` | Card de #5 con "✓ Ejecutada on-chain · tx c891ec26…e24ddc" y el chip (hash devuelto a la app) |
+| `03_centro_card_5_ejecutada.png` | Tras recargar: la card se conserva como "● Ejecutada" con su hash |
+| `04_centro_ejecuciones_3_historica_5_verificada.png` | Lista de Centro: #3 "Histórica" sin enlace, #5 "Transacción verificada" + chip |
+| `05_norte_antes_de_ejecutar_6.png` | Norte antes de ejecutar #6 |
+| `06_norte_6_ejecutada_y_lista.png` | Card de #6 ejecutada con hash + lista: #1 y #4 históricas, #6 verificada |
+| `07_norte_ejecuciones_1_4_historicas_6_verificada.png` | Detalle de la lista de Norte |
+| `08_stellar_expert_tx_6_abierta_desde_la_app.png` | Stellar Expert abierto DESDE el chip de la app: tx 76452c3a…, Successful, `execute_proposal(6)` |
+| `09_costa_2_historica_8_pendiente.png` | Costa: #2 histórica, #8 aún en votación |
+
+**Estado frente al SOW (≥3 ejecuciones enlazadas):** hoy hay **2 filas verificadas en la app**
+(#5, #6) y 6 ejecuciones con link real documentado (#1–#6). La tercera y cuarta fila verificadas
+llegan con #7 Centro y #8 Costa, ejecutables desde el **22-sep ≈ 23:10 UTC**.
+
+## Hallazgo: el Treasury crea sus entradas con TTL de 7 días y nunca lo extiende (H2)
+
+Medido con `getContractData` el 19-sep: toda entrada persistente nueva del Treasury nace con
+`liveUntil = ledger + 120 960` (≈7 días, el mínimo de la red) y el contrato no tiene gestión de TTL.
+Las que se extendieron el 6-sep vivían ≈74 días; las creadas después (#3, #4 y sus contadores) ya
+estaban **archivadas**: `Execution(3)`, `ExecutionCount(Norte)`, `ExecutionCount(Costa)`. Con una
+entrada archivada en el camino, `get_execution_log` deja de ser lectura pura (auto-restore de P28) y
+la app falla con `Signer required for write call to 'get_execution_log'` → el Dashboard de ese barrio
+se queda sin ejecuciones **una semana después de cada ejecución**.
+
+Remedio aplicado (firmado por `raiz-admin`):
+- `stellar contract restore` de las 3 archivadas — tx `ba0e3f9af3c24a2431fcaa821039c2f0c53f49ac49800adcffda77ab633c03dd`.
+- `stellar contract extend --ledgers-to-extend 1500000` de las 12 claves de datos del Treasury
+  (`TotalExecutions`, `Execution(0..4)`, `ExecutionCount` y `BarrioExecutions` de los 3 barrios) —
+  tx `fe0e9788173cb3d53156de568ef6577240d3aa1e846204dc9f833a3371bab0f6`. Verificado clave a clave:
+  todas vivas hasta el ledger 6267571 (≈87 días, hasta ~15-dic-2026).
+
+- `Execution(5)` (la de #6) se creó DESPUÉS de esa extensión, con TTL de 7 días: extendida aparte —
+  tx `0a9d821d2fae14b2c0b0864fa92cbfcf09a842e5af271236ad6eedcb94918508` (viva hasta el ledger 6267635).
+
+**Pendiente recurrente:** lo mismo pasará con #7 (`Execution(6)`) y #8 (`Execution(7)`). Tras cada
+ejecución hay que extender la `Execution(n)` nueva, hasta que el contrato gestione su TTL (redeploy, H2):
+
+```bash
+# n = índice global de la ejecución (TotalExecutions - 1). Clave XDR = ScVal Vec[Symbol("Execution"), U64(n)]
+stellar contract extend --network testnet --source-account raiz-admin \
+  --id CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB --durability persistent \
+  --ledgers-to-extend 1500000 --key-xdr "<XDR de Execution(n)>"
+```
+
 ## Hallazgos del RPC que condicionan el diseño (medidos hoy, Protocol 28)
 
 1. **Retención ≈ 7 días, no 24 h**: `getHealth` → `ledgerRetentionWindow = 120 960` ledgers. Los
