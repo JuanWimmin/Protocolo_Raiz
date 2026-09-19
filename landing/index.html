@@ -1137,22 +1137,22 @@
             <span class="exec-tag" data-exec-tag>snapshot 12·sep·2026</span>
           </div>
           <ul class="exec-list" data-exec-list>
-            <li class="exec-row">
+            <li class="exec-row" data-exec-id="4">
               <span class="exec-id">#4</span>
               <span class="exec-main"><b>Barrio Norte</b> · 0.05 USDC · Kit de reciclaje comunitario · 12·sep·2026</span>
               <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3" target="_blank" rel="noopener">tx db0bcd5f…94eac3 ↗</a>
             </li>
-            <li class="exec-row">
+            <li class="exec-row" data-exec-id="3">
               <span class="exec-id">#3</span>
               <span class="exec-main"><b>Centro Histórico</b> · 0.05 USDC · Luces para el parque infantil · 12·sep·2026</span>
               <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/aa303a0f7ed6459994650d28c426a0fda02389085fe80853208b3dc09290f5f1" target="_blank" rel="noopener">tx aa303a0f…90f5f1 ↗</a>
             </li>
-            <li class="exec-row">
+            <li class="exec-row" data-exec-id="2">
               <span class="exec-id">#2</span>
               <span class="exec-main"><b>Costa Vieja</b> · 0.30 USDC · Limpieza de la playa · 6·sep·2026</span>
-              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18" target="_blank" rel="noopener">tx 9ca06287…3a4a18 ↗</a>
+              <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18" target="_blank" rel="noopener">tx 9ca06287…3b4a18 ↗</a>
             </li>
-            <li class="exec-row">
+            <li class="exec-row" data-exec-id="1">
               <span class="exec-id">#1</span>
               <span class="exec-main"><b>Barrio Norte</b> · 0.15 USDC · Bancas para el parque · 6·sep·2026</span>
               <a class="exec-link" href="https://stellar.expert/explorer/testnet/tx/91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d" target="_blank" rel="noopener">tx 91c1c35c…04596d ↗</a>
@@ -1570,10 +1570,16 @@
       function bytesAHex(u8) {
         return Array.prototype.map.call(u8, function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
       }
+      // 0 = sin leer o falló · 1 = en curso · 2 = leída (con o sin eventos).
+      // El reintento de los 30 s del FONDO vuelve a llamar a ejecutarLectura(): sin esta
+      // guarda relanzaría ~14 llamadas RPC aunque las ejecuciones ya estén pintadas.
+      var execEstado = 0;
+      var execReintentos = 0;
       function leerEjecuciones(SDK, RpcNS, server) {
         var lista = document.querySelector('[data-exec-list]');
         var tag = document.querySelector('[data-exec-tag]');
-        if (!lista || !tag) return;
+        if (!lista || !tag || execEstado) return;
+        execEstado = 1;
         var filtro = { type: 'contract', contractIds: [DEPLOYMENTS.treasury] };
         var ultimo = 0;
         function scv(x) { return (typeof x === 'string') ? SDK.xdr.ScVal.fromXDR(x, 'base64') : x; }
@@ -1612,25 +1618,42 @@
           var filas = eventos.map(function (e) { try { return parsear(e); } catch (_) { return null; } })
             .filter(Boolean)
             .sort(function (a, b) { return b.ledger - a.ledger; });
+          execEstado = 2; // la lectura terminó bien aunque venga vacía: no reintentar
           if (!filas.length) return; // sin eventos en ventana: se queda el snapshot
-          lista.innerHTML = '';
-          filas.forEach(function (f) {
-            var li = document.createElement('li'); li.className = 'exec-row';
+          // FUSIÓN por proposal_id, nunca reemplazo: el RPC solo retiene ~7 días de
+          // eventos, así que lo vivo es un subconjunto del histórico. Reemplazar haría
+          // desaparecer de la página las ejecuciones antiguas (y sus links, que siguen
+          // siendo válidos) en cuanto hubiera una nueva.
+          filas.slice().sort(function (a, b) { return a.ledger - b.ledger; }).forEach(function (f) {
+            var href = 'https://stellar.expert/explorer/testnet/tx/' + f.tx;
+            var etiqueta = 'tx ' + f.tx.slice(0, 8) + '…' + f.tx.slice(-6) + ' ↗';
+            var previa = lista.querySelector('[data-exec-id="' + f.id + '"]');
+            if (previa) { // ya está en el snapshot: solo se confirma el enlace con el dato vivo
+              var enlace = previa.querySelector('.exec-link');
+              if (enlace) { enlace.href = href; enlace.textContent = etiqueta; }
+              return;
+            }
+            var li = document.createElement('li'); li.className = 'exec-row'; li.setAttribute('data-exec-id', String(f.id));
             var id = document.createElement('span'); id.className = 'exec-id'; id.textContent = '#' + f.id;
             var main = document.createElement('span'); main.className = 'exec-main';
             var b = document.createElement('b'); b.textContent = BARRIOS[f.barrio] || ('Barrio ' + f.barrio.slice(0, 6) + '…');
-            var fecha = f.fecha ? new Date(f.fecha).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+            // Fecha en UTC, como la evidencia: en la zona del visitante una ejecución de las
+            // 23:10 UTC saldría con el día siguiente en Europa.
+            var fecha = f.fecha ? new Date(f.fecha).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
             main.appendChild(b);
             main.appendChild(document.createTextNode(' · ' + f.monto.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDC · ' + fecha));
             var a = document.createElement('a'); a.className = 'exec-link'; a.target = '_blank'; a.rel = 'noopener';
-            a.href = 'https://stellar.expert/explorer/testnet/tx/' + f.tx;
-            a.textContent = 'tx ' + f.tx.slice(0, 8) + '…' + f.tx.slice(-6) + ' ↗';
+            a.href = href; a.textContent = etiqueta;
             li.appendChild(id); li.appendChild(main); li.appendChild(a);
-            lista.appendChild(li);
+            lista.insertBefore(li, lista.firstChild); // más reciente arriba (se insertan en orden ascendente)
           });
-          tag.textContent = 'en vivo · ' + filas.length + ' con tx verificable ●';
+          tag.textContent = 'en vivo · ' + filas.length + ' confirmada' + (filas.length === 1 ? '' : 's') + ' por el RPC ●';
           tag.classList.add('vivo');
-        }).catch(function () { /* silencio: queda el snapshot */ });
+        }).catch(function () {
+          // Queda el snapshot. Un único reintento propio (el del fondo no cubre este fallo).
+          execEstado = 0;
+          if (execReintentos++ < 1) setTimeout(function () { leerEjecuciones(SDK, RpcNS, server); }, 20000);
+        });
       }
 
       // Arranque diferido: nada de esto bloquea el primer render.
