@@ -7,7 +7,15 @@ hash de transacción). Continúa la siembra de `siembra_2026-09-06.md`.
 Red: **testnet** · Treasury `CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB` ·
 Governance `CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32`.
 
-## Ejecuciones con evento `execution` en la ventana del RPC (4)
+## Ejecuciones con evento `execution` en la ventana del RPC (4 el 12-sep)
+
+> **Actualización 2026-09-19 23:08 UTC:** estos 4 eventos ya NO están en la ventana de retención
+> del RPC (`oldestLedger` = 4646180; #3 y #4 son de los ledgers 4644673 / 4644679, #1 y #2 salieron
+> el 13-sep). `getEvents` del Treasury devuelve 0. Los hashes y los links de Stellar Expert de la
+> tabla siguen siendo válidos y permanentes, pero la app y la landing muestran hoy estas cuatro
+> ejecuciones como "histórica" (la landing, con su snapshot estático). Para capturas con filas
+> verificadas hacen falta ejecuciones nuevas dentro de una misma ventana de 7 días: #5 y #6
+> (ejecutables, ver abajo) más una tercera.
 
 | # | Barrio | Propuesta | Monto | Ejecutada (UTC) | Ledger | tx `execute_proposal` | Stellar Expert |
 |---|---|---|---|---|---|---|---|
@@ -36,6 +44,33 @@ en dispositivo, y para que haya ejecuciones con evento en ventana cuando se arme
 | 6 | Norte | Huerta comunitaria del barrio | 0.05 USDC | 2/3 (66 %) | `f8d8bf4f769a82d7a017fe895692b11f7772c9c7874afdf1929c4cd01bfbf8d1` |
 
 Votos #5: `2c39fd6f…f8d6`, `83f392d5…0a95a`, `0e9a9a51…8697d`. Votos #6: `3af5107e…bdcc4`, `01e8bf79…dab4c`.
+
+## Actualización 2026-09-19 — estado real y segunda siembra
+
+Comprobado a las 23:08 UTC: **0 eventos `execution` en la ventana del RPC** (los de #1–#4 ya
+salieron). #5 Centro y #6 Norte siguen `Active`, cerradas desde el 15-sep ≈ 21:03 UTC y con quórum
+contra el censo vivo (Centro 6 → 3/6 = 50 %; Norte 3 → 2/3 = 66 %): son ejecutables desde la app.
+
+Para llegar a ≥3 filas verificadas dentro de una misma ventana de 7 días se sembraron dos más
+(duración 3 días, **ejecutables desde el 2026-09-22 ≈ 23:10 UTC**):
+
+| # | Barrio | Propuesta | Monto | Votos | tx `create_proposal` |
+|---|---|---|---|---|---|
+| 7 | Centro | Pintura para la fachada del mercado | 0.05 USDC | 3/6 (50 %) | `344a4cca0f3fd68684533be6893b4b60ca425f9f0a873cb174486ca5d2b38a1f` |
+| 8 | Costa | Senalizacion del sendero costero | 0.05 USDC | 3/3 (100 %) | `7ee4d9960458b6b6064469b54a0529cde6c3d60dcbd07eeef9dc98b0588a7c87` |
+
+Votos #7: `46c309cf…6703d`, `73347329…16059`, `f8df59f1…42144`. Votos #8: `42540517…02eb4`,
+`dbee5e05…1b316`, `a7e98881…eecd2`. Verificados con `get_proposal` (3 a favor, 0 en contra cada una).
+
+**Saldo de los fondos.** El fondo de Norte había quedado en 0.0199999 USDC tras #4 y nada en Blend:
+#6 (0.05 USDC) habría fallado por saldo insuficiente. Se repuso con un pago normal del turista demo
+a un comercio de Norte: `pay_merchant` de 5 USDC con Tip Barrio del 2 % → +0.10 USDC al fondo
+(tx `861bab9250b77eb584a9e61bbed65f7f2dd532d393dc762afd3d8e0553a7a2e8`). Centro tiene 0.2500572 USDC
+(cubre #5 y #7) y Costa 0.08 USDC (cubre #8).
+
+**Ventana para las capturas con ≥3 verificadas:** si #5 y #6 se ejecutan desde la app el 19/20-sep,
+sus eventos viven hasta el 26/27-sep; #7 y #8 se pueden ejecutar desde el 22-sep ≈ 23:10 UTC. Las
+capturas con tres o cuatro filas verificadas hay que tomarlas **entre el 22-sep 23:10 UTC y el 26-sep**.
 
 ## Hallazgos del RPC que condicionan el diseño (medidos hoy, Protocol 28)
 
@@ -93,8 +128,10 @@ Salida del 2026-09-12: 4 filas (#1, #2, #3, #4) con los hashes de la tabla.
 
 - [ ] Instalar el APK de la rama en el Motorola G04 y capturar el Dashboard (Centro y Norte) con
       los chips "Ver en Stellar Expert" y el contador de verificadas → `capturas/`.
-- [ ] Desde el **15-sep ≈ 21:03 UTC**: ejecutar #5 (Centro) desde la app → captura de la card con
-      "✓ Ejecutada on-chain · tx …" y el chip (camino feliz); #6 (Norte) como reserva.
+- [ ] Ejecutar #5 (Centro) y #6 (Norte) desde la app (ya ejecutables) → captura de la card con
+      "✓ Ejecutada on-chain · tx …" y el chip (camino feliz).
+- [ ] Desde el **22-sep ≈ 23:10 UTC**: ejecutar #7 (Centro) y #8 (Costa) desde la app y, antes del
+      26-sep, capturar el Dashboard de los tres barrios con ≥3 filas verificadas en total.
 - [ ] Captura de la landing (sección "05 / La prueba" con el tag "en vivo · N con tx verificable ●")
       tras copiarla al repo Pages.
 - [ ] Probar los 4 links de Stellar Expert en incógnito (WP4).

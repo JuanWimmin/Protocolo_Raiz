@@ -281,9 +281,12 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   (getEvents del Treasury, paginación completa por cursor), `executeProposal` devuelve el hash real,
   `Execution.realTxHash` + `ExecutionHashStore` (caché local del camino feliz), Dashboard con chip
   "Ver en Stellar Expert" / estado "histórica", landing con bloque "Ejecuciones del fondo" en vivo.
-  **4 ejecuciones con evento en ventana** (#1 Norte, #2 Costa del 6-sep; #3 Centro `aa303a0f…`,
-  #4 Norte `db0bcd5f…` del 12-sep) y **#5 Centro / #6 Norte sembradas, ejecutables desde el 15-sep
-  ≈ 21:03 UTC** para el camino feliz desde la app. Evidencia y pendientes (capturas en dispositivo,
+  4 ejecuciones con hash real documentado (#1 Norte, #2 Costa del 6-sep; #3 Centro `aa303a0f…`,
+  #4 Norte `db0bcd5f…` del 12-sep): los links de Stellar Expert son permanentes, pero **sus eventos
+  ya salieron de la ventana del RPC (comprobado el 19-sep: 0 eventos del Treasury en ventana)**, así
+  que la app y la landing las muestran como "histórica". **#5 Centro / #6 Norte están `Active`,
+  cerradas y con quórum** (censo vivo 19-sep: Centro 6, Norte 3) → ejecutarlas desde la app da 2 filas
+  verificadas durante 7 días; el SOW pide ≥3, hace falta una tercera ejecución dentro de la misma ventana. Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
@@ -300,7 +303,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 ### Próximo paso
 
 - **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2 tx hash real: código listo el
-  12-sep** en la rama `worktree-wp2-tx-hash-real` (pendiente: merge a `main`, capturas del dashboard
-  en el Motorola, ejecutar #5 desde la app a partir del 15-sep ≈ 21:03 UTC, copiar `landing/index.html`
-  al repo Pages). Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+  12-sep** en la rama `worktree-wp2-tx-hash-real` (pendiente: merge a `main`; ejecutar #5 y #6 desde
+  la app en el Motorola — ya ejecutables; ejecutar #7 Centro y #8 Costa, sembradas el 19-sep, desde
+  el 22-sep ≈ 23:10 UTC; capturas del dashboard con ≥3 filas verificadas entre el 22 y el 26-sep,
+  mientras los eventos sigan en la ventana de 7 días del RPC; copiar `landing/index.html` al repo Pages). Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.
