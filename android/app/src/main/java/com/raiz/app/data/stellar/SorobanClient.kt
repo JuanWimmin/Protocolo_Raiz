@@ -20,6 +20,8 @@ import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.contract.ContractClient
 import com.soneso.stellar.sdk.rpc.requests.GetEventsRequest
 import com.soneso.stellar.sdk.rpc.responses.GetEventsResponse
+import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
+import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
 import com.soneso.stellar.sdk.scval.Scv
 import android.util.Log
 import javax.inject.Inject
@@ -710,34 +712,93 @@ class SorobanClient @Inject constructor(
         signer: KeyPair,
         proposalId: Long,
     ): RaizResult<String> {
-        return runCatching {
-            // buildInvoke + signAndSubmit en vez de invoke(): así conservamos
-            // el AssembledTransaction y podemos leer el hash tras el envío.
-            val assembled = treasuryClient().buildInvoke<Unit>(
+        return try {
+            // buildInvoke + sign + submit en vez de invoke(): conservamos el
+            // AssembledTransaction y fijamos el hash ANTES de enviar. Una propuesta
+            // solo se ejecuta una vez: si el sondeo posterior al envío falla (timeout
+            // de 30 s del SDK, corte de red en un getTransaction) la tx puede
+            // confirmarse igual, y perder su hash sería perder la evidencia.
+            val client = treasuryClient()
+            val assembled = client.buildInvoke<Unit>(
                 functionName = "execute_proposal",
                 arguments = mapOf("proposal_id" to proposalId.toULong()),
                 source = signer.getAccountId(),
                 signer = signer,
                 parseResultXdrFn = { /* void */ },
             )
-            assembled.signAndSubmit(signer)
+            assembled.sign(signer)
+            val signedHash = runCatching { assembled.signed?.hashHex() }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+
+            try {
+                assembled.submit()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                val sent = assembled.sendTransactionResponse
+                val hash = sent?.hash?.takeIf { it.isNotBlank() } ?: signedHash
+                // Rechazada en el envío (ERROR / TRY_AGAIN_LATER): no está en vuelo.
+                val rejected = sent != null &&
+                    sent.status != SendTransactionStatus.PENDING &&
+                    sent.status != SendTransactionStatus.DUPLICATE
+                if (hash == null || rejected) throw e
+                Log.w(TAG, "executeProposal #$proposalId: submit lanzó (${e.message}); sondeo tx $hash")
+                when (awaitTransaction(client, hash)) {
+                    GetTransactionStatus.SUCCESS -> {
+                        Log.i(TAG, "executeProposal #$proposalId → tx $hash (confirmada tras sondeo propio)")
+                        return RaizResult.Success(hash)
+                    }
+                    GetTransactionStatus.FAILED -> throw e
+                    else -> return RaizResult.Error(
+                        RaizErrorCode.NETWORK_ERROR,
+                        "La transacción se envió pero aún no se confirma (tx ${hash.take(8)}…${hash.takeLast(6)}). " +
+                            "No la repitas: refresca en unos segundos.",
+                    )
+                }
+            }
+
             val hash = assembled.getTransactionResponse?.txHash?.takeIf { it.isNotBlank() }
                 ?: assembled.sendTransactionResponse?.hash?.takeIf { it.isNotBlank() }
-                ?: error("execute_proposal enviada pero el RPC no devolvió txHash")
+                ?: signedHash
+                ?: error("execute_proposal enviada pero no se pudo determinar el txHash")
             Log.i(TAG, "executeProposal #$proposalId → tx $hash")
-            hash
-        }.fold(
-            onSuccess = { RaizResult.Success(it) },
-            onFailure = { e ->
-                val msg = e.message.orEmpty()
-                val code = when {
-                    "ProposalNotPassed" in msg ||
-                        "Error(Contract, #3)" in msg -> RaizErrorCode.QUORUM_NOT_REACHED
-                    else -> RaizErrorCode.NETWORK_ERROR
-                }
-                RaizResult.Error(code, "executeProposal: ${e.message}")
-            },
-        )
+            RaizResult.Success(hash)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            val msg = e.message.orEmpty()
+            val code = when {
+                "ProposalNotPassed" in msg ||
+                    "Error(Contract, #3)" in msg -> RaizErrorCode.QUORUM_NOT_REACHED
+                else -> RaizErrorCode.NETWORK_ERROR
+            }
+            RaizResult.Error(code, "executeProposal: ${e.message}")
+        }
+    }
+
+    /**
+     * Sondea `getTransaction(hash)` hasta SUCCESS/FAILED o hasta agotar el tiempo
+     * (devuelve NOT_FOUND). Tolera fallos de red en sondeos individuales.
+     */
+    private suspend fun awaitTransaction(
+        client: ContractClient,
+        hash: String,
+        timeoutMs: Long = 60_000L,
+    ): GetTransactionStatus {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val status = try {
+                client.server.getTransaction(hash).status
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                Log.w(TAG, "awaitTransaction $hash: sondeo falló: ${e.message}")
+                null
+            }
+            if (status == GetTransactionStatus.SUCCESS || status == GetTransactionStatus.FAILED) return status
+            delay(3_000L)
+        }
+        return GetTransactionStatus.NOT_FOUND
     }
 
     // ── Governance: tally (cierra la votación si pasó closes_at) ─────────
@@ -1129,18 +1190,34 @@ class SorobanClient @Inject constructor(
      * ejecuciones más viejas siguen en `get_execution_log`, pero sin hash real:
      * la UI las muestra como "históricas", nunca inventa un link).
      */
-    suspend fun executionEvents(barrioId: String): RaizResult<List<ExecutionEvent>> {
+    /**
+     * @param sinceEpochSec si se conoce el `executed_at` más antiguo que interesa
+     *   enlazar, el barrido arranca cerca de ese momento en vez de en el inicio de
+     *   la retención: una ejecución de hace minutos cuesta 1 llamada en vez de ~13.
+     *   La conversión tiempo→ledger asume 4 s/ledger (testnet va a ~5 s) más un
+     *   margen fijo, así que siempre arranca ANTES del evento buscado.
+     */
+    suspend fun executionEvents(
+        barrioId: String,
+        sinceEpochSec: Long? = null,
+    ): RaizResult<List<ExecutionEvent>> {
         val barrioHex = barrioId.removePrefix("0x").lowercase()
         if (barrioHex.hexToBytes() == null) {
             return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
         }
-        Log.i(TAG, "executionEvents: barrio=$barrioHex treasury=${deployments.treasury}")
-        return runCatching {
+        Log.i(TAG, "executionEvents: barrio=$barrioHex treasury=${deployments.treasury} since=$sinceEpochSec")
+        return try {
             val server = treasuryClient().server
             val health = server.getHealth()
             val latest = health.latestLedger ?: server.getLatestLedger().sequence
-            val oldest = health.oldestLedger ?: (latest - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L)
-            Log.i(TAG, "executionEvents: latest=$latest oldest=$oldest retention=${health.ledgerRetentionWindow}")
+            val retentionStart = (health.oldestLedger ?: (latest - EVENTS_LOOKBACK_LEDGERS).coerceAtLeast(1L)) +
+                EXEC_RETENTION_MARGIN
+            val sinceStart = sinceEpochSec?.let { since ->
+                val ageSec = (System.currentTimeMillis() / 1000L - since).coerceAtLeast(0L)
+                latest - ageSec / EXEC_MIN_LEDGER_SECONDS - EXEC_SINCE_MARGIN_LEDGERS
+            }
+            val oldest = maxOf(retentionStart, sinceStart ?: retentionStart) - EXEC_RETENTION_MARGIN
+            Log.i(TAG, "executionEvents: latest=$latest start=${oldest + EXEC_RETENTION_MARGIN} retention=${health.ledgerRetentionWindow}")
 
             val eventFilter = GetEventsRequest.EventFilter(
                 type = GetEventsRequest.EventFilterType.CONTRACT,
@@ -1181,7 +1258,7 @@ class SorobanClient @Inject constructor(
             }
             if (firstPage == null) {
                 Log.w(TAG, "executionEvents: sin respuesta en ninguna ventana → vacío")
-                return@runCatching emptyList<ExecutionEvent>()
+                return RaizResult.Success(emptyList())
             }
 
             val allEvents = mutableListOf<GetEventsResponse.EventInfo>()
@@ -1191,14 +1268,19 @@ class SorobanClient @Inject constructor(
             var pageCount = 1
 
             while (pageCursor != null && pageCursor != previousCursor && pageCount < EXEC_EVENTS_MAX_PAGES) {
-                val nextPage = server.getEvents(
-                    GetEventsRequest(
-                        startLedger = null,   // OBLIGATORIO null cuando cursor está presente
-                        endLedger = null,
-                        filters = listOf(eventFilter),
-                        pagination = GetEventsRequest.Pagination(cursor = pageCursor, limit = 100L),
-                    ),
-                )
+                val cursorForPage = pageCursor
+                // Reintento por página: un fallo transitorio en la página 9 no debe
+                // tirar lo ya leído en las 8 anteriores.
+                val nextPage = withNetworkRetry {
+                    server.getEvents(
+                        GetEventsRequest(
+                            startLedger = null,   // OBLIGATORIO null cuando cursor está presente
+                            endLedger = null,
+                            filters = listOf(eventFilter),
+                            pagination = GetEventsRequest.Pagination(cursor = cursorForPage, limit = 100L),
+                        ),
+                    )
+                }
                 pageCount++
                 allEvents.addAll(nextPage.events)
                 previousCursor = pageCursor
@@ -1222,14 +1304,13 @@ class SorobanClient @Inject constructor(
                 }
                 .filter { it.barrioId.equals(barrioHex, ignoreCase = true) }
             Log.i(TAG, "executionEvents: RESULTADO → ${parsed.size} eventos de ${allEvents.size} crudos en $pageCount págs para $barrioHex")
-            parsed
-        }.fold(
-            onSuccess = { RaizResult.Success(it) },
-            onFailure = { e ->
-                Log.w(TAG, "executionEvents: error no recuperable: ${e.message}")
-                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "executionEvents: ${e.message}")
-            },
-        )
+            RaizResult.Success(parsed)
+        } catch (ce: CancellationException) {
+            throw ce // cambio de barrio / pantalla cerrada: no es un error de red
+        } catch (e: Exception) {
+            Log.w(TAG, "executionEvents: error no recuperable: ${e.message}")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "executionEvents: ${e.message}")
+        }
     }
 
     /**
@@ -1361,5 +1442,15 @@ class SorobanClient @Inject constructor(
          * páginas. 30 deja holgura si la retención crece.
          */
         const val EXEC_EVENTS_MAX_PAGES = 30
+
+        /**
+         * Conversión conservadora tiempo→ledger para arrancar el barrido cerca de un
+         * `executed_at`: testnet cierra ~1 ledger/5 s; asumir 4 s hace que el inicio
+         * calculado caiga ANTES del evento real.
+         */
+        const val EXEC_MIN_LEDGER_SECONDS = 4L
+
+        /** Margen extra (~1,4 h) restado al inicio calculado desde `executed_at`. */
+        const val EXEC_SINCE_MARGIN_LEDGERS = 1_000L
     }
 }

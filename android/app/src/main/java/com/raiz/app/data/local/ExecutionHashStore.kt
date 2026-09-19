@@ -7,17 +7,19 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Hashes reales de transacción de las ejecuciones que disparó ESTA app
- * (camino feliz de D2): cuando el usuario pulsa "Ejecutar trustless", el
- * `sendTransaction` devuelve el hash y lo guardamos aquí por `proposal_id`.
+ * Caché local de hashes reales de transacción de las ejecuciones del Treasury
+ * (D2 del SOW). Se alimenta de dos fuentes:
+ *   1. el camino feliz: cuando ESTA app dispara `execute_proposal`, el hash se
+ *      conoce al firmar/enviar;
+ *   2. los eventos `execution` leídos del RPC mientras siguen en su ventana de
+ *      retención (~7 días en testnet).
  *
- * Así el dashboard sigue enlazando a Stellar Expert aunque el evento
- * `execution` ya haya salido de la ventana de retención del RPC (~7 días en
- * testnet). Es una caché local por dispositivo, no una fuente de verdad: el
- * evento del RPC siempre manda cuando está disponible.
+ * Así el dashboard sigue enlazando a Stellar Expert cuando el evento ya salió de
+ * la ventana. Es una caché por dispositivo, no una fuente de verdad.
  *
- * `proposal_id` es único a nivel de Governance (contador global), y una
- * propuesta solo puede ejecutarse una vez → clave suficiente.
+ * La clave incluye el **contrato Treasury**: `proposal_id` es un contador que
+ * vuelve a empezar en cada redeploy, y sin el contrato en la clave un hash viejo
+ * se mostraría como transacción verificada de una ejecución distinta.
  */
 @Singleton
 class ExecutionHashStore @Inject constructor(
@@ -26,25 +28,26 @@ class ExecutionHashStore @Inject constructor(
     private val prefs: SharedPreferences =
         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun save(proposalId: Long, txHash: String) {
+    fun save(treasuryId: String, proposalId: Long, txHash: String) {
         if (txHash.isBlank()) return
-        prefs.edit().putString(key(proposalId), txHash).apply()
+        prefs.edit().putString(key(treasuryId, proposalId), txHash).apply()
     }
 
-    fun get(proposalId: Long): String? = prefs.getString(key(proposalId), null)
-
-    /** Todos los hashes guardados, indexados por proposal_id. */
-    fun all(): Map<Long, String> =
-        prefs.all.mapNotNull { (k, v) ->
-            val id = k.removePrefix(KEY_PREFIX).toLongOrNull() ?: return@mapNotNull null
+    /** Hashes guardados para ese contrato Treasury, indexados por proposal_id. */
+    fun all(treasuryId: String): Map<Long, String> {
+        val prefix = prefix(treasuryId)
+        return prefs.all.mapNotNull { (k, v) ->
+            if (!k.startsWith(prefix)) return@mapNotNull null
+            val id = k.removePrefix(prefix).toLongOrNull() ?: return@mapNotNull null
             val hash = v as? String ?: return@mapNotNull null
             id to hash
         }.toMap()
+    }
 
-    private fun key(proposalId: Long) = "$KEY_PREFIX$proposalId"
+    private fun prefix(treasuryId: String) = "exec_${treasuryId}_"
+    private fun key(treasuryId: String, proposalId: Long) = "${prefix(treasuryId)}$proposalId"
 
     private companion object {
         const val PREFS = "raiz_execution_hashes"
-        const val KEY_PREFIX = "proposal_"
     }
 }

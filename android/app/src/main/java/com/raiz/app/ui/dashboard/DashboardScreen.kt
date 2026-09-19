@@ -204,7 +204,10 @@ private fun DashboardBody(
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
-        if (state.proposals.isEmpty()) {
+        // visibleProposals = activas + las que esta sesión acaba de ejecutar (para
+        // que la card conserve el hash real aunque la propuesta ya no sea Active).
+        val visibleProposals = state.visibleProposals
+        if (visibleProposals.isEmpty()) {
             item("proposals-empty") {
                 Text(
                     text = "No hay propuestas abiertas en este barrio.",
@@ -214,7 +217,7 @@ private fun DashboardBody(
                 )
             }
         } else {
-            items(state.proposals, key = { "prop-${it.id}" }) { p ->
+            items(visibleProposals, key = { "prop-${it.id}" }) { p ->
                 ProposalRow(
                     proposal = p,
                     nowUnix = nowUnix,
@@ -229,7 +232,8 @@ private fun DashboardBody(
         item("executions-title") {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Ejecuciones registradas (${state.executions.size})",
+                    text = if (state.executionsLoadFailed) "Ejecuciones registradas"
+                    else "Ejecuciones registradas (${state.executions.size})",
                     style = MaterialTheme.typography.labelLarge,
                     color = RaizBlack,
                 )
@@ -242,7 +246,17 @@ private fun DashboardBody(
                 }
             }
         }
-        if (state.executions.isEmpty()) {
+        if (state.executionsLoadFailed) {
+            // Un fallo de lectura NO es "0 ejecuciones": decirlo, no pintar un dato falso.
+            item("exec-failed") {
+                Text(
+                    text = "No se pudo leer el registro de ejecuciones de este barrio. Toca refrescar para reintentar.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB00020),
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+        } else if (state.executions.isEmpty()) {
             item("exec-empty") {
                 Text(
                     text = "Aún no hay propuestas ejecutadas en este barrio.",
@@ -253,7 +267,11 @@ private fun DashboardBody(
             }
         } else {
             items(state.executions, key = { "exec-${it.proposalId}" }) { exec ->
-                ExecutionRow(exec, eventsOk = state.executionEventsOk)
+                ExecutionRow(
+                    exec = exec,
+                    eventsOk = state.executionEventsOk,
+                    eventsLoading = state.executionEventsLoading,
+                )
             }
         }
 
@@ -285,6 +303,13 @@ private fun ProposalRow(
     val secondsToClose = (proposal.closesAt - nowUnix).coerceAtLeast(0L)
     val closed = proposal.closesAt <= nowUnix
     val isPassed = proposal.status == ProposalStatus.PASSED
+    // `list_active_proposals` solo devuelve propuestas Active: si se exigiera Passed,
+    // "Ejecutar" sería inalcanzable (tras el tally la propuesta desaparece de la lista).
+    // El Treasury hace el tally dentro de `execute_proposal`, así que una propuesta
+    // cerrada y aún Active se puede ejecutar directamente.
+    val closedActive = closed && proposal.status == ProposalStatus.ACTIVE
+    val canExecute = isPassed || closedActive
+    val executedHere = action is ProposalActionState.Ok && action.txHash != null
 
     Column(
         modifier = Modifier
@@ -345,15 +370,13 @@ private fun ProposalRow(
                 isPassed -> "✓ Aprobada — lista para ejecutar"
                 proposal.status == ProposalStatus.REJECTED -> "✗ Rechazada"
                 proposal.status == ProposalStatus.EXECUTED -> "● Ejecutada"
-                closed && proposal.status == ProposalStatus.ACTIVE ->
-                    "Tiempo cumplido · Falta cerrar votación"
+                closedActive -> "Votación cerrada · lista para ejecutar"
                 else -> "Cierra en ${formatCountdown(secondsToClose)}"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = when {
-                isPassed -> RaizGreen
+                isPassed || closedActive || proposal.status == ProposalStatus.EXECUTED -> RaizGreen
                 proposal.status == ProposalStatus.REJECTED -> Color(0xFFB00020)
-                closed -> RaizYellow
                 else -> RaizBlack.copy(alpha = 0.7f)
             },
         )
@@ -408,9 +431,9 @@ private fun ProposalRow(
 
         // Botón según estado
         when {
-            isPassed -> Button(
+            canExecute && !executedHere -> Button(
                 onClick = onExecute,
-                enabled = action !is ProposalActionState.Submitting && action !is ProposalActionState.Ok,
+                enabled = action !is ProposalActionState.Submitting,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = RaizGreen,
@@ -422,7 +445,12 @@ private fun ProposalRow(
                 Spacer(modifier = Modifier.size(8.dp))
                 Text("Ejecutar trustless", style = MaterialTheme.typography.labelLarge)
             }
-            closed && proposal.status == ProposalStatus.ACTIVE -> Button(
+            else -> Unit
+        }
+        // Secundario: si la ejecución falló (p. ej. sin quórum), permitir registrar el
+        // resultado on-chain con `tally` para que la propuesta salga de "activas".
+        when {
+            closedActive && action is ProposalActionState.Failed -> Button(
                 onClick = onCloseVoting,
                 enabled = action !is ProposalActionState.Submitting,
                 modifier = Modifier.fillMaxWidth(),
@@ -496,7 +524,7 @@ private fun StatsGrid(state: DashboardUiState) {
             )
             StatTile(
                 label = "Ejecuciones",
-                value = state.executions.size.toString(),
+                value = if (state.executionsLoadFailed) "—" else state.executions.size.toString(),
                 accent = RaizYellow,
                 modifier = Modifier.weight(1f),
             )
@@ -584,13 +612,15 @@ private fun UsageBar(state: DashboardUiState) {
         }
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "Ejecutado: ${executedStroops.formatUsdc()} ($used%)",
+                // Si get_execution_log falló, "0 USDC (0%)" sería un dato inventado.
+                text = if (state.executionsLoadFailed) "Ejecutado: sin dato (lectura fallida)"
+                else "Ejecutado: ${executedStroops.formatUsdc()} ($used%)",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "Disponible: $available%",
+                text = if (state.executionsLoadFailed) "Disponible: —" else "Disponible: $available%",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizGreen,
             )
@@ -613,7 +643,7 @@ private fun UsageBar(state: DashboardUiState) {
  * auditoría, no un tx hash: no se muestra como tal.
  */
 @Composable
-private fun ExecutionRow(exec: Execution, eventsOk: Boolean) {
+private fun ExecutionRow(exec: Execution, eventsOk: Boolean, eventsLoading: Boolean) {
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -661,41 +691,43 @@ private fun ExecutionRow(exec: Execution, eventsOk: Boolean) {
 
         val realHash = exec.realTxHash
         if (realHash != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AssistChip(
-                    onClick = { StellarExpert.open(context, StellarExpert.txUrl(realHash)) },
-                    label = {
-                        Text(
-                            "Ver en Stellar Expert",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = RaizWhite,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Verified, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(16.dp))
-                    },
-                    trailingIcon = {
-                        Icon(Icons.Outlined.OpenInNew, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(14.dp))
-                    },
-                    colors = AssistChipDefaults.assistChipColors(containerColor = RaizGreen),
-                    border = null,
-                )
-                Spacer(modifier = Modifier.size(10.dp))
-                Text(
-                    text = "tx ${realHash.take(8)}…${realHash.takeLast(6)}",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                    color = RaizBlack.copy(alpha = 0.55f),
-                )
-            }
-        } else {
+            // Hash en su propia línea, encima del chip: probado en Moto G04 (720 px), al
+            // lado del chip no cabe y se cortaba por la derecha.
             Text(
-                text = if (eventsOk) {
-                    "Histórica · sin evento en la ventana del RPC (sin enlace a la tx)"
-                } else {
-                    "Hash de transacción no disponible ahora (RPC sin respuesta) · reintenta"
+                text = "Transacción verificada · tx ${realHash.take(8)}…${realHash.takeLast(6)}",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                ),
+                color = RaizBlack.copy(alpha = 0.6f),
+            )
+            AssistChip(
+                onClick = { StellarExpert.open(context, StellarExpert.txUrl(realHash)) },
+                label = {
+                    Text(
+                        "Ver en Stellar Expert",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = RaizWhite,
+                    )
+                },
+                leadingIcon = {
+                    Icon(Icons.Outlined.Verified, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(16.dp))
+                },
+                trailingIcon = {
+                    Icon(Icons.Outlined.OpenInNew, contentDescription = null, tint = RaizWhite, modifier = Modifier.size(14.dp))
+                },
+                colors = AssistChipDefaults.assistChipColors(containerColor = RaizGreen),
+                border = null,
+            )
+        } else {
+            // Solo una ejecución reciente puede tener aún su evento en el RPC (~7 días):
+            // las antiguas son "históricas" desde el primer momento, no "buscando".
+            val couldHaveEvent = exec.executedAt >= System.currentTimeMillis() / 1000L - 8L * 24 * 3600
+            Text(
+                text = when {
+                    eventsLoading && couldHaveEvent -> "Buscando la transacción en el RPC de Stellar…"
+                    !eventsOk -> "Hash de transacción no disponible ahora (RPC sin respuesta) · reintenta"
+                    else -> "Histórica · sin evento en la ventana del RPC (sin enlace a la tx)"
                 },
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
                 color = RaizBlack.copy(alpha = 0.55f),
