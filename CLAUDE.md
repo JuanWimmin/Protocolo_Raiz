@@ -299,8 +299,13 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   "Ejecutar trustless" era inalcanzable porque `list_active_proposals` solo devuelve `Active` — ahora
   se ofrece en propuestas cerradas aún `Active`). **#5 Centro (`c891ec26…`) y #6 Norte (`76452c3a…`)
   ejecutadas DESDE LA APP** con la wallet semilla del dispositivo; hash en la card, fila verificada y
-  chip que abre Stellar Expert (9 capturas en `docs/evidencia_sow/d2/capturas/`). Van 2 filas
-  verificadas; el SOW pide ≥3 → **#7 Centro y #8 Costa, ejecutables desde el 22-sep ≈ 23:10 UTC**. Evidencia y pendientes (capturas en dispositivo,
+  chip que abre Stellar Expert (11 capturas en `docs/evidencia_sow/d2/capturas/`). Para que TODA
+  ejecución enlace también pasada la ventana de 7 días del RPC hay un archivo versionado de hashes
+  (`android/app/src/main/assets/execution_hashes.json`, rotulado "Verificada (archivo)" en la UI;
+  **añadir una línea tras cada ejecución nueva**). **En `main` y pusheado el 19-sep (`9904ff5`);
+  landing publicada en raizapp.xyz (repo Pages `8637196`) con las 6 ejecuciones enlazadas.** Los 3
+  campos del portal D2 están mapeados en `docs/evidencia_sow/README.md`. Quedan #7 Centro y #8 Costa,
+  ejecutables desde el 22-sep ≈ 23:10 UTC. Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
@@ -317,8 +322,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 ### Próximo paso
 
 - **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2 tx hash real: código listo el
-  12-sep y probado/corregido en dispositivo el 19-sep** en la rama `worktree-wp2-tx-hash-real`
-  (#5 y #6 ya ejecutadas desde la app). Pendiente: merge a `main`; ejecutar #7 Centro y #8 Costa desde
-  la app a partir del 22-sep ≈ 23:10 UTC y **extender el TTL de sus `Execution(6)` y `Execution(7)`**;
-  capturas finales con ≥3 filas verificadas; copiar `landing/index.html` al repo Pages. Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+  12-sep, probado/corregido en dispositivo, mergeado a `main` y landing publicada el 19-sep**; los 3
+  campos de evidencia del portal ya tienen enlace (`docs/evidencia_sow/README.md`). Cola menor de D2:
+  ejecutar #7 Centro y #8 Costa desde la app a partir del 22-sep ≈ 23:10 UTC, añadir sus hashes a
+  `execution_hashes.json` + snapshot de la landing, y **extender el TTL de `Execution(6)` y `Execution(7)`**. Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.

@@ -1,8 +1,9 @@
 # Paquete de evidencia — SOW Instaward RAÍZ
 
-> Estado al **2026-09-12**. Este README es el índice del paquete y el mapa exacto
-> **campo del portal → enlace a pegar**. Detalle por entregable: [`d1/README.md`](d1/README.md),
-> [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md).
+> Estado al **2026-09-19** (D1 verificado el 12-sep; D2 actualizado el 19-sep). Este README es el
+> índice del paquete y el mapa exacto **campo del portal → enlace a pegar**. Detalle por entregable:
+> [`d1/README.md`](d1/README.md), [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md)
+> (continúa [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md)).
 >
 > Verificado hoy: `/v1/health` del relayer responde 200 en vivo (uptime ≈ 6 días, protocolo 28),
 > raizapp.xyz sirve los contratos vigentes, y `main` local == GitHub en ambos repos
@@ -29,20 +30,38 @@ keystore propio sin afectar esta evidencia.
 
 ---
 
-## D2 — Tx hash real · estado y enlaces ya disponibles
+## D2 — Real Transaction Linking · enlaces para los 3 campos del portal
 
-Objetivo SOW: dashboard en vivo + **≥3** ejecuciones enlazadas a su transacción real.
+Objetivo SOW: cada Execution del dashboard enlaza a su transacción real de Stellar (el cliente
+captura el hash del resultado del RPC y correlaciona los eventos `execution`), en lugar del hash
+determinístico que guarda el contrato. Código en `main`, probado en dispositivo físico el 2026-09-19.
 
-| Ejecución | Barrio | Tx real | Stellar Expert |
+| # | Campo del portal | Enlace a pegar | Estado |
 |---|---|---|---|
-| #1 "Bancas para el parque" (2026-09-06) | Norte | `91c1c35c…596d` | https://stellar.expert/explorer/testnet/tx/91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d |
-| #2 "Limpieza de la playa" (2026-09-06) | Costa | `9ca06287…4a18` | https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18 |
-| #3 "Luces para el parque infantil" (Centro) | Centro | — | **Ejecutable desde el 9-sep 16:49 UTC** — ejecutarla DESDE LA APP para capturar el hash del camino feliz (WP2) |
-| #4 "Kit de reciclaje comunitario" (Norte, reserva) | Norte | — | Ejecutable desde el 9-sep |
+| 1 | Dashboard Live URL | https://raizapp.xyz/#demo | ✅ Publicado 2026-09-19 (repo Pages `8637196`). Bloque "Ejecuciones del fondo · Treasury": 6 ejecuciones enlazadas; las que siguen en la ventana del RPC se confirman en vivo con `getEvents` |
+| 2 | Stellar Expert TX Links (x3) | Los tres de abajo (#5, #6, #4) | ✅ 6 disponibles; #5 y #6 se ejecutaron **desde la app** |
+| 3 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png | ✅ App (Moto G04): 3 ejecuciones, las 3 con enlace. Web: [`11_landing_viva…png`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/11_landing_viva_raizapp_xyz_6_ejecuciones_con_tx_links.png). Carpeta: [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas) |
 
-Pendiente para cerrar D2: código WP2 (correlación `getEvents`→txHash en app y landing, según
-`docs/PLAN_CLAUDE_CODE_SOW.md`), ejecutar #3 desde la app, y screenshots del dashboard con los
-enlaces vivos → `d2/`.
+**Los 3 enlaces del campo 2** (cada uno verificado en Horizon: tx exitosa, `execute_proposal(n)` sobre el Treasury):
+
+1. #5 Centro, ejecutada desde la app (2026-09-19): https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc
+2. #6 Norte, ejecutada desde la app (2026-09-19): https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1
+3. #4 Norte (2026-09-12): https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3
+
+Resto: #1 [`91c1c35c…`](https://stellar.expert/explorer/testnet/tx/91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d) ·
+#2 [`9ca06287…`](https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18) ·
+#3 [`aa303a0f…`](https://stellar.expert/explorer/testnet/tx/aa303a0f7ed6459994650d28c426a0fda02389085fe80853208b3dc09290f5f1).
+
+**Cómo enlaza el dashboard (para el revisor):** (1) cuando la app ejecuta una propuesta, fija el hash
+al firmar y lo confirma con el resultado del RPC — capturas `02` y `06`; (2) al cargar, correlaciona
+por `proposal_id` los eventos `execution` del Treasury (`getEvents`) con `get_execution_log`; (3) el
+RPC de testnet solo retiene ~7 días de eventos, así que las ejecuciones más antiguas toman su hash
+de un archivo versionado (`android/app/src/main/assets/execution_hashes.json`) y la UI las rotula
+"Verificada (archivo)". La captura `08` muestra Stellar Expert abierto desde el chip de la app.
+
+Pendiente menor (no bloquea los 3 campos): ejecutar #7 Centro y #8 Costa desde la app a partir del
+**22-sep ≈ 23:10 UTC** (mínimo on-chain de 3 días por propuesta), añadir sus hashes al archivo y
+extender el TTL de sus entradas (`scripts/treasury_ttl.js`). Opcional: Release del APK con D2.
 
 ## D3 — SEP-10 + SEP-24 · sin iniciar
 
@@ -78,6 +97,6 @@ vigentes (= `deployments.json`, los mismos que muestra `/v1/health` del relayer 
 4. (Opcional) Reemplazar `d1_relayer_health_2026-09-12.png` por una captura de navegador con la
    barra de URL visible — la actual es la respuesta real del 12-sep renderizada tal cual, con
    URL y fecha rotuladas.
-5. D2: ejecutar #3 desde la app + WP2 + capturas → llenar sus campos con los enlaces de la tabla D2.
+5. D2: pegar en el portal los 3 campos de la tabla D2 (URL viva, 3 links de Stellar Expert, captura).
 6. Cosmético: el `version` que reporta `/v1/health` sigue en `0.1.0` (bump de `package.json` del
    relayer en el próximo deploy).
