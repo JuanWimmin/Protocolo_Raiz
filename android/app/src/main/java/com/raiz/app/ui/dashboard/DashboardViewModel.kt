@@ -281,11 +281,14 @@ class DashboardViewModel @Inject constructor(
             // ── Fase 1: publicar ya lo leído, con los hashes que hay en caché ──
             val treasuryId = _state.value.contractTreasury
             val cached = executionHashStore.all(treasuryId)
+            // Respaldo versionado para ejecuciones cuyo evento ya caducó en el RPC.
+            val archive = executionHashStore.archive(treasuryId)
             val nowSec = System.currentTimeMillis() / 1000L
-            // Solo pueden tener evento en el RPC las ejecuciones sin hash en caché y
+            // Solo pueden tener evento en el RPC las ejecuciones sin hash conocido y
             // dentro de la retención (~7 días; 8 de margen por desfase de reloj).
             val pending = rawExecutions.filter {
-                it.proposalId !in cached && it.executedAt >= nowSec - EVENT_RETENTION_SEC
+                it.proposalId !in cached && it.proposalId !in archive &&
+                    it.executedAt >= nowSec - EVENT_RETENTION_SEC
             }
             Log.i(
                 TAG,
@@ -298,7 +301,13 @@ class DashboardViewModel @Inject constructor(
                     loading = false,
                     error = if (barrio == null) firstError else null,
                     barrio = barrio,
-                    executions = rawExecutions.map { e -> e.copy(realTxHash = cached[e.proposalId]) },
+                    executions = rawExecutions.map { e ->
+                        val local = cached[e.proposalId]
+                        e.copy(
+                            realTxHash = local ?: archive[e.proposalId],
+                            realTxHashFromArchive = local == null && archive[e.proposalId] != null,
+                        )
+                    },
                     executionsLoadFailed = executionsError != null,
                     executionEventsLoading = pending.isNotEmpty(),
                     executionEventsOk = true,
@@ -325,7 +334,8 @@ class DashboardViewModel @Inject constructor(
             _state.update {
                 if (gen != loadGen) it else it.copy(
                     executions = it.executions.map { e ->
-                        e.copy(realTxHash = fromEvents[e.proposalId] ?: e.realTxHash)
+                        val live = fromEvents[e.proposalId]
+                        if (live == null) e else e.copy(realTxHash = live, realTxHashFromArchive = false)
                     },
                     executionEventsLoading = false,
                     executionEventsOk = ev is RaizResult.Success,

@@ -161,7 +161,8 @@ data class Execution(
     val recipient: String,
     val executedAt: Long,
     val txHash: String,             // hex de BytesN<32> — ID de auditoría, no tx hash
-    val realTxHash: String? = null  // hash real de la tx (evento RPC / sendTransaction), solo cliente
+    val realTxHash: String? = null, // hash real de la tx (evento RPC / sendTransaction / archivo), solo cliente
+    val realTxHashFromArchive: Boolean = false // true si salió de assets/execution_hashes.json (evento ya caducado en el RPC)
 ) {
     val amountUsdc: Double get() = amountStroops.toUsdc()
     val verified: Boolean get() = !realTxHash.isNullOrBlank()

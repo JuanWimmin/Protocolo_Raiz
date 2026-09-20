@@ -25,7 +25,13 @@ data class Execution(
     val recipient: String,
     val executedAt: Long,    // unix timestamp
     val txHash: String,      // ID de auditoría on-chain (hex de 64 chars), NO tx hash
-    val realTxHash: String? = null, // hash real de la tx de Stellar (evento o sendTransaction)
+    val realTxHash: String? = null, // hash real de la tx de Stellar (evento, sendTransaction o archivo)
+    /**
+     * true si `realTxHash` salió del archivo versionado (`assets/execution_hashes.json`)
+     * y no de un evento del RPC ni de un envío de esta app. El hash es igual de real
+     * (verificado en Horizon al archivarlo); la UI solo lo etiqueta con su procedencia.
+     */
+    val realTxHashFromArchive: Boolean = false,
 ) {
     val amountUsdc: Double get() = amountStroops.toUsdc()
 

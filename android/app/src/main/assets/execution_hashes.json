@@ -1,0 +1,11 @@
+{
+  "_comment": "Archivo de hashes reales de execute_proposal por contrato Treasury y proposal_id. Fuente: docs/evidencia_sow/d2/ (cada hash verificado en Horizon y contra el evento `execution`). Sirve SOLO de respaldo para ejecuciones cuyo evento ya salió de la ventana de retención del RPC (~7 días); el evento del RPC y el hash capturado por la app tienen prioridad. Añadir una línea tras cada ejecución nueva. Un redeploy del Treasury cambia la clave de primer nivel.",
+  "CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB": {
+    "1": "91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d",
+    "2": "9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18",
+    "3": "aa303a0f7ed6459994650d28c426a0fda02389085fe80853208b3dc09290f5f1",
+    "4": "db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3",
+    "5": "c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc",
+    "6": "76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1"
+  }
+}

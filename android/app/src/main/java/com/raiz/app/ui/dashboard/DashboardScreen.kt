@@ -694,7 +694,12 @@ private fun ExecutionRow(exec: Execution, eventsOk: Boolean, eventsLoading: Bool
             // Hash en su propia línea, encima del chip: probado en Moto G04 (720 px), al
             // lado del chip no cabe y se cortaba por la derecha.
             Text(
-                text = "Transacción verificada · tx ${realHash.take(8)}…${realHash.takeLast(6)}",
+                // Procedencia a la vista: "archivo" = hash real tomado del índice versionado
+                // (el evento ya caducó en el RPC); sin sufijo = evento del RPC o envío de esta app.
+                // Textos medidos en Moto G04 (720 px, mono 12 sp ≈ 43 caracteres por línea).
+                text = (if (exec.realTxHashFromArchive) "Verificada (archivo)" else "Transacción verificada") +
+                    " · tx ${realHash.take(8)}…${realHash.takeLast(6)}",
+                maxLines = 1,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
