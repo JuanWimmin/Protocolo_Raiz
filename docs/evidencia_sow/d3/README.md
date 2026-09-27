@@ -1,9 +1,9 @@
 # Evidencia SOW — D3: SEP-10 + SEP-24 (on-ramp con el anchor de prueba del SDF)
 
-> Estado al **2026-09-27**: **código listo** en la rama `feat/wp3-sep24` (compila; 17 tests JVM del
+> Estado al **2026-09-27**: **código listo y en `main`** (compila; 17 tests JVM del
 > cliente del anchor en verde; revisión adversarial aplicada el mismo día — ver "Cambios tras la
 > revisión"). **Pendiente:** prueba end-to-end en el Motorola G04, grabación del video de 60 s y el tx
-> hash del depósito real. Nada de D3 está todavía en `main`.
+> hash del depósito real.
 
 **Entregable D3 (SOW Instaward):** depósito SEP-24 interactivo completado end-to-end desde la app
 contra `testanchor.stellar.org` (anchor de prueba de la Stellar Development Foundation), con

@@ -309,7 +309,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   devuelve **0 eventos `execution`** en la ventana del RPC (las 6 ejecuciones enlazan solo vía
   `execution_hashes.json` / snapshot de la landing). Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
-- **D3 (WP3):** código listo el 27-sep en la rama `feat/wp3-sep24` (sin mergear ni pushear): SEP-1 +
+- **D3 (WP3):** código listo el 27-sep y **mergeado a `main` el mismo día** (pendiente de probar en dispositivo): SEP-1 +
   SEP-10 + SEP-24 contra `testanchor.stellar.org` con `kmp-stellar-sdk` 1.6.0, sin dependencias Stellar
   nuevas (solo `androidx.browser` 1.8.0 para Custom Tabs). `data/anchor/AnchorClient.kt` (`loadInfo`
   toml + `/info`, `authenticate` con JWT **solo en memoria** cacheado por cuenta, `startDeposit`,
@@ -348,9 +348,9 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). Cola
   menor de D2 (sigue abierta al 27-sep): ejecutar #7 Centro y #8 Costa desde la app, añadir sus hashes a
   `execution_hashes.json` + snapshot de la landing y **extender el TTL de `Execution(6)` y `Execution(7)`**
-  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: código listo el 27-sep en `feat/wp3-sep24`**; falta
+  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: código listo el 27-sep y en `main`**; falta
   (1) instalar el APK debug en el Motorola G04 y pasar el checklist de `docs/evidencia_sow/d3/README.md`,
   (2) grabar el video de 60 s (`docs/evidencia_sow/d3/guion_video.md`) y anotar el tx hash del depósito
-  en `d3/README.md` y en `docs/evidencia_sow/README.md`, (3) commits en español + PR a `main`. Después
+  en `d3/README.md` y en `docs/evidencia_sow/README.md`, (3) pegar los campos D3 en el portal. Después
   arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.

@@ -70,7 +70,7 @@ extender el TTL de sus entradas (`scripts/treasury_ttl.js`). Opcional: Release d
 
 Objetivo SOW: depósito SEP-24 interactivo completado end-to-end desde la app contra
 `testanchor.stellar.org` (anchor de prueba del SDF), autenticado con SEP-10 firmado por la wallet del
-usuario. **Código listo el 2026-09-27 en la rama `feat/wp3-sep24`** (compila; 17 tests JVM del cliente
+usuario. **Código listo el 2026-09-27 y mergeado a `main`** (compila; 17 tests JVM del cliente
 del anchor en verde; revisión adversarial aplicada; todavía no está en `main`). Flujo real, hallazgos de la sonda del 27-sep, notas
 honestas y checklist de dispositivo: [`d3/README.md`](d3/README.md). Guion del video de 60 s:
 [`d3/guion_video.md`](d3/guion_video.md).

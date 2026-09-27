@@ -2,11 +2,11 @@
 
 Objetivo (aceptación WP3): un depósito completo **desde la app → web del anchor (sin cortes) → saldo
 actualizado + tx hash**. Un solo plano de pantalla del teléfono, narración en off en español.
-Estado al 2026-09-27: **pendiente de grabar** (el código está listo en `feat/wp3-sep24`).
+Estado al 2026-09-27: **pendiente de grabar** (el código está en `main`).
 
 ## Antes de grabar (checklist)
 
-- [ ] APK **debug** del commit final de `feat/wp3-sep24` instalado
+- [ ] APK **debug** del commit final de `main` instalado
       (`cd android && ./gradlew :app:assembleDebug -q` → `adb install -r app/build/outputs/apk/debug/app-debug.apk`).
       Anotar commit y hora en `README.md` de esta carpeta.
 - [ ] Wallet **semilla** (`G…`) — passkey no sirve (muestra "Disponible pronto para passkey (SEP-45)").
