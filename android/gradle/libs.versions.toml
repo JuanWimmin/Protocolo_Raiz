@@ -25,6 +25,8 @@ junit = "4.13.2"
 credentialsManager = "1.3.0"
 mapbox = "11.9.0"
 mapboxCompose = "11.9.0"
+# Custom Tabs para abrir la URL interactiva SEP-24 (D3, ver ui/deposit/CustomTabs.kt).
+androidxBrowser = "1.8.0"
 
 [libraries]
 # Core / Compose
@@ -120,6 +122,9 @@ androidx-credentials-play-services-auth = { module = "androidx.credentials:crede
 # token público pk.* desde local.properties → BuildConfig.MAPBOX_TOKEN.
 mapbox-maps-android = { module = "com.mapbox.maps:android", version.ref = "mapbox" }
 mapbox-maps-compose = { module = "com.mapbox.extension:maps-compose", version.ref = "mapboxCompose" }
+
+# Custom Tabs — abre la URL interactiva SEP-24 del anchor sin salir de la app (D3).
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

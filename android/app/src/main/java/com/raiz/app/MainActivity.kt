@@ -57,6 +57,7 @@ import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
 import com.raiz.app.ui.become_resident.BecomeResidentScreen
 import com.raiz.app.ui.cobros.CobrosScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
+import com.raiz.app.ui.deposit.DepositScreen
 import com.raiz.app.ui.governance.CreateProposalScreen
 import com.raiz.app.ui.governance.ProposalsScreen
 import com.raiz.app.ui.map.BarrioMapScreen
@@ -457,8 +458,12 @@ private fun RaizApp(
                 onNavigateDashboard = { nav.navigate(Routes.DASHBOARD) },
                 onNavigateProposals = { goTo(Routes.PROPOSALS) },
                 onNavigateCobros    = { goTo(Routes.COBROS) },
+                onNavigateDeposit   = { nav.navigate(Routes.DEPOSIT) },
                 currentRole = currentRole,
             )
+        }
+        composable(Routes.DEPOSIT) {
+            DepositScreen(onBack = { nav.popBackStack() })
         }
         // Ruta PAY: merchant_address obligatorio, amount_stroops opcional.
         // Si amount_stroops > 0 llega desde un QR de orden de cobro.
@@ -709,6 +714,7 @@ private object Routes {
     const val MAP                        = "map"
     const val DASHBOARD                  = "dashboard"
     const val YIELD                      = "yield"
+    const val DEPOSIT                    = "deposit"
 
     // Registrar comerciante — dos rutas por contexto de origen
     const val BECOME_MERCHANT            = "become_merchant"

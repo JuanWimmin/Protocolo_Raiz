@@ -182,6 +182,8 @@ dependencies {
     // Mapbox Maps + extensión Compose.
     implementation(libs.mapbox.maps.android)
     implementation(libs.mapbox.maps.compose)
+    // Custom Tabs — abre la URL interactiva SEP-24 del anchor de prueba (D3).
+    implementation(libs.androidx.browser)
 
     // Coroutines + serialization
     implementation(libs.kotlinx.coroutines.core)

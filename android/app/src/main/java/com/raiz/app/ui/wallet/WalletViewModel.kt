@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.model.PassportData
 import com.raiz.app.data.model.PassportLevel
+import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
@@ -54,6 +55,13 @@ sealed interface WalletUiState {
         val faucetAttemptKey: String? = null,
         /** Address (body del faucet) con la que se generó [faucetAttemptKey]; si cambia, key nueva. */
         val faucetAttemptFingerprint: String? = null,
+        /**
+         * Saldo del USDC del anchor de prueba (D3, SEP-24), NUNCA sumado al
+         * BalanceCard: es un asset distinto al USDC (Blend) que usa el fondo
+         * del barrio. Solo se observa para wallets G… (las passkey C… no
+         * pueden autenticar SEP-10 clásico todavía).
+         */
+        val anchorUsdcBalanceStroops: Long = 0L,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -82,6 +90,7 @@ class WalletViewModel @Inject constructor(
 
     init {
         observeUsdcBalance()
+        observeAnchorBalance()
         loadCentroPoolBalance()
         loadPassport()
         refreshSetupStep()
@@ -331,6 +340,30 @@ class WalletViewModel @Inject constructor(
                 _state.update { current ->
                     if (current is WalletUiState.Ready) {
                         current.copy(wallet = current.wallet.copy(usdcBalanceStroops = stroops))
+                    } else current
+                }
+            }
+        }
+    }
+
+    /**
+     * D3: observa el saldo del USDC del anchor de prueba (SEP-24), SOLO para
+     * wallets G… — las passkey (C…) no pueden autenticar SEP-10 clásico
+     * todavía (ver DepositViewModel.PASSKEY_UNSUPPORTED). Nunca se mezcla con
+     * [observeUsdcBalance] (ese es el USDC de Blend que usa el fondo).
+     */
+    private fun observeAnchorBalance() {
+        if (walletManager.isPasskeyWallet()) return
+        viewModelScope.launch {
+            val accountId = walletManager.mockWallet().publicKey
+            horizonStream.assetBalanceFlow(
+                accountId,
+                RaizConstants.ANCHOR_USDC_CODE,
+                RaizConstants.ANCHOR_USDC_ISSUER,
+            ).collect { stroops ->
+                _state.update { current ->
+                    if (current is WalletUiState.Ready) {
+                        current.copy(anchorUsdcBalanceStroops = stroops)
                     } else current
                 }
             }

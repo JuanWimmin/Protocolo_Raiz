@@ -6,6 +6,15 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- D3: Android 11+ oculta los paquetes instalados por defecto; sin esta
+         declaración el sistema no deja que Custom Tabs detecte qué navegador
+         puede abrir la URL interactiva SEP-24 (ui/deposit/CustomTabs.kt). -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".RaizApplication"
         android:allowBackup="false"
