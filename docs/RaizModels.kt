@@ -340,3 +340,15 @@ fun Long.formatUsdc(): String {
     val trimmed = "%.3f".format(this.toUsdc()).trimEnd('0').trimEnd('.')
     return "$trimmed USDC"
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modelos solo-cliente D3 (SEP-10 + SEP-24 contra el anchor de prueba del SDF)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `AnchorInfo`, `AnchorSession`, `AnchorDepositStart`, `AnchorDepositState` y
+// `AnchorDepositStatus` viven en android/.../data/anchor/AnchorModels.kt y NO se
+// espejan aquí: no son structs de contrato ni existen en Rust. Describen la
+// conversación de la app con el anchor (stellar.toml, JWT SEP-10 que vive solo en
+// memoria, estado de un depósito SEP-24) y el USDC que mueven es el del anchor de
+// prueba (USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5), distinto
+// del USDC de Blend que custodia el Pool. Ver docs/evidencia_sow/d3/README.md.

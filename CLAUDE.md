@@ -275,7 +275,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `stellar contract invoke` ENVÍA una tx firmada cuando una "lectura" trae auto-restore; para solo
   simular usar `--send=no`.
 
-## Estado actual (2026-09-19)
+## Estado actual (2026-09-27)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
 - **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
@@ -305,8 +305,31 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   **añadir una línea tras cada ejecución nueva**). **En `main` y pusheado el 19-sep (`9904ff5`);
   landing publicada en raizapp.xyz (repo Pages `8637196`) con las 6 ejecuciones enlazadas.** Los 3
   campos del portal D2 están mapeados en `docs/evidencia_sow/README.md`. Quedan #7 Centro y #8 Costa,
-  ejecutables desde el 22-sep ≈ 23:10 UTC. Evidencia y pendientes (capturas en dispositivo,
+  ejecutables desde el 22-sep ≈ 23:10 UTC — **al 27-sep siguen sin ejecutar** y `getEvents` del Treasury
+  devuelve **0 eventos `execution`** en la ventana del RPC (las 6 ejecuciones enlazan solo vía
+  `execution_hashes.json` / snapshot de la landing). Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
+- **D3 (WP3):** código listo el 27-sep en la rama `feat/wp3-sep24` (sin mergear ni pushear): SEP-1 +
+  SEP-10 + SEP-24 contra `testanchor.stellar.org` con `kmp-stellar-sdk` 1.6.0, sin dependencias Stellar
+  nuevas (solo `androidx.browser` 1.8.0 para Custom Tabs). `data/anchor/AnchorClient.kt` (`loadInfo`
+  toml + `/info`, `authenticate` con JWT **solo en memoria** cacheado por cuenta, `startDeposit`,
+  `pollDeposit` con backoff 3 s → 10 s y timeout 5 min; nunca lanza, devuelve `RaizResult`),
+  pantalla `ui/deposit/DepositScreen.kt` + `DepositViewModel` (10 fases; la app crea la trustline al
+  USDC del anchor ANTES de abrir la web interactiva en una Custom Tab, polling arranca en paralelo,
+  restauración por `SavedStateHandle`, éxito con hash + chip a Stellar Expert), `HorizonStream`
+  generalizado a cualquier asset (`assetBalanceFlow`, `hasTrustline`, `enableTrustline`,
+  `latestIncomingPayment` como respaldo del hash) y Wallet con botón "Depositar · anchor de prueba" +
+  paso 3 del banner con dos caminos (anchor primario; faucet "USDC demo (Blend) · relayer" secundario).
+  17 tests JVM (`AnchorClientTest`, MockEngine con el `stellar.toml` real del testanchor; el camino feliz
+  de SEP-10 no se mockea porque exige un challenge firmado por el anchor). Revisión adversarial del 27-sep
+  aplicada (reanudación rastreada y cancelable, tope de una re-autenticación, 401 → sesión caducada, toml
+  y URLs solo `https`, coma decimal, revalidación del monto) — detalle en `docs/evidencia_sow/d3/README.md`. **Alcance decidido:** el USDC del anchor (issuer `GBBD47IF…LFLA5`)
+  es OTRO asset que el USDC de Blend del fondo — siempre rotulado "USDC · anchor de prueba", nunca
+  sumado al BalanceCard, no sirve para pagar comercios; wallets passkey (C…) ven "Disponible pronto
+  para passkey (SEP-45)". Sonda del 27-sep: JWT SEP-10 dura 24 h, el token de la URL interactiva 10 min,
+  depósito USDC mín 1 / máx 10, sin trustline el anchor deja la tx en `pending_trust`. **Pendiente:**
+  prueba end-to-end en el Motorola G04, video de 60 s y tx hash real. Evidencia, flujo real, hallazgos y
+  checklist de dispositivo: `docs/evidencia_sow/d3/README.md`; guion: `docs/evidencia_sow/d3/guion_video.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
 - Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
@@ -321,9 +344,13 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ### Próximo paso
 
-- **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2 tx hash real: código listo el
-  12-sep, probado/corregido en dispositivo, mergeado a `main` y landing publicada el 19-sep**; los 3
-  campos de evidencia del portal ya tienen enlace (`docs/evidencia_sow/README.md`). Cola menor de D2:
-  ejecutar #7 Centro y #8 Costa desde la app a partir del 22-sep ≈ 23:10 UTC, añadir sus hashes a
-  `execution_hashes.json` + snapshot de la landing, y **extender el TTL de `Execution(6)` y `Execution(7)`**. Al cerrar WP2 arranca **WP3 — D3 SEP-10/24** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+- **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2: código en `main` y landing
+  publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). Cola
+  menor de D2 (sigue abierta al 27-sep): ejecutar #7 Centro y #8 Costa desde la app, añadir sus hashes a
+  `execution_hashes.json` + snapshot de la landing y **extender el TTL de `Execution(6)` y `Execution(7)`**
+  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: código listo el 27-sep en `feat/wp3-sep24`**; falta
+  (1) instalar el APK debug en el Motorola G04 y pasar el checklist de `docs/evidencia_sow/d3/README.md`,
+  (2) grabar el video de 60 s (`docs/evidencia_sow/d3/guion_video.md`) y anotar el tx hash del depósito
+  en `d3/README.md` y en `docs/evidencia_sow/README.md`, (3) commits en español + PR a `main`. Después
+  arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.

@@ -1,11 +1,12 @@
 # Paquete de evidencia — SOW Instaward RAÍZ
 
-> Estado al **2026-09-19** (D1 verificado el 12-sep; D2 actualizado el 19-sep). Este README es el
-> índice del paquete y el mapa exacto **campo del portal → enlace a pegar**. Detalle por entregable:
-> [`d1/README.md`](d1/README.md), [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md)
-> (continúa [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md)).
+> Estado al **2026-09-27** (D1 verificado el 12-sep; D2 actualizado el 19-sep; D3 con código listo el
+> 27-sep, pendiente de video y tx hash). Este README es el índice del paquete y el mapa exacto
+> **campo del portal → enlace a pegar**. Detalle por entregable: [`d1/README.md`](d1/README.md),
+> [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) (continúa
+> [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md)), [`d3/README.md`](d3/README.md).
 >
-> Verificado hoy: `/v1/health` del relayer responde 200 en vivo (uptime ≈ 6 días, protocolo 28),
+> Verificado el 19-sep: `/v1/health` del relayer responde 200 en vivo (uptime ≈ 6 días, protocolo 28),
 > raizapp.xyz sirve los contratos vigentes, y `main` local == GitHub en ambos repos
 > (`Protocolo_Raiz@6faa296`, `raiz-relayer@7aa28dd`).
 
@@ -62,11 +63,34 @@ de un archivo versionado (`android/app/src/main/assets/execution_hashes.json`) y
 Pendiente menor (no bloquea los 3 campos): ejecutar #7 Centro y #8 Costa desde la app a partir del
 **22-sep ≈ 23:10 UTC** (mínimo on-chain de 3 días por propuesta), añadir sus hashes al archivo y
 extender el TTL de sus entradas (`scripts/treasury_ttl.js`). Opcional: Release del APK con D2.
+**Al 27-sep siguen sin ejecutar** y la ventana del RPC ya no contiene ningún evento `execution`: las
+6 ejecuciones enlazan vía el archivo versionado de hashes (app) y el snapshot (landing).
 
-## D3 — SEP-10 + SEP-24 · sin iniciar
+## D3 — SEP-10 + SEP-24 · código listo, pendiente video + tx hash
 
-WP3 del plan (alcance ya decidido: USDC del testanchor a wallets seed; passkey fuera con mensaje).
-Evidencia esperada: video 60 s + tx hash del depósito.
+Objetivo SOW: depósito SEP-24 interactivo completado end-to-end desde la app contra
+`testanchor.stellar.org` (anchor de prueba del SDF), autenticado con SEP-10 firmado por la wallet del
+usuario. **Código listo el 2026-09-27 en la rama `feat/wp3-sep24`** (compila; 17 tests JVM del cliente
+del anchor en verde; revisión adversarial aplicada; todavía no está en `main`). Flujo real, hallazgos de la sonda del 27-sep, notas
+honestas y checklist de dispositivo: [`d3/README.md`](d3/README.md). Guion del video de 60 s:
+[`d3/guion_video.md`](d3/guion_video.md).
+
+| # | Campo del portal | Enlace a pegar | Estado |
+|---|---|---|---|
+| 1 | Video del depósito SEP-24 (60 s) | *(YouTube no listado — pendiente)* | ⏳ Pendiente de grabar tras la prueba en el Motorola G04 |
+| 2 | Tx hash del pago del anchor (Stellar Expert) | `https://stellar.expert/explorer/testnet/tx/<hash>` — *pendiente* | ⏳ Se obtiene en la misma prueba: la app lo muestra en "¡Depósito recibido!" (campo `stellar_transaction_id` del anchor) y se contrasta en Horizon `/accounts/<G>/payments` |
+| 3 | Captura de la app con el depósito completado | `d3/capturas/07_deposito_recibido_hash.png` — *pendiente* | ⏳ |
+
+**Cómo lo verá el revisor (cuando esté):** en el video, la app crea la trustline, firma el challenge
+SEP-10 con la wallet, abre la web del anchor en una pestaña (paso interactivo sin cortes), vuelve,
+sondea el estado hasta `completed` y muestra el hash con un chip a Stellar Expert; en Inicio aparece la
+línea "USDC · anchor de prueba: 5 USDC" separada del USDC del fondo. El enlace del campo 2 debe mostrar
+un pago de USDC (issuer `GBBD47IF…LFLA5`) desde una cuenta del anchor a la `G…` del dispositivo.
+
+Alcance (decidido, no se re-discute): USDC **del anchor de prueba** a wallets semilla `G…`, rotulado
+"USDC · anchor de prueba" y nunca sumado al USDC de Blend del fondo (son dos activos distintos con el
+mismo código; con el del anchor no se paga a comercios); wallets passkey ven "Disponible pronto para
+passkey (SEP-45)"; el faucet del relayer queda como "USDC demo (Blend) · relayer", secundario.
 
 ---
 
@@ -100,3 +124,6 @@ vigentes (= `deployments.json`, los mismos que muestra `/v1/health` del relayer 
 5. D2: pegar en el portal los 3 campos de la tabla D2 (URL viva, 3 links de Stellar Expert, captura).
 6. Cosmético: el `version` que reporta `/v1/health` sigue en `0.1.0` (bump de `package.json` del
    relayer en el próximo deploy).
+7. D3: pasar el checklist de dispositivo de `d3/README.md` en el Motorola G04, grabar el video de 60 s
+   (`d3/guion_video.md`), anotar el tx hash (en `d3/README.md` y en la tabla D3 de arriba), mergear
+   `feat/wp3-sep24` a `main` y pegar los campos D3 en el portal.

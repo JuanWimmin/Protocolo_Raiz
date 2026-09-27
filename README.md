@@ -181,7 +181,8 @@ Para wallets nuevas, un banner guía el alta on-chain en 3 pasos (re-chequea tra
 ```
 ¿cuenta existe?      ── no ─▶ FUND_XLM        → friendbot fondea XLM (testnet)
 ¿tiene trustline USDC? ─ no ─▶ ACTIVATE_TRUST  → ChangeTrust firmado por el usuario
-¿balance USDC == 0?  ── sí ─▶ REQUEST_USDC    → faucet envía USDC (simula on-ramp SEP-24)
+¿balance USDC == 0?  ── sí ─▶ REQUEST_USDC    → "Consigue USDC": depósito SEP-24 con el anchor de prueba
+                                                 (SEP-10 + SEP-24, D3) o faucet "USDC demo (Blend)" vía relayer
    └─ todo ok ─▶ DONE (banner oculto)
 ```
 
@@ -235,7 +236,7 @@ resolve(address):
 | **Blend v2** | ✅ Directo vía `YieldAdapter` | El fondo rinde como prestamista puro en el pool USDC de Blend v2 (TestnetV2), sin vault intermediario ni API key. Cuentas fondeadas con el faucet de Blend. (Pre-F1 se usaba el vault DeFindex — eliminado el 2026-07-31.) |
 | **Mapbox** | ✅ | Mapa de comercios del barrio sobre Maps SDK 11.x + maps-compose. |
 | **Passkey / WebAuthn (smart accounts)** | ✅ Implementado y demostrado | `OZSmartAccountKit` de Soneso (contrato OpenZeppelin). Infra pública testnet: **relayer** (patrocina fees de deploy), **indexer** y **verifier** WebAuthn. Requiere Android 9 (API 28). |
-| **Anchors SEP (on/off ramp)** | 🟡 **Planeado** | SEP-10 (auth), SEP-24 (deposit/withdraw fiat↔USDC interactivo), SEP-38 (quotes RFQ). En el roadmap: anchors como **MoneyGram Access** (efectivo) o **Vibrant/Anclap** (LatAm). **Hoy** el on-ramp se simula con el faucet de Blend en testnet. |
+| **Anchors SEP (on/off ramp)** | 🟢 **SEP-10 + SEP-24 implementados** (rama `feat/wp3-sep24`, pendiente prueba en dispositivo) | Depósito interactivo contra el **anchor de prueba del SDF** (`testanchor.stellar.org`, D3 del SOW): SEP-1 (`stellar.toml`) → SEP-10 (challenge firmado con la wallet semilla, JWT solo en memoria) → SEP-24 (`deposit/interactive` en Custom Tab + polling hasta `completed`), con la trustline creada por la app. El USDC que llega es **el del anchor** (rotulado "USDC · anchor de prueba", no se mezcla con el USDC de Blend del fondo). Pantalla "Depositar" desde Inicio; `data/anchor/AnchorClient.kt`, `ui/deposit/`. Passkey (C…) queda para SEP-45. **Roadmap:** SEP-38 (quotes), retiro, y anchors de producción como **MoneyGram Access** (efectivo) o **Vibrant/Anclap** (LatAm). El faucet de Blend sigue como "USDC demo". |
 
 ---
 
@@ -376,7 +377,7 @@ El roadmap canónico es **F1–F6** de la propuesta de protocolo de ahorro (`doc
 Pendientes de mainnet (subordinados al roadmap F1–F6; F3 elimina los dos primeros):
 
 - **Admin → custodia sin clave única** (multisig 2-de-3 ya preparado en `scripts/setup_admin_multisig.sh`; smart account comunal en F3) — requisito de **mainnet**.
-- **Anchors SEP** reales: SEP-10/24/38 para on/off ramp fiat↔USDC (MoneyGram, Vibrant/Anclap).
+- **Anchors SEP de producción**: SEP-10/24 ya funcionan contra el anchor de prueba del SDF (D3); faltan SEP-38 (quotes), retiro, SEP-45 para passkey y anchors reales fiat↔USDC (MoneyGram, Vibrant/Anclap).
 - **Passkey con dominio propio** — hoy `github.io` choca con la Public Suffix List para el `rpId`; se resuelve con dominio propio + `assetlinks.json`.
 - **KYC de residencia (SEP-12)** en vez del mint manual del admin.
 - **IPFS** para las imágenes de premios (hoy URLs).

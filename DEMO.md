@@ -16,6 +16,7 @@
 - [ ] Modo demo activo: el cambio de rol (turista/residente/comercio) está en **Perfil → Mi rol**.
 - [ ] APK **debug** compilado con `raiz.tourist.secret` en `local.properties` (el release no tiene modo demo).
 - [ ] Relayer vivo: `curl -s $RELAYER/v1/health` → `ok:true`, `faucet.enabled:true`, `vaultEndpoints:true` (`RELAYER` = URL del relayer; default `https://raiz-relayer.fly.dev`).
+- [ ] (Solo si se enseña el **Depósito SEP-24**) anchor de prueba vivo: `curl -s https://testanchor.stellar.org/sep24/info` → `deposit.USDC.enabled:true`; wallet **semilla** con XLM y Chrome instalado.
 
 ---
 
@@ -64,7 +65,14 @@
 
 **+ Onboarding de wallet nueva.**
 > *"Una wallet recién creada se activa en 3 pasos: la fondeamos, habilitamos USDC y le mandamos saldo de prueba."*
-- Solo si tienes tiempo y red estable: banner de 3 pasos (XLM → trustline → faucet 20 USDC).
+- Solo si tienes tiempo y red estable: banner de 3 pasos (XLM → trustline → "Consigue USDC": depósito con el anchor de prueba o faucet demo de 20 USDC).
+
+**+ Depósito SEP-24 (anchor de prueba).**
+> *"Y el USDC de prueba ya no me lo regala nadie: lo deposito con un anchor real, por los estándares de Stellar."*
+- Solo con wallet **semilla** (passkey muestra "Disponible pronto para passkey (SEP-45)") y red estable.
+- **Inicio → "Depositar · anchor de prueba"** → monto **5** → **"Depositar con el anchor"**. La app crea la trustline, se autentica (SEP-10, firma con tu wallet) y abre la web del anchor en una pestaña → confirma el depósito → vuelve a la app → **"¡Depósito recibido!"** con el hash y el chip **"Ver en Stellar Expert"**.
+- En **Inicio** aparece "● USDC · anchor de prueba: 5 USDC", aparte del USDC del fondo (es otro activo: no sirve para pagar comercios, y se dice).
+- Tarda 1–2 min con el anchor de prueba. Guion de 60 s y plan B detallado: `docs/evidencia_sow/d3/guion_video.md`.
 
 ---
 
@@ -77,6 +85,7 @@
 | Sin red | Abre el **Dashboard de transparencia**: muestra estado on-chain ya cargado. Pivota a la slide de arquitectura. |
 | Onboarding falla | Sáltalo — es opcional. La wallet principal ya está lista. |
 | Relayer caído | Salta **Alta de comercio** y **Onboarding** (son los que pasan por el relayer); pagos, votos y transparencia no dependen del relayer. |
+| Anchor de prueba caído o lento (> 1 min en "Esperando al anchor…") | Salta el **Depósito SEP-24**; el on-ramp demo sigue siendo el faucet del relayer ("USDC demo (Blend) · relayer" en el paso 3 del banner). Nada más depende del anchor. |
 
 ---
 
