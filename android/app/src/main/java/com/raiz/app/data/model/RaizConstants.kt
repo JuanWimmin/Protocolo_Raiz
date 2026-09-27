@@ -31,6 +31,21 @@ object RaizConstants {
      * fuente; [com.raiz.app.data.stellar.BlendClient] prioriza siempre el deployment.
      */
     const val BLEND_POOL_TESTNET = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF"
+
+    /**
+     * Anchor de prueba del SDF (D3 del SOW: SEP-1/10/24, ver `data/anchor/AnchorClient.kt`).
+     * El USDC de este anchor es DISTINTO al USDC de Blend que usa el fondo del barrio — la UI
+     * lo rotula siempre "USDC · anchor de prueba" y nunca se suma al balance del pool.
+     */
+    const val ANCHOR_HOME_DOMAIN = "testanchor.stellar.org"
+    const val ANCHOR_USDC_CODE = "USDC"
+
+    /**
+     * Issuer del USDC del testanchor (`stellar.toml` `[[CURRENCIES]]`, verificado 2026-09-27).
+     * Fallback SOLO si el `stellar.toml` no trae el issuer o falla el fetch; [AnchorInfo]
+     * prioriza siempre el issuer publicado por el propio anchor.
+     */
+    const val ANCHOR_USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
 }
 
 /** stroops (Long) -> USDC (Double). 10^7 stroops = 1 USDC. */

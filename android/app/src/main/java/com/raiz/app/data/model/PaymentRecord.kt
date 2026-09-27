@@ -16,6 +16,13 @@ data class PaymentRecord(
     val assetCode: String,        // "USDC", "XLM", etc.
     val createdAt: String,        // ISO 8601 ("2026-05-28T15:00:00Z")
     val isOutgoing: Boolean,      // true si el account observado es el `from`
+    /**
+     * Issuer del asset (`asset_issuer` de Horizon). `null` para `XLM` (nativo) o si
+     * Horizon no lo informó. Permite distinguir dos assets con el mismo `assetCode`
+     * pero issuer distinto — p. ej. el USDC del anchor de prueba (D3) frente al USDC
+     * de Blend que usa el pool.
+     */
+    val assetIssuer: String? = null,
 ) {
     val amountUsdc: Double get() = amountStroops.toUsdc()
 }

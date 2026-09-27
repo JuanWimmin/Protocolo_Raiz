@@ -12,6 +12,7 @@ import com.raiz.app.data.relayer.RelayerJson
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Named
 import javax.inject.Singleton
+import kotlinx.serialization.json.Json
 
 /**
  * Módulo Hilt para la capa data.
@@ -59,6 +60,38 @@ object DataModule {
             requestTimeoutMillis = 95_000L
             connectTimeoutMillis = 15_000L
             socketTimeoutMillis = 95_000L
+        }
+    }
+
+    /**
+     * HttpClient dedicado al anchor de prueba del SDF (SEP-1/10/24, D3 del SOW — ver
+     * `data/anchor/AnchorClient.kt`). Es un cliente DISTINTO del `@Named("relayer")`:
+     * el relayer encola una única tx admin y puede tardar hasta 95 s; el anchor de
+     * prueba (`testanchor.stellar.org`) responde a cada request (toml, SEP-10, SEP-24)
+     * en segundos — la espera larga del flujo de depósito es el POLLING de
+     * `AnchorClient.pollDeposit` (varias requests cortas de estado), no una request
+     * individual larga, así que un timeout corto por request no rompe el flujo.
+     *
+     * `expectSuccess = false`: `AnchorClient` decide el mapeo de error a partir de las
+     * excepciones tipadas que lanza el SDK Soneso (`Sep24*Exception`, `WebAuthException`)
+     * según el status HTTP, no de una excepción genérica de Ktor por un 4xx/5xx.
+     *
+     * El `ContentNegotiation` JSON no lo usan `StellarToml`/`WebAuth`/`Sep24Service` del
+     * SDK (decodifican a mano con su propio `Json` interno) — se instala igualmente por
+     * si el propio `AnchorClient` necesita decodificar algo directamente en el futuro.
+     */
+    @Provides
+    @Singleton
+    @Named("anchor")
+    fun provideAnchorHttpClient(): HttpClient = HttpClient(CIO) {
+        expectSuccess = false
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true; isLenient = true })
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000L
+            connectTimeoutMillis = 15_000L
+            socketTimeoutMillis = 30_000L
         }
     }
 }

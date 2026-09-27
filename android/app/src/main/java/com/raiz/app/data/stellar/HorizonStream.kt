@@ -80,35 +80,55 @@ class HorizonStream @Inject constructor(
     }
 
     /**
-     * Flow del balance USDC en stroops. Polling cada `intervalMs`.
-     * Emite `0L` si la cuenta no tiene trustline USDC o el balance es nulo.
-     * `distinctUntilChanged` evita re-emisiones espurias del mismo valor.
+     * Flow del balance USDC (el de Blend, el que usa el pool) en stroops. Delega en
+     * [assetBalanceFlow] — se conserva como método propio porque es, con diferencia,
+     * el asset que más se consulta en la app (BalanceCard, pagos, etc.).
      */
     fun usdcBalanceFlow(
         accountId: String,
         intervalMs: Long = 5_000L,
+    ): Flow<Long> = assetBalanceFlow(accountId, "USDC", usdcIssuer, intervalMs)
+
+    /** One-shot balance USDC de Blend (sin polling). Útil para verificaciones puntuales. */
+    suspend fun getUsdcBalance(accountId: String): Long = getAssetBalance(accountId, "USDC", usdcIssuer)
+
+    /**
+     * Flow del balance de cualquier asset clásico (`code`/`issuer`) en stroops.
+     * Mismo patrón de polling que [usdcBalanceFlow] — pensado para el USDC del
+     * anchor de prueba (D3, `RaizConstants.ANCHOR_USDC_CODE`/`ANCHOR_USDC_ISSUER`),
+     * distinto del USDC de Blend que usa el pool.
+     *
+     * Emite `0L` si la cuenta no tiene trustline a ese asset o el balance es nulo.
+     * `distinctUntilChanged` evita re-emisiones espurias del mismo valor.
+     */
+    fun assetBalanceFlow(
+        accountId: String,
+        code: String,
+        issuer: String,
+        intervalMs: Long = 5_000L,
     ): Flow<Long> = flow {
         while (coroutineContext.isActive) {
-            val stroops = fetchUsdcBalance(accountId)
+            val stroops = fetchAssetBalance(accountId, code, issuer)
             emit(stroops)
             delay(intervalMs)
         }
     }.distinctUntilChanged()
 
-    /** One-shot balance USDC (sin polling). Útil para verificaciones puntuales. */
-    suspend fun getUsdcBalance(accountId: String): Long = withContext(Dispatchers.IO) {
-        fetchUsdcBalance(accountId)
-    }
+    /** One-shot balance de cualquier asset clásico (sin polling). */
+    suspend fun getAssetBalance(accountId: String, code: String, issuer: String): Long =
+        withContext(Dispatchers.IO) {
+            fetchAssetBalance(accountId, code, issuer)
+        }
 
-    private suspend fun fetchUsdcBalance(accountId: String): Long {
+    private suspend fun fetchAssetBalance(accountId: String, code: String, issuer: String): Long {
         return runCatching {
             val account = horizonServer.accounts().account(accountId)
-            val usdc = account.balances.firstOrNull { b ->
-                b.assetCode == "USDC" && b.assetIssuer == usdcIssuer
+            val asset = account.balances.firstOrNull { b ->
+                b.assetCode == code && b.assetIssuer == issuer
             }
-            usdc?.balance?.toUsdcStroops() ?: 0L
+            asset?.balance?.toUsdcStroops() ?: 0L
         }.getOrElse { e ->
-            Log.w(TAG, "horizon poll falló: ${e.message}")
+            Log.w(TAG, "horizon poll falló ($code/$issuer): ${e.message}")
             0L
         }
     }
@@ -203,6 +223,7 @@ class HorizonStream @Inject constructor(
                 val amount = record["amount"]?.jsonPrimitive?.contentOrNull ?: "0"
                 val assetType = record["asset_type"]?.jsonPrimitive?.contentOrNull
                 val assetCode = record["asset_code"]?.jsonPrimitive?.contentOrNull
+                val assetIssuer = record["asset_issuer"]?.jsonPrimitive?.contentOrNull
                 listOf(
                     PaymentRecord(
                         txHash = txHash,
@@ -212,6 +233,7 @@ class HorizonStream @Inject constructor(
                         assetCode = if (assetType == "native") "XLM" else (assetCode ?: "?"),
                         createdAt = createdAt,
                         isOutgoing = from == observerAccount,
+                        assetIssuer = if (assetType == "native") null else assetIssuer,
                     ),
                 )
             }
@@ -230,6 +252,7 @@ class HorizonStream @Inject constructor(
                     val amount = ch["amount"]?.jsonPrimitive?.contentOrNull ?: "0"
                     val assetCode = ch["asset_code"]?.jsonPrimitive?.contentOrNull
                     val assetType = ch["asset_type"]?.jsonPrimitive?.contentOrNull
+                    val assetIssuer = ch["asset_issuer"]?.jsonPrimitive?.contentOrNull
                     PaymentRecord(
                         txHash = txHash,
                         from = from,
@@ -238,6 +261,7 @@ class HorizonStream @Inject constructor(
                         assetCode = if (assetType == "native") "XLM" else (assetCode ?: "?"),
                         createdAt = createdAt,
                         isOutgoing = from == observerAccount,
+                        assetIssuer = if (assetType == "native") null else assetIssuer,
                     )
                 }
             }
@@ -247,22 +271,61 @@ class HorizonStream @Inject constructor(
     }
 
     /**
-     * Verifica si la cuenta tiene trustline al USDC del admin del protocolo.
-     * Sin esto, no puede recibir USDC y los pagos a su address fallarán.
+     * Último pago ENTRANTE de `accountId` en un asset clásico dado (`code`/`issuer`),
+     * ordenado por Horizon `desc` (más reciente primero). Pensado como respaldo para
+     * hallar el `txHash` de un depósito del anchor de prueba (D3) cuando el propio
+     * anchor no lo informa en `stellar_transaction_id`. `null` si no hay coincidencias
+     * en el historial reciente (últimos 20 pagos) — no implica que no exista, solo que
+     * no está entre los más recientes.
+     *
+     * Filtra por `assetCode` (como pide el flujo D3); si Horizon informó `asset_issuer`
+     * en el record, también debe coincidir con `issuer` — evita confundir dos assets
+     * con el mismo código y emisor distinto (p. ej. el USDC del anchor vs. el de Blend).
      */
-    suspend fun hasUsdcTrustline(accountId: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val account = horizonServer.accounts().account(accountId)
-            account.balances.any { b ->
-                b.assetCode == "USDC" && b.assetIssuer == usdcIssuer
-            }
-        }.getOrElse { false }
-    }
+    suspend fun latestIncomingPayment(accountId: String, code: String, issuer: String): RaizResult<PaymentRecord?> =
+        when (val result = paymentHistory(accountId, limit = 20)) {
+            is RaizResult.Success -> RaizResult.Success(
+                result.data.firstOrNull { record ->
+                    !record.isOutgoing &&
+                        record.assetCode == code &&
+                        (record.assetIssuer == null || record.assetIssuer == issuer)
+                },
+            )
+            is RaizResult.Error -> result
+        }
 
     /**
-     * Activa el trustline USDC para la cuenta del `signer`. Construye y firma
-     * una `ChangeTrustOperation` y la envía a Horizon. Tras esto, la cuenta
-     * puede recibir USDC (y mostrarse balance>0 en lugar del default 0).
+     * Verifica si la cuenta tiene trustline al USDC de Blend (el que usa el pool).
+     * Delega en [hasTrustline] — se conserva como método propio por ser, con
+     * diferencia, la comprobación más frecuente en la app.
+     */
+    suspend fun hasUsdcTrustline(accountId: String): Boolean = hasTrustline(accountId, "USDC", usdcIssuer)
+
+    /**
+     * Verifica si la cuenta tiene trustline a un asset clásico (`code`/`issuer`)
+     * cualquiera. Sin esto, la cuenta no puede recibir ese asset.
+     */
+    suspend fun hasTrustline(accountId: String, code: String, issuer: String): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val account = horizonServer.accounts().account(accountId)
+                account.balances.any { b -> b.assetCode == code && b.assetIssuer == issuer }
+            }.getOrElse { false }
+        }
+
+    /**
+     * Activa el trustline USDC de Blend para la cuenta del `signer`. Delega en
+     * [enableTrustline] con el USDC del pool — se conserva como método propio
+     * porque es, con diferencia, el trustline que más se activa en la app.
+     */
+    suspend fun enableUsdcTrustline(signer: KeyPair): RaizResult<Unit> = enableTrustline(signer, "USDC", usdcIssuer)
+
+    /**
+     * Activa el trustline a un asset clásico (`code`/`issuer`) para la cuenta del
+     * `signer`. Construye y firma una `ChangeTrustOperation` y la envía a Horizon.
+     * Tras esto, la cuenta puede recibir ese asset (y mostrarse balance>0 en lugar
+     * del default 0). Pensado tanto para el USDC de Blend como para el del anchor
+     * de prueba (D3).
      *
      * Errores comunes:
      *  - InsufficientBalance: la cuenta debe tener al menos ~1 XLM de reserve.
@@ -271,31 +334,32 @@ class HorizonStream @Inject constructor(
      *
      * Reintenta hasta 3 veces ante errores DNS transitorios (backoff 1s/2s).
      */
-    suspend fun enableUsdcTrustline(signer: KeyPair): RaizResult<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            withRetryOnDns {
-                val accountId = signer.getAccountId()
-                val source = horizonServer.loadAccount(accountId)
-                val asset = AssetTypeCreditAlphaNum4("USDC", usdcIssuer)
-                val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
-                val tx = TransactionBuilder(source, Network.TESTNET)
-                    .setBaseFee(100L)
-                    .addOperation(op)
-                    .setTimeout(60L)
-                    .build()
-                tx.sign(signer)
-                // submitTransaction de Horizon espera el XDR envelope base64.
-                horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
-                Log.i(TAG, "Trustline USDC activado para $accountId")
-            }
-        }.fold(
-            onSuccess = { RaizResult.Success(Unit) },
-            onFailure = { e ->
-                Log.e(TAG, "enableUsdcTrustline falló: ${e.message}")
-                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
-            },
-        )
-    }
+    suspend fun enableTrustline(signer: KeyPair, code: String, issuer: String): RaizResult<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                withRetryOnDns {
+                    val accountId = signer.getAccountId()
+                    val source = horizonServer.loadAccount(accountId)
+                    val asset = AssetTypeCreditAlphaNum4(code, issuer)
+                    val op = ChangeTrustOperation(asset, ChangeTrustOperation.MAX_LIMIT)
+                    val tx = TransactionBuilder(source, Network.TESTNET)
+                        .setBaseFee(100L)
+                        .addOperation(op)
+                        .setTimeout(60L)
+                        .build()
+                    tx.sign(signer)
+                    // submitTransaction de Horizon espera el XDR envelope base64.
+                    horizonServer.submitTransaction(tx.toEnvelopeXdrBase64())
+                    Log.i(TAG, "Trustline $code activado para $accountId")
+                }
+            }.fold(
+                onSuccess = { RaizResult.Success(Unit) },
+                onFailure = { e ->
+                    Log.e(TAG, "enableTrustline($code) falló: ${e.message}")
+                    RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+                },
+            )
+        }
 
     /**
      * ¿Existe la cuenta on-chain? Una wallet recién creada (sin XLM) NO existe
