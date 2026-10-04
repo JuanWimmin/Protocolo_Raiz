@@ -106,7 +106,7 @@ private fun BalanceCardPreview() {
     RaizTheme {
         BalanceCard(
             balanceStroops = 50_000_000L,
-            publicKey = "GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P",
+            publicKey = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
             modifier = Modifier.padding(16.dp),
         )
     }

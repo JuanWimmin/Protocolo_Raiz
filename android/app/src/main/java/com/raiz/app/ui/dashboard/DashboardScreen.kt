@@ -746,7 +746,7 @@ private fun ExecutionRow(exec: Execution, eventsOk: Boolean, eventsLoading: Bool
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Card footer de transparencia: lista los 4 contratos Soroban desplegados con
+ * Card footer de transparencia: lista los 5 contratos Soroban desplegados con
  * su dirección C… truncada y un enlace a Stellar Expert para cada uno.
  * Solo se muestra si [DashboardUiState.contractPool] no está vacío (deployments cargados).
  */
@@ -764,6 +764,7 @@ private fun ContratosCard(state: DashboardUiState) {
         ContratoFila(nombre = "Governance", address = state.contractGovernance)
         ContratoFila(nombre = "Treasury", address = state.contractTreasury)
         ContratoFila(nombre = "Rewards", address = state.contractRewards)
+        ContratoFila(nombre = "YieldAdapter", address = state.contractYieldAdapter)
     }
 }
 

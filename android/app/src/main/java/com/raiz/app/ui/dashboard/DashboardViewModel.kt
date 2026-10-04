@@ -69,6 +69,7 @@ data class DashboardUiState(
     val contractGovernance: String = "",
     val contractTreasury: String = "",
     val contractRewards: String = "",
+    val contractYieldAdapter: String = "",
 ) {
     val selectedBarrioName: String
         get() = barriosMeta.firstOrNull { it.first == selectedBarrioId }?.second
@@ -128,6 +129,7 @@ class DashboardViewModel @Inject constructor(
                     contractGovernance = deps.governance,
                     contractTreasury   = deps.treasury,
                     contractRewards    = deps.rewards,
+                    contractYieldAdapter = deps.yieldAdapter.orEmpty(),
                 )
             }
         }

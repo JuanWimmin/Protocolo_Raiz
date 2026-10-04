@@ -217,7 +217,7 @@ private fun DemoNote() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Demo: tu residencia se aprueba al instante (el admin del seed firma por ti) cuando pulses \"Verificar\" en Propuestas. En producción pasaría por validación de documentos de residencia.",
+            "Demo: el relayer del barrio aprueba tu residencia al instante (el admin firma en el servidor, no en tu teléfono) cuando pulses \"Verificar\" en Propuestas. En producción pasaría por validación de documentos de residencia.",
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
             color = RaizBlack.copy(alpha = 0.7f),
         )

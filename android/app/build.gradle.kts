@@ -27,8 +27,8 @@ android {
         applicationId = "com.raiz.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -72,10 +72,13 @@ android {
             // passkey / frase semilla.
             buildConfigField("String", "DEMO_TOURIST_SECRET", "\"\"")
             buildConfigField("String", "DEMO_RESIDENT_SECRET", "\"\"")
-            // Firma de evidencia D1 (instalable en dispositivo); WP4 la sustituye por
-            // keystore propio leído de local.properties/env. La clave de firma debug
-            // NO es un secreto de Stellar: el APK sigue sin ninguna `S…` (ver
-            // docs/evidencia_sow/d1/verificacion_apk.md).
+            // Firma de evidencia del SOW (instalable en dispositivo): clave debug de
+            // Android. Se mantiene a propósito mientras RAÍZ viva en testnet — el
+            // `assetlinks.json` del passkey está atado a esta huella, así que cambiar
+            // de keystore rompería las wallets passkey existentes. El keystore propio
+            // llega con la publicación en tienda/mainnet (fuera del alcance del SOW).
+            // La clave de firma debug NO es un secreto de Stellar: el APK sigue sin
+            // ninguna `S…` (ver docs/evidencia_sow/d1/verificacion_apk.md).
             signingConfig = signingConfigs.getByName("debug")
         }
         debug {

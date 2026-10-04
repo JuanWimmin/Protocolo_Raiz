@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Espejo de `deployments.json` (raíz del repo, copiado a assets/ en el build).
- * Generado por scripts/deploy_testnet.sh tras desplegar los 4 contratos.
+ * Generado por scripts/deploy_testnet.sh tras desplegar los 5 contratos.
  */
 @Serializable
 data class Deployments(
