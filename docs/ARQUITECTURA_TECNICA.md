@@ -3,7 +3,7 @@
 > Fuente de verdad del **estado real implementado** (no de la visión). Todo lo
 > aquí descrito está leído directamente del código en `contracts/` y `android/`
 > y verificado contra el despliegue en `deployments.json` (Stellar Testnet).
-> Última revisión: 2026-07-31.
+> Última revisión: 2026-10-04 (tras F1 y el sprint SOW: D1 relayer, D2 tx real, D3 SEP-10/24).
 
 ---
 
@@ -20,21 +20,26 @@ un contrato y **gobernado por los residentes** del barrio mediante tokens
 
 | On-chain (Soroban + Stellar) | Off-chain / mock / atajo de demo |
 |---|---|
-| Pagos USDC turista→comercio (SAC token transfer real) | KYC de residentes (admin mintea a mano; **no** SEP-12) |
-| Split del Tip Barrio y custodia del pool | On-ramp fiat→USDC (faucet del admin simula SEP-24) |
+| Pagos USDC turista→comercio (SAC token transfer real) | KYC de residentes (el admin mintea a petición vía `raiz-relayer`, sin validar documentos; **no** SEP-12) |
+| Split del Tip Barrio y custodia del pool | On-ramp fiat→USDC: depósito SEP-24 real contra el **anchor de prueba** del SDF (D3) + faucet demo vía `raiz-relayer`; anchors de producción pendientes |
 | Acumulación de puntos (cross-contract) | Imágenes de premios (URLs, no IPFS) |
-| Tokens de residencia soulbound | Aprobación de comercios (en demo firma el admin embebido) |
+| Tokens de residencia soulbound | Aprobación de comercios (la firma `raiz-relayer` server-side, sin revisión; el APK no lleva claves) |
 | Propuestas, votos, quórum, tally, ejecución | Relayer/indexer del passkey (infra pública de Soneso testnet, no propia) |
-| Canje de puntos por premios + claim del artesano | `tx_hash` de la `Execution` (sha256 determinístico, no el hash real de Stellar) |
-| Smart wallets passkey (WebAuthn/secp256r1, contrato `C…`) | APY del vault vía REST de DeFindex (opcional; muere con F1) |
-| Yield del fondo en el vault DeFindex (cross-contract) | — |
+| Canje de puntos por premios + claim del artesano | Enlace a la transacción real de cada `Execution`: el `tx_hash` on-chain es un ID de auditoría (sha256); el hash real lo enlaza el cliente (D2, ver §6.2) |
+| Smart wallets passkey (WebAuthn/secp256r1, contrato `C…`) | — |
+| Yield del fondo en Blend v2 vía `yield_adapter` (cross-contract; APY on-chain con `apy_hint`) | — |
 | Log de ejecuciones auditable | — |
 
 La app Android es un **cliente delgado**: lee por simulación vía Soroban RPC (sin
-firmar) y escribe enviando transacciones firmadas con la clave del usuario. **No
-hay backend propio**: no existe servidor de RAÍZ, todo el estado vive en los 4
-contratos y en Horizon (la infra del passkey usa el relayer/indexer públicos de
-Soneso, no un backend de RAÍZ).
+firmar) y escribe enviando transacciones firmadas con la clave del usuario. Las
+operaciones de admin (alta de comercio, soulbound de residente, faucet de USDC y
+depósito/rescate del vault de yield) las firma server-side **`raiz-relayer`**
+(https://github.com/JuanWimmin/raiz-relayer, desplegado en
+https://raiz-relayer.fly.dev), el **único servicio propio** de RAÍZ. **Todo el
+estado vive on-chain** (5 contratos + Horizon). La clave del admin vive solo en el
+servidor del relayer; el APK no la lleva desde 0.2.0 (rotación de la clave: ver
+`docs/evidencia_sow/d1/`). La infra del passkey usa el relayer/indexer públicos
+de Soneso, no un backend de RAÍZ.
 
 ---
 
@@ -42,19 +47,21 @@ Soneso, no un backend de RAÍZ).
 
 | Capa | Tecnología | Versión / nota |
 |---|---|---|
-| Contratos | Rust + `soroban-sdk` | **22.x → 26.1.1 (migración F1 en curso)**, `#![no_std]`, workspace Cargo con 4 crates (+ `yield_adapter` en F1) |
-| Toolchain | rustc/cargo **1.97.1 pineado** (`contracts/rust-toolchain.toml`) · stellar-cli **23.2.1** | upgrade a stellar-cli 27.1.0 pendiente antes del re-deploy F1 |
+| Contratos | Rust + `soroban-sdk` | **26.1.1**, `#![no_std]`, workspace Cargo con 5 crates (`pool`, `governance`, `treasury`, `rewards`, `yield_adapter`) |
+| Toolchain | rustc/cargo **1.97.1 pineado** (`contracts/rust-toolchain.toml`) · stellar-cli **23.2.1** | upgrade a stellar-cli 27.1.0 recomendado, pendiente |
 | CI | GitHub Actions (`.github/workflows/contracts.yml`) | `cargo test --workspace` en cada push/PR que toque `contracts/` |
-| Red | Stellar **Testnet** (Protocol 27) + Soroban RPC | Horizon + RPC público |
+| Red | Stellar **Testnet** (Protocol 29) + Soroban RPC | Horizon + RPC público |
 | Token | USDC de **Blend** testnet vía **Stellar Asset Contract (SAC)** | `USDC:GATALTGT…`, SAC `CAQCFVLO…RCJU` — no es un asset propio; se fondea con el faucet de Blend |
-| Yield | Vault **DeFindex** (desplegado) → **Blend v2 directo tras `YieldAdapter`** (F1) | ver §12 |
-| App | Android nativo, Kotlin + Jetpack Compose | minSdk 26, target 35, Material 3 |
+| Yield | **Blend v2 directo tras `YieldAdapter`** (desplegado 2026-07-31) | ver §12 |
+| Backend admin | **`raiz-relayer`** (TypeScript + Fastify + stellar-sdk 17, Fly.io; repo aparte) | firma server-side `register_merchant` / `mint_resident` / faucet / vault; la app lo consume vía `data/relayer/RelayerClient.kt` (D1) |
+| Anchor (on-ramp) | SEP-1 + SEP-10 + SEP-24 (depósito) contra `testanchor.stellar.org` | `data/anchor/AnchorClient.kt` + `ui/deposit/` (D3); solo wallets semilla `G…` |
+| App | Android nativo, Kotlin + Jetpack Compose | minSdk 26, target 35, Material 3 · versión 0.3.0 (`versionCode 3`) |
 | DI | Hilt (Dagger) + KSP | módulo `DataModule` |
-| SDK Stellar | **kmp-stellar-sdk** (Soneso) | 1.6.0 — Horizon, Soroban RPC, `ContractClient`, SEP-05 |
+| SDK Stellar | **kmp-stellar-sdk** (Soneso) | 1.6.0 — Horizon, Soroban RPC, `ContractClient`, SEP-05, SEP-01/10/24 |
 | Mapas | Mapbox Maps SDK + maps-compose | 11.x |
 | Wallet | **Passkey WebAuthn (smart account `C…`)** + fallback seed **BIP-39 / SEP-05** | `OZSmartAccountKit` de Soneso; operativo end-to-end en dispositivo |
 | Concurrencia | Coroutines + StateFlow | MVVM por pantalla |
-| Async stream | Ktor (CIO) para friendbot/Horizon | ver gotcha TLS |
+| Async stream | Ktor (CIO) para friendbot/Horizon, el relayer y el anchor | ver gotcha TLS |
 
 ---
 
@@ -64,12 +71,13 @@ Soneso, no un backend de RAÍZ).
 ┌─────────────────────────────────────────────────────────────────┐
 │                        App Android (Kotlin)                       │
 │                                                                   │
-│  UI (Compose) ── ViewModel (StateFlow) ── Repositorio/data layer  │
+│  UI (Compose) ── ViewModel (StateFlow) ── data layer (singletons) │
 │                                              │                    │
 │   ┌──────────────────────────────────────────┼─────────────────┐ │
 │   │ WalletManager   SorobanClient   HorizonStream   RoleResolver│ │
-│   │  (claves)        (4 contratos)   (balances/      (rol on-    │ │
+│   │  (claves)        (contratos)     (balances/      (rol on-    │ │
 │   │                                   friendbot)      chain)     │ │
+│   │ + RelayerClient · AnchorClient · BlendClient                │ │
 │   └──────────────────────────────────────────┼─────────────────┘ │
 └───────────────────────────────────────────────┼─────────────────┘
               firma tx │                         │ simula (read)
@@ -84,9 +92,15 @@ Soneso, no un backend de RAÍZ).
         │   Pool ──accrue_points──▶ Rewards                   │
         │    │ ▲                                              │
         │    │ └──withdraw_to── Treasury ──tally/mark──▶ Gov  │
+        │    ├──deposit/withdraw──▶ yield_adapter ──▶ Blend v2│
         │    ▼                                                │
         │   USDC SAC (token)                                  │
         └─────────────────────────────────────────────────────┘
+
+Servicios fuera del teléfono (además de RPC y Horizon):
+
+  RelayerClient ──HTTPS──▶ raiz-relayer (Fly.io) ──tx de admin firmadas──▶ Soroban RPC
+  AnchorClient  ──HTTPS──▶ testanchor.stellar.org (SEP-1/10/24) ──paga el USDC del anchor──▶ cuenta G… del usuario
 ```
 
 **5 contratos Soroban** (deploy vigente: 2026-07-31T20:34:53Z — re-deploy F1; el deploy original del 29-jun quedó obsoleto):
@@ -103,11 +117,13 @@ Soneso, no un backend de RAÍZ).
 | admin | `GBLS7PL5…CYC2P` | `raiz-admin`, protocol_fee_bps = 50 |
 
 > **La fuente canónica es `deployments.json`** — estos IDs cambian con cada
-> re-deploy (el de F1 es inminente). Tras cada deploy el JSON se copia
-> manualmente a `android/app/src/main/assets/`.
+> re-deploy. `scripts/deploy_testnet.sh` copia el JSON a
+> `android/app/src/main/assets/` al terminar; la landing lleva su propia copia en
+> el objeto `DEPLOYMENTS` de cada HTML (sincronizarla a mano en cada re-deploy).
 
 **Grafo de dependencias entre contratos:**
-- `Pool` → llama `Rewards.accrue_points` (cross-contract, vía `contractimport!`) y a la fuente de yield — hoy el vault DeFindex, en F1 el `yield_adapter` — vía `#[contractclient]` declarado a mano.
+- `Pool` → llama `Rewards.accrue_points` y al `yield_adapter` (`deposit` / `withdraw` / `shares_of` / `total_shares` / `value_of`), ambos vía `#[contractclient]` declarado a mano (ya no hay `contractimport!` en el repo).
+- `yield_adapter` → llama al pool USDC de Blend v2 (`submit`, `get_positions`, `get_reserve`, `get_config`, `claim`), también con cliente declarado a mano.
 - `Treasury` → llama `Governance.tally`, `Governance.get_proposal`, `Governance.mark_executed`, y `Pool.withdraw_to` / `Pool.get_vault_shares` / `Pool.redeem_from_vault` (vía `#[contractclient]` declarado a mano).
 - `Governance` y `Rewards` no llaman a nadie (son llamados).
 
@@ -125,7 +141,7 @@ Soneso, no un backend de RAÍZ).
 
 ---
 
-## 4. Los 4 contratos en detalle
+## 4. Los 5 contratos en detalle
 
 ### 4.1 Pool (`contracts/pool/src/lib.rs`) — el corazón
 
@@ -146,30 +162,34 @@ struct MerchantData {
 ```
 
 **Claves de storage (`DataKey`):** `Admin`, `UsdcToken`, `RewardsContract`,
-`ProtocolFeeBps`, `DefindexVault` (instance); `Barrio(id)`, `Merchant(addr)`,
+`ProtocolFeeBps`, `YieldAdapter` (address del contrato de yield), `CushionBps`
+(colchón líquido, default 2000 = 20%) (instance); `Barrio(id)`, `Merchant(addr)`,
 `BarrioMerchants(id)` (índice para el mapa), `TouristSeen(barrio, tourist)`
-(para contar turistas únicos), `VaultShares(id)` (shares de yield por barrio),
-`AllBarrios` (índice global para RBAC dinámico) (persistent).
+(para contar turistas únicos), `AllBarrios` (índice global para RBAC dinámico)
+(persistent). Las shares de yield por barrio **ya no viven en Pool**: las guarda
+el `yield_adapter` (`Shares(barrio_id)`), única fuente de verdad.
 
 **Funciones:**
 
 | Función | Auth | Qué hace |
 |---|---|---|
-| `initialize(admin, usdc, rewards, fee_bps, defindex_vault)` | `admin` | Una sola vez. Guarda config (en F1 el 5.º parámetro pasa a ser el `yield_adapter`). |
+| `initialize(admin, usdc, rewards, fee_bps, yield_adapter)` | `admin` | Una sola vez. Guarda config y fija `CushionBps` en 2000. |
 | `register_barrio(id, name, treasury)` | admin | Crea un barrio + índice de comercios vacío; lo añade a `AllBarrios`. |
-| `register_merchant(data)` | admin | Registra/verifica comercio; lo añade al índice del barrio. Falla `BarrioNotFound` si el barrio no existe. |
+| `register_merchant(data)` | admin | Registra el comercio tal cual llega (el llamador envía `verified: true`); lo añade al índice del barrio. Falla `BarrioNotFound` si el barrio no existe. |
 | `pay_merchant(tourist, merchant, amount, tip_bps)` | `tourist` | **Núcleo.** Ver pipeline §6.1. |
 | `withdraw_to(caller, barrio, recipient, amount)` | `caller` | Solo el `treasury_contract` registrado del barrio puede retirar. Usado por Treasury. |
-| `set_defindex_vault(admin, vault)` | admin | Cambia la fuente de yield en caliente (en F1: `set_yield_adapter`). |
-| `deposit_idle_to_vault(caller, barrio, amount)` | admin o treasury del barrio | Deposita fondo ocioso en la fuente de yield. Ver §12. |
+| `set_yield_adapter(admin, adapter)` | admin | Cambia la fuente de yield en caliente; solo si el adapter actual no tiene posiciones (`total_shares() == 0`, si no `AdapterHasPositions`). |
+| `set_cushion_bps(admin, bps)` | admin | Ajusta el colchón líquido (`bps ≤ 10_000`, si no `InvalidBps`). |
+| `deposit_idle_to_vault(caller, barrio, amount)` | admin o treasury del barrio | Deposita fondo ocioso en la fuente de yield respetando el colchón (`InsufficientLiquidity` si lo violaría). Ver §12. |
 | `redeem_from_vault(caller, barrio, shares)` | admin o treasury del barrio | Rescata shares al `pool_balance` (realiza el yield). Ver §12. |
-| `get_pool_balance / get_barrio / get_merchant / list_merchants / list_barrios / get_vault_shares / get_vault_value` | — | Lecturas. |
+| `get_pool_balance / get_barrio / get_merchant / list_merchants / list_barrios / get_vault_shares / get_vault_value` | — | Lecturas (`get_vault_shares` / `get_vault_value` delegan en el adapter). |
 
 **Eventos:** `payment` → topics `(symbol_short!("payment"), barrio_id)`, data `(tourist, merchant, amount, tip)`; `vault_dep` → `(amount, shares)`; `vault_red` → `(shares, got)`.
 
 **Errores:** `NotInitialized(1)`, `AlreadyInitialized(2)`, `Unauthorized(3)`,
 `MerchantNotFound(4)`, `MerchantNotVerified(5)`, `BarrioNotFound(6)`,
-`InvalidAmount(7)`, `InvalidTipBps(8)`.
+`InvalidAmount(7)`, `InvalidTipBps(8)`, `AdapterNotConfigured(9)`,
+`InsufficientLiquidity(10)`, `AdapterHasPositions(11)`, `InvalidBps(12)`.
 
 ### 4.2 Governance (`contracts/governance/src/lib.rs`) — democracia del barrio
 
@@ -236,6 +256,11 @@ con las firmas reales — el `spec-auditor` lo vigila.
 
 **Lecturas:** `get_execution_log(barrio)`, `get_execution(id)`, `get_execution_count(barrio)`.
 
+> El campo `tx_hash` es un **ID de auditoría** reproducible (sha256), **no** el
+> hash de la transacción de Stellar: un contrato no puede leer el hash de la
+> transacción que lo invoca. El enlace a la transacción real lo resuelve el
+> cliente (D2, ver §6.2).
+
 ### 4.4 Rewards (`contracts/rewards/src/lib.rs`) — puntos + premios
 
 ```rust
@@ -264,6 +289,27 @@ struct Redemption { id, tourist, reward_id, redeemed_at, claimed }
 con `env.current_contract_address()`, y Rewards valida `caller_pool ==
 stored_pool`. Así **ningún otro contrato/cuenta puede inflar puntos**.
 
+### 4.5 YieldAdapter (`contracts/yield_adapter/src/lib.rs`) — BlendAdapter
+
+Puente contable **por barrio** entre el Pool y el pool USDC de Blend v2. Diseño
+y decisiones en §12; aquí solo la superficie del contrato.
+
+**Claves de storage (`DataKey`):** `Admin`, `PoolContract` (único autorizado a
+`deposit`/`withdraw`), `BlendPool`, `UsdcToken`, `TotalShares` (instance);
+`Shares(barrio_id)` (bTokens del barrio, persistent).
+
+| Función | Auth | Qué hace |
+|---|---|---|
+| `initialize(admin, pool_contract, blend_pool, usdc_token)` | admin | Una vez. |
+| `deposit(caller, barrio, amount) -> shares` | `caller` = Pool registrado | Presta en Blend el USDC que el Pool acaba de transferir al adapter; acredita los bTokens al barrio. |
+| `withdraw(caller, barrio, shares, to) -> got` | `caller` = Pool registrado | Retira de Blend y envía el USDC a `to`; valida `shares ≤ shares_of(barrio)` (`InsufficientShares`). |
+| `claim_blnd(admin, to)` | admin | Reclama emisiones BLND del lado supply (no-op si no hay). |
+| `shares_of / total_shares / value_of / apy_hint` | — | Lecturas puras (`value_of = shares × b_rate / 1e12`; `apy_hint` en bps). |
+
+**Eventos:** `supply` → topics `(symbol_short!("supply"), barrio_id)`, data `(amount, shares)`; `withdrw` → `(shares, got)`.
+
+**Errores:** `NotInitialized(1)`, `AlreadyInitialized(2)`, `Unauthorized(3)`, `InvalidAmount(4)`, `InsufficientShares(5)`.
+
 ---
 
 ## 5. Modelo de autorización (quién puede llamar qué)
@@ -275,6 +321,8 @@ Cada escritura usa `require_auth()` sobre la Address responsable:
 | `pay_merchant` | turista | comercio existe y `verified` |
 | `register_merchant` / `register_barrio` | admin Pool | barrio existe |
 | `withdraw_to` | treasury del barrio | `caller == barrio.treasury_contract` |
+| `deposit_idle_to_vault` / `redeem_from_vault` | admin o treasury del barrio | colchón líquido (`CushionBps`) en el depósito |
+| `yield_adapter.deposit` / `withdraw` | el propio Pool | `caller == PoolContract` |
 | `mint_resident` | admin del barrio | `barrio_admin == Admin(barrio)` |
 | `create_proposal` / `vote` | residente | token soulbound del **mismo** barrio |
 | `tally` | nadie (público) | calcula sobre estado on-chain |
@@ -286,6 +334,13 @@ Cada escritura usa `require_auth()` sobre la Address responsable:
 
 Las **lecturas** se hacen por simulación con `signer = null` y `source =
 admin` (cuenta que existe en testnet) — no gastan gas ni firman.
+
+Las acciones cuya firma exigida es la del **admin** (`register_merchant`,
+`mint_resident`, `deposit_idle_to_vault` / `redeem_from_vault` y el faucet de
+USDC) no se firman en el teléfono: la app las pide por HTTP a `raiz-relayer`
+(`data/relayer/RelayerClient.kt`), que las firma server-side. La clave del admin
+vive solo en el servidor del relayer; el APK no la lleva desde 0.2.0 (rotación
+de la clave: ver `docs/evidencia_sow/d1/`).
 
 ---
 
@@ -333,15 +388,35 @@ emitir evento payment(tourist, merchant, amount, tip)
 (cualquiera) tally ──▶ quórum 30% + mayoría simple ─▶ Passed | Rejected
         │
 (cualquiera) Treasury.execute_proposal ─▶ tally Passed?
+        │                                 ├─ rescata el yield de Blend (si hay shares)
         │                                 ├─ Pool.withdraw_to(recipient, amount)
-        │                                 ├─ registra Execution + tx_hash
+        │                                 ├─ registra Execution + tx_hash (ID de auditoría)
         │                                 └─ Governance.mark_executed
         ▼
    evento execution  ──▶  Dashboard de transparencia
 ```
 
-En la app: `ProfileViewModel` (voto del residente) + `DashboardViewModel`
-(`tally` + `executeProposal` + `getExecutionLog`).
+En la app: `ProposalsViewModel` (verificación de residente vía relayer + voto
+del residente) + `DashboardViewModel` (`tally` + `executeProposal` +
+`getExecutionLog` + `executionEvents`). El Dashboard ofrece "Ejecutar trustless"
+en propuestas ya cerradas y aún `Active` (el Treasury hace el `tally` dentro de
+`execute_proposal`).
+
+**Enlace a la transacción real de cada ejecución (D2).** El `tx_hash` que guarda
+el contrato es un ID de auditoría, así que el hash real de la transacción lo
+resuelve el cliente, por `proposal_id` y en este orden:
+
+1. **Caché local del dispositivo** (`data/local/ExecutionHashStore`): el hash que
+   la app captura al firmar `execute_proposal` y los que ya llegaron por evento.
+2. **Archivo versionado** `assets/execution_hashes.json` (la UI lo rotula
+   "Verificada (archivo)"): cubre ejecuciones cuyo evento ya salió del RPC.
+3. **Eventos `execution` del Treasury** vía `getEvents`
+   (`SorobanClient.executionEvents`), solo para ejecuciones recientes sin hash
+   conocido — la retención del RPC de testnet es ≈ 7 días.
+
+Con hash real, la fila enlaza a Stellar Expert; sin él se muestra como
+"histórica" y **no se inventa enlace**. La landing (`landing/index.html`, bloque
+"Ejecuciones del fondo") hace la misma correlación con un snapshot + `getEvents`.
 
 ### 6.3 Canje de puntos
 
@@ -355,30 +430,46 @@ crea `Redemption`, emite `redeem`. El artesano luego hace `claim_redemption`.
 banner. Cada acción re-chequea tras 1.5 s:
 
 ```
-accountExists?  ── no ──▶ FUND_XLM        → friendbot fondea XLM (testnet)
+accountExists?  ── no ──▶ FUND_XLM            → friendbot fondea XLM (testnet)
    │ sí
-hasUsdcTrustline? ─ no ─▶ ACTIVATE_TRUST  → ChangeTrust USDC firmado por el user
+hasUsdcTrustline? ─ no ─▶ ACTIVATE_TRUSTLINE  → ChangeTrust USDC firmado por el user
    │ sí
-getUsdcBalance==0? ─ sí ▶ REQUEST_USDC    → admin envía 20 USDC (faucet demo)
-   │ no
-   ▼ DONE (banner oculto)
+getUsdcBalance==0? ─ sí ▶ REQUEST_USDC        → "Consigue USDC": depósito SEP-24 con el
+   │ no                                         anchor de prueba, o faucet "USDC demo
+   ▼ DONE (banner oculto)                       (Blend)" de 20 USDC vía raiz-relayer
 ```
 
-Implementado en `HorizonStream`: `accountExists`, `fundWithFriendbot`,
-`enableUsdcTrustline`, `sendUsdcFromAdmin`, `getUsdcBalance`. El faucet
-(`sendUsdcFromAdmin`) es un **Payment classic** firmado por el admin — **simula
-un on-ramp SEP-24**, no es producción.
+Implementado en `HorizonStream` (`accountExists`, `fundWithFriendbot`,
+`enableUsdcTrustline`, `getUsdcBalance`) y `WalletViewModel`. El paso 3 tiene dos
+caminos:
+
+- **Depósito SEP-24 (primario, D3):** pantalla "Depositar" (`ui/deposit/`) →
+  `AnchorClient` (SEP-1 `stellar.toml` → SEP-10 challenge firmado con la wallet →
+  SEP-24 `deposit/interactive` en una Custom Tab + polling hasta `completed`)
+  contra `testanchor.stellar.org`. Solo wallets semilla `G…` (passkey espera
+  SEP-45). El USDC que llega es **el del anchor de prueba** (otro emisor que el
+  USDC de Blend del fondo): se muestra aparte y, para pagar en comercios, se
+  convierte con "Convertir a USDC del fondo" (`PathPaymentStrictSend` firmada por
+  el usuario, `HorizonStream.quoteStrictSend` / `pathPaymentStrictSend`).
+- **Faucet demo (secundario):** `RelayerClient.faucet` → `POST /v1/faucet` del
+  relayer, que envía 20 USDC de Blend firmando server-side (`payment` clásico a
+  cuentas `G…`, `transfer` del SAC a smart accounts `C…`). Ya no existe
+  `sendUsdcFromAdmin` en la app.
 
 ### 6.5 Alta de comercio ("Soy comerciante")
 
-`BecomeMerchantViewModel.submit()` → `SorobanClient.registerMerchant(admin, …)`
-→ `Pool.register_merchant`. Hereda lat/lng del barrio elegido + jitter ~20 m.
-Tras éxito invalida `RoleResolver` y el usuario pasa a `MERCHANT`.
+`BecomeMerchantViewModel.submit()` → `RelayerClient.registerMerchant(…)` →
+`POST /v1/register-merchant` → `raiz-relayer` firma `Pool.register_merchant`.
+Las coordenadas son las que el comerciante elige (tocando el mapa o buscando una
+dirección) o, si no elige, el centro del barrio. Tras éxito invalida
+`RoleResolver` y el usuario pasa a `MERCHANT`; un `409 MERCHANT_EXISTS` se trata
+como éxito idempotente.
 
-> **Atajo de demo:** la app firma con el `demoAdminKeyPair` (clave del admin
-> embebida vía `BuildConfig.DEMO_ADMIN_SECRET`). En producción esto pasaría por
-> un flujo de aprobación del admin del barrio o KYC SEP-12 — un usuario no
-> debería poder auto-verificarse.
+> **Atajo de demo:** el relayer aprueba el alta al instante, sin revisión. La
+> app ya no firma con ninguna clave de admin (`demoAdminKeyPair` y
+> `BuildConfig.DEMO_ADMIN_SECRET` se eliminaron en 0.2.0, D1). En producción
+> esto pasaría por un flujo de aprobación del admin del barrio o KYC SEP-12 —
+> un usuario no debería poder auto-verificarse.
 
 ---
 
@@ -386,19 +477,22 @@ Tras éxito invalida `RoleResolver` y el usuario pasa a `MERCHANT`.
 
 **Arquitectura:** MVVM + Hilt. Una pantalla = `Screen` (Compose) + `ViewModel`
 (StateFlow) + acceso al *data layer*. **Sin repositorio intermedio formal**: los
-ViewModels usan directamente los 4 servicios singleton.
+ViewModels usan directamente los servicios singleton de `data/`.
 
-**Data layer (`data/stellar/`):**
+**Data layer (`data/`; salvo que se indique otro paquete, en `data/stellar/`):**
 
 | Clase | Responsabilidad |
 |---|---|
-| `SorobanClient` | Fachada de los 4 contratos. Lecturas con `signer=null` (simulación), escrituras firmadas. Cachea un `ContractClient` por contrato (cada uno cuesta 2 round-trips al construirse). |
-| `HorizonStream` | Balances USDC/XLM (polling + `distinctUntilChanged`), trustlines, friendbot, faucet. |
+| `SorobanClient` | Fachada de los contratos RAÍZ que la app invoca directamente (Pool, Governance, Treasury, Rewards; el `yield_adapter` se alcanza a través del Pool y de `BlendClient`). Lecturas con `signer=null` (simulación), escrituras firmadas por el usuario. Cachea un `ContractClient` por contrato (cada uno cuesta 2 round-trips al construirse). Incluye `executionEvents` (eventos `execution` del Treasury vía `getEvents`, D2). |
+| `HorizonStream` | Balances de cualquier asset clásico (polling + `distinctUntilChanged`), historial de pagos, trustlines, friendbot y cotización/envío de path payments (D3; aritmética en `SwapMath`). El faucet ya no vive aquí: es `RelayerClient.faucet`. |
+| `RelayerClient` (`data/relayer/`) | Cliente HTTP (Ktor) de `raiz-relayer`: `registerMerchant`, `mintResident`, `faucet`, `vaultDeposit` / `vaultRedeem`, `health`. Las operaciones de admin se firman en el servidor (D1). |
+| `AnchorClient` (`data/anchor/`) | SEP-1 (`stellar.toml`) + SEP-10 (JWT solo en memoria) + SEP-24 (depósito interactivo y polling) contra el anchor de prueba del SDF (D3). |
+| `ExecutionHashStore` (`data/local/`) | Hash real de cada ejecución por `proposal_id`: caché local (`SharedPreferences`) + archivo versionado `assets/execution_hashes.json` (D2). |
 | `WalletManager` | Custodia de claves. Prioridad: seed guardada > passkey (contractId `C…`) > demo (`BuildConfig`) > placeholder. |
 | `PasskeyWalletManager` | Smart wallets WebAuthn/secp256r1 sobre `OZSmartAccountKit` (kit OpenZeppelin de Soneso). Crea la smart account `C…` y firma con la passkey del dispositivo; usa el relayer/indexer públicos de Soneso testnet. Requiere Activity y API ≥ 28. |
-| `DefindexClient` | Cliente del vault de yield DeFindex: TVL / precio-por-share / posición (on-chain) + APY REST opcional. En F1 se sustituye por `BlendClient` (ver §12). |
+| `BlendClient` | Lecturas puras del yield, sin API key: `get_reserve(usdc)` del pool de Blend v2 (TVL / utilización) y `apy_hint()` del `yield_adapter` (APY estimado). La posición por barrio viene de `Pool` (`get_vault_shares` / `get_vault_value`). Ver §12. |
 | `SecureWalletStore` | Persistencia cifrada de la seed phrase en el dispositivo. |
-| `RoleResolver` | Deriva el rol on-chain: residente (`getResident`) → comerciante (`listMerchants` en los 3 barrios) → turista. Cachea por address. |
+| `RoleResolver` | Deriva el rol on-chain: residente (`getResident`) → comerciante (`listBarrios` → `listMerchants` por barrio; fallback a los barrios del seed) → turista. Cachea por address. |
 | `ScvalParse` | Parsea SCVal Map → tipos Kotlin con type-safety (`asLong`, `asStruct`, `asAddressString`, `asHex`, `asEnumSymbol`, …). |
 | `DeploymentsLoader` | Carga `deployments.json` desde assets. |
 
@@ -406,12 +500,13 @@ ViewModels usan directamente los 4 servicios singleton.
 `Merchant`, `Proposal`, `Reward`, `Execution`, `ResidentToken`), con helpers
 `.toUsdc()` / `.toStroops()` y `RaizConstants` (RPC URL, divisores).
 
-**21 pantallas (`ui/`)** en grupos: onboarding/auth (welcome, registro
-passkey/seed, login, import, elección de rol), roles (become_resident,
+**21 pantallas (`*Screen.kt` en `ui/`)** en grupos: onboarding/auth (welcome,
+registro passkey/seed, login, import, elección de rol), roles (become_resident,
 become_merchant con Mapbox), núcleo (Wallet con RAÍZ Passport, Pay, Rewards,
-BarrioMap con Mapbox, Profile), gobernanza (proposals + crear propuesta),
-comercio (cobros), público sin login (Dashboard de transparencia → Yield) y
-LockScreen biométrico. El bottom nav cambia según el rol resuelto on-chain por
+BarrioMap con Mapbox, Profile), on-ramp (**Depositar**: SEP-24 + conversión al
+USDC del fondo, D3), gobernanza (proposals + crear propuesta), comercio
+(cobros), público sin login (Dashboard de transparencia → Yield) y LockScreen
+biométrico. El bottom nav cambia según el rol resuelto on-chain por
 `RoleResolver`.
 
 **Conversión de tipos en llamadas:** los `u32`/`u64` del contrato se mandan como
@@ -433,13 +528,24 @@ montos como `Long` stroops; `BytesN<32>` como `ByteArray` de 32 (helper
 - **Implementado — fallback seed:** derivación **BIP-39 / SEP-05** (12 palabras →
   KeyPair índice 0) vía `Mnemonic` del SDK Soneso. Crear, importar y borrar
   wallet. La seed se guarda en `SecureWalletStore`.
-- **No implementado (roadmap):** anchors **SEP-10** (auth), **SEP-24** (on/off
-  ramp fiat↔USDC), **SEP-38** (RFQ), **SEP-12** (KYC). El faucet del admin ocupa
-  el lugar del SEP-24 en la demo.
-- **Claves demo:** `DEMO_TOURIST_SECRET`, `DEMO_RESIDENT_SECRET`,
-  `DEMO_ADMIN_SECRET` se inyectan vía `BuildConfig` desde `local.properties`
-  (no se versionan). Permiten demostrar los 3 roles sin coordinar offline. En el
-  APK debug van embebidas → **no publicar como release**.
+- **Implementado (D3) — anchors SEP-1 / SEP-10 / SEP-24 (depósito):** contra el
+  anchor de prueba del SDF (`testanchor.stellar.org`), con `kmp-stellar-sdk`
+  1.6.0 (`data/anchor/AnchorClient.kt`, `ui/deposit/`). SEP-10 firma el challenge
+  con la wallet semilla (JWT solo en memoria); SEP-24 abre la web interactiva en
+  una Custom Tab y sondea hasta `completed`. Solo wallets semilla `G…`: las
+  passkey (`C…`) esperan SEP-45. El USDC del anchor es otro activo que el USDC
+  de Blend del fondo; se convierte con una `PathPaymentStrictSend` firmada por el
+  usuario ("Convertir a USDC del fondo").
+- **Pendiente:** **SEP-38** (quotes), retiro (off-ramp), **SEP-12** (KYC),
+  **SEP-45** (auth de smart accounts) y anchors de producción. El faucet demo
+  (20 USDC de Blend) sigue disponible vía `raiz-relayer` como camino secundario.
+- **Claves demo:** solo `DEMO_TOURIST_SECRET` y `DEMO_RESIDENT_SECRET` (wallets
+  de prueba, sin autoridad) se inyectan vía `BuildConfig` desde
+  `local.properties` (no se versionan) y **solo en el build debug**: el
+  `buildType` `release` las fuerza a `""`, así que el APK release no lleva
+  ninguna clave privada `S…` ni modo demo. `DEMO_ADMIN_SECRET` ya no existe: la
+  clave del admin vive solo en el servidor del relayer; el APK no la lleva desde
+  0.2.0 (rotación de la clave: ver `docs/evidencia_sow/d1/`).
 
 ---
 
@@ -448,16 +554,18 @@ montos como `Long` stroops; `BytesN<32>` como `ByteArray` de 32 (helper
 **Script:** `scripts/deploy_testnet.sh`. Orden importante por las dependencias:
 
 1. Asegura identidad `raiz-admin` (genera + fondea si falta).
-2. Compila wasm. **Doble target:** `cargo build --target wasm32-unknown-unknown -p rewards`
-   (para que el `contractimport!` del Pool encuentre el wasm de Rewards) y luego
-   `stellar contract build` (target **`wasm32v1-none`**, el único que acepta el
-   host de Soroban — `wasm32-unknown-unknown` emite `reference-types` que el host
-   rechaza).
+2. Compila wasm en **un solo paso**: `stellar contract build` (target
+   **`wasm32v1-none`**, el único que acepta el host de Soroban —
+   `wasm32-unknown-unknown` emite `reference-types` que el host rechaza). Ya no
+   hay build en dos pasos: todos los cross-contract usan `#[contractclient]`
+   declarado a mano.
 3. Referencia el USDC SAC de **Blend** testnet (no despliega un token propio) y
-   despliega los 4 contratos.
-4. `initialize` en orden: Rewards y Pool referencian sus dependencias, Treasury
-   apunta a Pool+Governance, Governance apunta a Treasury.
-5. Guarda IDs en `deployments.json` (versionado, y copiado a assets de la app).
+   despliega los 5 contratos (Pool, Governance, Treasury, Rewards, yield_adapter).
+4. `initialize` en orden: Rewards → yield_adapter → Pool → Governance →
+   Treasury (cada `initialize` solo necesita la Address del otro contrato, ya
+   desplegado).
+5. Guarda IDs en `deployments.json` (versionado) y lo copia a
+   `android/app/src/main/assets/`.
 
 **Seed:** `scripts/seed_testnet.sh` puebla 3 barrios (Centro Histórico, Barrio
 Norte, Costa Vieja), 9 comercios, 9 residentes soulbound, pagos con tip,
@@ -466,8 +574,18 @@ fondea con el **faucet de Blend** (el admin no puede acuñar ese USDC). Ambos
 scripts reintentan cada operación — testnet es flaky en ráfaga.
 
 **`deployments.json` actual:** network testnet, fee 50 bps, deployed
-2026-06-29T23:12:24Z. Tras cada deploy el JSON se copia manualmente a
-`android/app/src/main/assets/` (paso documentado en `DeploymentsLoader.kt`).
+2026-07-31T20:34:53Z (re-deploy F1). El script lo copia a
+`android/app/src/main/assets/` al terminar; la landing (`landing/*.html`, objeto
+`DEPLOYMENTS`) y el relayer (`/v1/health` lista los mismos IDs) se sincronizan a
+mano en cada re-deploy.
+
+**Mantenimiento on-chain (TTL):** ni Treasury ni Governance extienden el TTL de
+sus entradas (`Execution(n)`, `Proposal(n)` nacen con ~7 días). Pasado ese plazo
+la lectura deja de ser pura y la app falla con "Signer required for write
+call"; el remedio operativo es `stellar contract restore` + `extend`
+(`scripts/treasury_ttl.js` muestra el estado de cada clave del Treasury y su
+XDR; detalle en `CLAUDE.md` y `docs/evidencia_sow/d2/`). Se corrige en el
+próximo re-deploy (H2).
 
 ---
 
@@ -476,25 +594,43 @@ scripts reintentan cada operación — testnet es flaky en ráfaga.
 **Verificado end-to-end en testnet (dispositivos reales):**
 - Lectura de pool balance y balances USDC vía Horizon.
 - Pago con Tip Barrio + acumulación de puntos.
-- Onboarding de wallet nueva (friendbot → trustline → faucet 20 USDC).
+- Onboarding de wallet nueva (friendbot → trustline → faucet de 20 USDC vía
+  relayer, o depósito SEP-24 con el anchor de prueba).
 - Alta de comercio on-chain (ej. "SalsonBacano" en Barrio Norte, `get_merchant` lo lee de vuelta).
 - **Passkey end-to-end**: crear smart wallet WebAuthn, pagar con tip, votar,
   crear propuesta, faucet y saldo.
 - Gobernanza in-app (propuesta → voto → tally → ejecución) + dashboard de transparencia.
-- Yield: `deposit_idle_to_vault` / `redeem_from_vault` cross-contract y depósito
-  desde la app (verificado 2026-06-29).
-- **58/58 tests de contratos en verde** (CI en GitHub Actions).
+- Yield en **Blend v2** vía `yield_adapter`: 0,2 USDC del Centro Histórico en
+  bTokens tras el re-deploy F1 (2026-07-31); depósito desde la app vía relayer
+  con el colchón del 20 % comprobado, y rescate por el endpoint del relayer
+  (2026-09-06, `docs/evidencia_sow/d1/regresion_dispositivo.md`).
+- **Sprint SOW Instaward** (evidencia en `docs/evidencia_sow/`): **D1** los
+  flujos de admin pasan por `raiz-relayer` y el APK release no lleva claves
+  privadas; **D2** 8 ejecuciones del Treasury enlazadas a su transacción real
+  en Stellar Expert (app y landing); **D3** depósito SEP-10 + SEP-24 completo
+  desde la app contra el anchor de prueba, más la conversión al USDC del fondo.
+- **85 tests de contratos en verde** (CI en GitHub Actions) + 61 tests JVM de la app.
 
 **Limitaciones conocidas:**
-- **Clave admin embebida en el APK** (vía `BuildConfig`, texto plano en el dex):
-  junto con el KYC mock, una de las **2 limitaciones grandes**. Su eliminación
-  es exactamente la fase **F3** (custodia enjambre + atestación vecinal); como
-  quick-win está **en curso** la migración del admin a multisig 2-de-3
-  (`scripts/setup_admin_multisig.sh`).
-- **KYC mock:** el admin mintea residentes y verifica comercios a mano (la otra
-  limitación grande; también la elimina F3 vía atestación vecinal).
-- **Faucet ≠ anchor:** el on-ramp es un Payment del admin, no SEP-24 real.
-- **`tx_hash` de Execution** es un sha256 determinístico, no el hash de la tx de Stellar.
+- **Clave admin única:** la autoridad admin del protocolo sigue siendo una sola
+  cuenta. Ya no viaja en el APK: la clave del admin vive solo en el servidor del
+  relayer; el APK no la lleva desde 0.2.0 (rotación de la clave: ver
+  `docs/evidencia_sow/d1/`). Junto con el KYC mock, es una de las **2
+  limitaciones grandes**; su eliminación es exactamente la fase **F3** (custodia
+  enjambre + atestación vecinal). Existe un script para llevar el admin a
+  multisig 2-de-3 (`scripts/setup_admin_multisig.sh`).
+- **KYC mock:** el admin (vía relayer) mintea residentes y verifica comercios
+  sin validar documentos (la otra limitación grande; también la elimina F3 vía
+  atestación vecinal).
+- **Anchor de prueba ≠ anchor de producción:** el depósito SEP-24 es real en
+  protocolo, pero contra `testanchor.stellar.org` (KYC simulado, sin dinero
+  real) y entrega un USDC distinto al de Blend; faltan SEP-38, retiro y anchors
+  reales fiat↔USDC.
+- **`tx_hash` de Execution** es un ID de auditoría (sha256), no el hash de la tx
+  de Stellar; el hash real se enlaza fuera del contrato (D2, §6.2). Quitar el
+  campo o renombrarlo es decisión de un re-deploy futuro.
+- **TTL de las entradas on-chain:** Treasury y Governance no extienden el TTL de
+  `Execution(n)` / `Proposal(n)` (ver §9, "Mantenimiento on-chain").
 - **rpId del passkey:** para mainnet-readiness falta consolidar dominio propio +
   `assetlinks.json` (en github.io el rpId choca con la Public Suffix List).
 - **TLS en algunos OEMs** (ej. Vivo): el cert `*.stellar.org` (Sectigo) no siempre
@@ -510,16 +646,21 @@ El roadmap canónico vive en `docs/NuevaPropuesta/propuesta_raiz_ahorro_enjambre
 
 | Fase | Qué | Estado |
 |---|---|---|
-| **F1 — Blend directo + `YieldAdapter`** | Crate `yield_adapter` + `BlendAdapter`, `BlendClient` en la app, fuera DeFindex y su API key; migración soroban-sdk 22.x → 26.1.1; quick-win multisig 2-de-3 | **En curso** |
-| **F2 — Cadena de Barrio** | Contrato `savings_circle` (tandas): cuotas, sorteo commit-reveal, reputación soulbound, yield del bote vía YieldAdapter | Siguiente (1–2 meses) |
+| **F1 — Blend directo + `YieldAdapter`** | Crate `yield_adapter` + `BlendAdapter`, `BlendClient` en la app, fuera DeFindex y su API key; migración soroban-sdk 22.x → 26.1.1 | **Completada (2026-07-31)** |
+| **F2 — Cadena de Barrio** | Contrato `savings_circle` (tandas): cuotas, sorteo commit-reveal, reputación soulbound, yield del bote vía YieldAdapter | Siguiente (en pausa hasta cerrar el SOW; solo avanza su spec) |
 | **F3 — Custodia enjambre + atestación vecinal** | Smart account comunal (passkeys + policies, P27) + contrato `attestation` — elimina la clave admin y el KYC mock | Planificada (candidata SCF) |
 | **F4 — Metas + retos + sorteo** | `goal_vault` sobre la infra de F2; producto de ahorro completo | Planificada |
 | **F5 — Enjambre frontera** | Mesh store-and-forward, `stellar-light-verify`, `swarm_rewards`, piloto FROST | Pista paralela (investigación) |
 | **F6 — Capa ZK: voto secreto** | Verificador Groth16/BN254 en Soroban + Semaphore v4 (`vote_private`) | Pista paralela (tras F2 estable) |
 
-Los pendientes de largo plazo del roadmap anterior (anchors SEP-10/24/38, KYC
-SEP-12, IPFS para imágenes de premios, `tx_hash` real, mainnet) siguen vigentes
-como lista, pero la secuencia de trabajo es la de F1–F6.
+Entre F1 y F2 se intercaló el **sprint SOW Instaward** (agosto–octubre 2026):
+D1 relayer admin, D2 transacción real por ejecución y D3 SEP-10/24 — los tres
+hechos (ver "Verificado end-to-end" arriba y `docs/evidencia_sow/`).
+
+Los pendientes de largo plazo del roadmap anterior que siguen vigentes (SEP-38,
+retiro y anchors de producción, SEP-45 para passkey, KYC SEP-12, IPFS para
+imágenes de premios, mainnet) quedan como lista, pero la secuencia de trabajo es
+la de F1–F6.
 
 ---
 
@@ -527,38 +668,47 @@ como lista, pero la secuencia de trabajo es la de F1–F6.
 
 ```
 contracts/
-  pool/src/lib.rs         → pagos, tip split, pool, comercios, yield (vault), list_barrios
-  governance/src/lib.rs   → soulbound, propuestas, voto, tally, quórum
-  treasury/src/lib.rs     → execute_proposal trustless (+ rescate de yield), log de ejecuciones
+  pool/src/lib.rs          → pagos, tip split, pool, comercios, yield vía adapter (colchón), list_barrios
+  governance/src/lib.rs    → soulbound, propuestas, voto, tally, quórum
+  treasury/src/lib.rs      → execute_proposal trustless (+ rescate de yield), log de ejecuciones
   rewards/src/lib.rs       → puntos, premios, redeem, claim
+  yield_adapter/src/lib.rs → BlendAdapter: contable por barrio hacia el pool USDC de Blend v2
 
 android/app/.../data/stellar/
-  SorobanClient.kt        → fachada de los 4 contratos (read sim + write firmado)
-  HorizonStream.kt        → balances, trustline, friendbot, faucet
-  WalletManager.kt        → claves (seed BIP-39, passkey, demo keys)
+  SorobanClient.kt        → fachada de Pool/Governance/Treasury/Rewards (read sim + write firmado) + executionEvents
+  HorizonStream.kt        → balances por asset, trustlines, friendbot, path payments
+  SwapMath.kt             → aritmética en stroops de la conversión (D3)
+  BlendClient.kt          → lecturas puras del yield (get_reserve de Blend + apy_hint del adapter)
+  WalletManager.kt        → claves (seed BIP-39, passkey, demo keys solo en debug)
   PasskeyWalletManager.kt → smart wallets WebAuthn (OZSmartAccountKit)
-  DefindexClient.kt       → cliente del vault de yield (F1: → BlendClient)
   RoleResolver.kt         → rol on-chain (resident/merchant/tourist)
   ScvalParse.kt           → SCVal → tipos Kotlin
+android/app/.../data/relayer/RelayerClient.kt   → operaciones de admin vía raiz-relayer (D1)
+android/app/.../data/anchor/AnchorClient.kt     → SEP-1/10/24 contra el anchor de prueba (D3)
+android/app/.../data/local/ExecutionHashStore.kt → hash real de cada ejecución (D2)
+android/app/src/main/assets/execution_hashes.json → archivo versionado de hashes (D2)
 android/app/.../ui/       → 21 pantallas Compose (onboarding, roles, núcleo,
-                            gobernanza, cobros, dashboard → yield)
-scripts/deploy_testnet.sh → despliegue
+                            depositar, gobernanza, cobros, dashboard → yield)
+scripts/deploy_testnet.sh → despliegue (copia deployments.json a los assets de la app)
 scripts/seed_testnet.sh   → datos demo
-deployments.json          → IDs de contratos en testnet (fuente canónica; copiar a assets)
+scripts/treasury_ttl.js   → estado del TTL de las entradas del Treasury (solo lectura) + claves XDR para restore/extend
+deployments.json          → IDs de contratos en testnet (fuente canónica)
+docs/evidencia_sow/       → evidencia del SOW Instaward (D1, D2, D3)
 ```
 
 ---
 
-## 12. Yield del fondo — F1: Blend directo tras `YieldAdapter` (en implementación)
+## 12. Yield del fondo — F1: Blend directo tras `YieldAdapter`
 
-> **Estado honesto al cierre de esta revisión (2026-07-31):** los contratos están
-> en migración a soroban-sdk 26.1.1 y el adapter está en implementación;
-> **DeFindex sigue siendo lo desplegado en testnet hasta el re-deploy F1.**
+> **Estado (2026-10-04):** F1 está **desplegado en testnet desde el 2026-07-31**
+> (soroban-sdk 26.1.1; contrato `yield_adapter` `CA5J6YVH…PJUC` contra el pool
+> USDC de Blend v2 `CCEBVDYM…4HGF`). DeFindex se eliminó por completo de
+> contratos, app y scripts (§12.2 lo conserva como histórico).
 > Spec completa: `docs/raiz_v2_spec_contratos.md`, "Contrato 5: `yield_adapter`".
 
-### 12.1 El diseño F1
+### 12.1 El diseño F1 (desplegado)
 
-El fondo ocioso del barrio pasa a rendir **prestándose directo en Blend v2**
+El fondo ocioso del barrio rinde **prestándose directo en Blend v2**
 (pool USDC TestnetV2), sin intermediario ni API key. El Pool no conoce a Blend:
 conoce la interfaz `YieldAdapter` — un **contrato contable por barrio**. Cambiar
 de fuente de yield (RWA, renta fija, estrategia mixta) es desplegar otro adapter
@@ -569,6 +719,7 @@ y un `set_yield_adapter`, no un re-deploy de Pool.
 // mismo patrón de caller autorizado que Rewards.accrue_points):
 deposit(caller, barrio_id, amount) -> shares
 withdraw(caller, barrio_id, shares, to) -> got   // valida shares <= shares_of(barrio_id)
+claim_blnd(admin, to) -> claimed                 // solo admin: emisiones BLND del lado supply
 shares_of(barrio_id) / total_shares() / value_of(barrio_id) / apy_hint()  // lecturas puras
 ```
 
@@ -576,12 +727,12 @@ Decisiones clave del `BlendAdapter` (verificadas contra blend-contracts-v2):
 
 - **shares ≡ bTokens de Blend** (sin capa extra de contabilidad). La posición de
   cada barrio vive en `Shares(barrio_id)` dentro del adapter — única fuente de
-  verdad (Pool deja de guardar `VaultShares`).
+  verdad (Pool ya no guarda `VaultShares`).
 - **Prestamista puro:** requests de Blend `Supply = 0` / `Withdraw = 1` — nunca
   SupplyCollateral, no entra al health factor (patrón del fee-vault oficial).
 - **Valoración:** `value_of = shares × b_rate / 1e12` leyendo `get_reserve(usdc)`
-  (escala 1e12 en Blend v2). El APY se deriva on-chain — muere la API key REST
-  de DeFindex.
+  (escala 1e12 en Blend v2). El APY se deriva on-chain (`apy_hint`) — sin la API
+  key REST que exigía DeFindex.
 - **Colchón líquido en Pool:** `CushionBps` (default 2000 = **20%**, gobernable)
   — fracción del fondo del barrio que nunca se invierte, para que las
   ejecuciones del Treasury se sirvan primero del colchón.
@@ -599,27 +750,40 @@ Decisiones clave del `BlendAdapter` (verificadas contra blend-contracts-v2):
   26.1.1). Direcciones Blend V2 testnet como parámetros de deploy, no
   hardcodeadas en el contrato.
 
-### 12.2 Lo desplegado hoy (legado DeFindex, hasta el re-deploy F1)
+**En la app (F1):** la pantalla **"Tesorería que rinde"** (`ui/treasury/`,
+`YieldViewModel`) muestra "Pool Blend v2 · USDC" con lecturas puras —
+`BlendClient` (`get_reserve` del pool de Blend + `apy_hint` del adapter) y la
+posición por barrio desde `Pool` (`get_vault_shares` / `get_vault_value`) — sin
+API key. Depositar y rescatar ya no se firman en el teléfono: van por
+`RelayerClient.vaultDeposit` / `vaultRedeem` (`POST /v1/vault/{deposit,redeem}`
+de `raiz-relayer`, D1).
 
-Lo que corre en testnet es la integración con el **vault USDC de DeFindex**
-(`CBMVK2JK…DWHN`, PaltaLabs, auditado por OtterSec), en dos niveles:
+### 12.2 Histórico pre-F1: integración DeFindex (hasta el 2026-07-31)
+
+> Nada de esta sección está desplegado ni vive en el código hoy: se conserva
+> como registro de lo que corrió durante el hackathon y de por qué se migró.
+
+Hasta el re-deploy F1, lo que corría en testnet era la integración con el
+**vault USDC de DeFindex** (`CBMVK2JK…DWHN`, PaltaLabs, auditado por OtterSec),
+en dos niveles:
 
 - **Camino A (contratos, cross-contract):** `Pool.deposit_idle_to_vault` /
-  `Pool.redeem_from_vault` mueven el fondo del barrio al vault y de vuelta
+  `Pool.redeem_from_vault` movían el fondo del barrio al vault y de vuelta
   (con `authorize_as_current_contract` para el `transfer` anidado);
-  `Treasury.execute_proposal` rescata las shares del barrio antes de pagar.
+  `Treasury.execute_proposal` rescataba las shares del barrio antes de pagar.
   **Verificado on-chain el 2026-06-29** (el depósito desde la app movió la
   posición de tesorería 90→100 USDC).
-- **Camino B (app):** pantalla **"Tesorería que rinde"** (`ui/treasury/`) +
-  `DefindexClient.kt`. Lee precio-por-share / TVL / posición del vault (on-chain,
-  vía `total_supply` + `fetch_total_managed_funds` — NO
-  `get_asset_amounts_per_shares`, que el host trata como write) y permite
+- **Camino B (app):** pantalla "Tesorería que rinde" + `DefindexClient.kt`.
+  Leía precio-por-share / TVL / posición del vault (on-chain, vía
+  `total_supply` + `fetch_total_managed_funds` — NO
+  `get_asset_amounts_per_shares`, que el host trata como write) y permitía
   depositar/rescatar firmando como tesorería; APY en vivo opcional vía REST
-  (`api.defindex.io`, `BuildConfig.DEFINDEX_API_KEY`). Todo esto se sustituye
-  por `BlendClient` en F1.
-- **USDC:** el vault solo acepta el USDC de **Blend** testnet
-  (`USDC:GATALTGT…`, SAC `CAQCFVLO…RCJU`), así que los contratos custodian ESE
-  USDC, no uno propio — y eso **se conserva en F1** (Blend directo usa el mismo
+  (`api.defindex.io`, `BuildConfig.DEFINDEX_API_KEY`). En F1 se sustituyó por
+  `BlendClient`; `DefindexClient` y su API key se borraron.
+- **USDC:** el vault solo aceptaba el USDC de **Blend** testnet
+  (`USDC:GATALTGT…`, SAC `CAQCFVLO…RCJU`), así que los contratos custodiaban ESE
+  USDC, no uno propio — y eso **se conservó en F1** (Blend directo usa el mismo
   asset). Las cuentas se fondean con el faucet de Blend; el admin no puede
-  acuñarlo. `deployments.json` registra `usdc_issuer`, `defindex_vault` y
-  `defindex_usdc` (los dos últimos desaparecen con el re-deploy F1).
+  acuñarlo. `deployments.json` registraba además `defindex_vault` y
+  `defindex_usdc`, que desaparecieron con el re-deploy F1 (hoy: `usdc_sac`,
+  `usdc_issuer` y `blend_pool`).

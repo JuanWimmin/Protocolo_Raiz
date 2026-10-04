@@ -11,7 +11,7 @@
 *El turismo que echa raíces.*
 
 - Pagos turísticos sobre **Stellar** · 2% al fondo comunitario · gobernado **on-chain** por los residentes.
-- 🌐 `raizapp.xyz` · 📱 App Android nativa · ⛓️ 4 contratos Soroban en testnet.
+- 🌐 `raizapp.xyz` · 📱 App Android nativa · ⛓️ 5 contratos Soroban en testnet.
 - 🎨 Visual: logo RAÍZ (árbol) sobre `#FAFAF7`, foto de un barrio colorido (Cartagena/Bogotá). Equipo + hackathon.
 
 ---
@@ -57,7 +57,7 @@ Cada pago, voto y ejecución → evento on-chain público
 ## Slide 5 — El fondo del barrio NO duerme: RINDE
 **Mientras el barrio decide, su fondo crece.**
 
-- El Tip Barrio acumulado se deposita en un **vault de DeFindex** → genera **rendimiento (yield)** automáticamente.
+- El Tip Barrio acumulado presta en el pool USDC de **Blend v2** (vía nuestro YieldAdapter) → genera **rendimiento (yield)** automáticamente.
 - El fondo comunitario no es una alcancía estática: **trabaja** mientras se vota en qué invertirlo.
 - Composabilidad DeFi real: RAÍZ se para sobre el ecosistema Stellar, no lo reinventa.
 - 🎨 Visual: el pool del barrio con una flecha de crecimiento + "TVL / APY" de la pantalla Tesorería.
@@ -78,7 +78,7 @@ Cada pago, voto y ejecución → evento on-chain público
 ## Slide 7 — Demo (transición)
 **Esto NO es un mockup. Corre en testnet ahora mismo.**
 
-- 4 contratos desplegados · 3 barrios · comercios reales en el mapa.
+- 5 contratos desplegados · 3 barrios · comercios reales en el mapa.
 - *(Cambiar a la app en vivo — ver `DEMO.md`)*
 - 🎨 Visual: pantallazo de la WalletScreen (saldo USDC + RAÍZ Passport con sellos) a pantalla completa.
 
@@ -95,17 +95,18 @@ Cada pago, voto y ejecución → evento on-chain público
 ---
 
 ## Slide 9 — Arquitectura técnica
-**4 contratos Soroban + Android nativo + smart accounts.**
+**5 contratos Soroban + Android nativo + smart accounts.**
 
 | Contrato | Función |
 |---|---|
-| **Pool** | Pagos + custodia del Tip Barrio + integración DeFindex |
+| **Pool** | Pagos + custodia del Tip Barrio + colchón líquido del 20% |
 | **Governance** | Token soulbound de residencia + votación por barrio |
 | **Treasury** | Ejecución trustless de propuestas aprobadas |
 | **Rewards** | Puntos no transferibles + catálogo de premios |
+| **YieldAdapter** | El fondo ocioso rinde en el pool USDC de Blend v2, contable por barrio |
 
 - App: **Kotlin + Jetpack Compose** · SDK Soneso · **Mapbox** · **smart wallets passkey** + fallback semilla.
-- 🎨 Visual: diagrama de los 4 contratos + la app + DeFindex, conectando a Stellar.
+- 🎨 Visual: diagrama de los 5 contratos + la app + Blend v2, conectando a Stellar.
 
 ---
 
@@ -115,7 +116,7 @@ Cada pago, voto y ejecución → evento on-chain público
 - **Fees ~0**: el Tip Barrio no se lo come el gas.
 - **USDC nativo**: turista y comercio piensan en dólares, no en un token volátil.
 - **Soroban**: gobernanza segura y auditable en Rust + **account abstraction** (passkey).
-- **Ecosistema componible**: DeFindex para yield, anchors SEP-24/38 para la rampa fiat↔cripto.
+- **Ecosistema componible**: Blend v2 para yield, anchors SEP-10/24 (ya integrados con el anchor de prueba) y SEP-38 para la rampa fiat↔cripto.
 - 🎨 Visual: logo Stellar + íconos de ventaja.
 
 ---
@@ -134,7 +135,7 @@ Cada pago, voto y ejecución → evento on-chain público
 ## Slide 12 — Tracción
 **Lo que YA corre (no es promesa, es código en producción).**
 
-- ✅ 4 contratos desplegados + poblados en testnet (con yield DeFindex real por barrio).
+- ✅ 5 contratos desplegados + poblados en testnet (con yield real por barrio en Blend v2).
 - ✅ **Passkey operativo end-to-end**: crear wallet, pagar, votar y proponer **con la huella**, firmando contra los contratos.
 - ✅ Verificado on-chain en dispositivo: pago+Tip, puntos, **sellos de barrio**, voto, ejecución, alta de comercio con ubicación, registro de residente.
 - ✅ Landing pública (`raizapp.xyz`) + APK descargable + verificación on-chain en la web.
@@ -146,7 +147,7 @@ Cada pago, voto y ejecución → evento on-chain público
 **De MVP a red de barrios autogobernados.**
 
 - **Ahora**: MVP funcional en testnet — pagos, gobernanza, yield y passkey, todo on-chain.
-- **Próximo**: KYC de residencia con documentos (SEP-12), backend de confianza, premios en IPFS.
+- **Próximo**: KYC de residencia con documentos (SEP-12), custodia del admin sin clave única, premios en IPFS.
 - **Después**: piloto en un barrio real de Cartagena con un **anchor local** (rampa fiat).
 - **Visión**: una red de barrios que capturan y gobiernan el valor del turismo que reciben — replicable en cualquier ciudad del mundo.
 - 🎨 Visual: línea de tiempo en 4 hitos + un mapa con barrios encendiéndose.

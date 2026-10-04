@@ -1,7 +1,7 @@
 # RAÍZ — Pitch hablado (hackathon, 7-10 min)
 
 > Red de pagos turísticos sobre Stellar que devuelve valor al barrio que lo genera.
-> Todo on-chain. App Android nativa + 4 contratos Soroban en testnet.
+> Todo on-chain. App Android nativa + 5 contratos Soroban en testnet.
 
 **Estructura:** Gancho (1') → Solución (1.5') → Demo en vivo (3-4') → Cómo funciona + por qué Stellar (1.5') → Tracción y visión (1') → Cierre (30").
 
@@ -44,13 +44,13 @@ Tres ideas clave:
 5. **Transparencia.** El dashboard muestra los pagos, los votos y las ejecuciones — todo leído directo de la cadena. *(abrir Dashboard)*
 6. **Soy comercio.** Cualquiera registra su negocio en RAÍZ en 20 segundos y aparece en el mapa. *(become merchant)*
 
-> *"Nada de esto es un mockup: la app está leyendo y escribiendo contra cuatro contratos desplegados en la testnet de Stellar ahora mismo."*
+> *"Nada de esto es un mockup: la app está leyendo y escribiendo contra cinco contratos desplegados en la testnet de Stellar ahora mismo."*
 
 ---
 
 ## 4 · Cómo funciona + por qué Stellar (≈1.5 min)
 
-**Cuatro contratos Soroban (Rust), desplegados en testnet:**
+**Cinco contratos Soroban (Rust), desplegados en testnet:**
     
 | Contrato | Qué hace |
 |---|---|
@@ -58,25 +58,26 @@ Tres ideas clave:
 | **Governance** | Tokens soulbound de residencia + votación |
 | **Treasury** | Ejecución trustless de propuestas aprobadas |
 | **Rewards** | Puntos no transferibles + catálogo de premios |
+| **YieldAdapter** | El fondo ocioso rinde en el pool USDC de Blend v2, contable por barrio |
 
 **Por qué Stellar y no otra cadena:**
 - **Costo casi cero** — un Tip Barrio de centavos no tiene sentido si el fee se lo come. Stellar cuesta fracciones de centavo.
 - **USDC nativo** — el turista y el comercio piensan en dólares, no en un token volátil.
 - **Soroban** — contratos en Rust, seguros y auditables, para la lógica de gobernanza.
-- **Anchors (SEP-24/38)** — rampa fiat↔cripto integrada: el turista entra con tarjeta, el comercio sale a su banco. *Esto es lo que lo hace usable en el mundo real.*
+- **Anchors (SEP-10/24)** — depósito ya integrado contra el anchor de prueba del SDF; con anchors de producción (+ SEP-38 y retiro) el turista entra con tarjeta y el comercio sale a su banco. *Esto es lo que lo hace usable en el mundo real.*
 
 ---
 
 ## 5 · Tracción y visión (≈1 min)
 
 **Lo que ya está hecho (no es promesa, es código corriendo):**
-- ✅ 4 contratos desplegados y poblados en testnet (3 barrios, 9 comercios).
-- ✅ App Android nativa, 6 pantallas en producción visual.
+- ✅ 5 contratos desplegados y poblados en testnet (3 barrios, 9 comercios).
+- ✅ App Android nativa, 7 pantallas + Depositar (SEP-24) en producción visual.
 - ✅ Flujos verificados **end-to-end on-chain**: pago con Tip Barrio, puntos, votación, ejecución de propuesta, alta de comercio, onboarding de wallets nuevas con rampa de USDC.
+- ✅ **Wallets passkey** sin frase semilla — onboarding de 10 segundos.
 
 **Hacia dónde va:**
 - **KYC de residencia real** (SEP-12) en vez del mint manual del MVP.
-- **Wallets passkey** sin frase semilla — onboarding de 10 segundos.
 - **Premios en IPFS** y catálogo descentralizado.
 - **Piloto en un barrio real** de Cartagena, con un anchor local para la rampa fiat.
 

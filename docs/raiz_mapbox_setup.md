@@ -11,7 +11,7 @@ Mapbox usa dos tokens diferentes. Confundirlos es el error #1:
 
 | Token | Para qué | Dónde va | Empieza con |
 |---|---|---|---|
-| **Public token** | Lo usa la app en runtime para cargar mapas | `strings.xml` o recurso | `pk.*` |
+| **Public token** | Lo usa la app en runtime para cargar mapas | `android/local.properties` (`mapbox.access.token`, no versionado) → `BuildConfig.MAPBOX_TOKEN` | `pk.*` |
 | **Secret/Download token** | Descarga el SDK desde el Maven privado de Mapbox | `~/.gradle/gradle.properties` (NUNCA en el repo) | `sk.*` |
 
 1. Crea cuenta en https://account.mapbox.com
@@ -79,33 +79,45 @@ dependencies {
 
 ## Paso 4 — Public token en la app
 
-Crea `app/src/main/res/values/mapbox_access_token.xml`:
+El `pk.*` **no se versiona**: va en `android/local.properties` (ignorado por git):
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="mapbox_access_token" translatable="false">pk.eyJ1Ijoi...tu_public_token</string>
-</resources>
+```properties
+mapbox.access.token=pk.eyJ1Ijoi...tu_public_token
 ```
 
-> Para producción, no hardcodees el `pk.` en el XML versionado. Usa
-> `local.properties` + BuildConfig, o un recurso ignorado por git. Para el MVP
-> del hackathon, el XML está bien si el repo es privado.
-
-Inicializa el token donde arranca la app (Application class o antes de mostrar el mapa):
+`android/app/build.gradle.kts` lo inyecta como `BuildConfig.MAPBOX_TOKEN`:
 
 ```kotlin
-import com.mapbox.common.MapboxOptions
+buildConfigField("String", "MAPBOX_TOKEN", "\"${localProp("mapbox.access.token")}\"")
+```
 
+y `RaizApplication` se lo entrega a Mapbox al arrancar, antes de mostrar ningún mapa:
+
+```kotlin
+@HiltAndroidApp
 class RaizApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        MapboxOptions.accessToken = getString(R.string.mapbox_access_token)
+        installSecurity()
+        installMapbox()
+    }
+
+    private fun installMapbox() {
+        val token = BuildConfig.MAPBOX_TOKEN
+        if (token.isBlank()) {
+            Log.w(TAG, "Mapbox access token vacío — el mapa no cargará tiles")
+            return
+        }
+        com.mapbox.common.MapboxOptions.accessToken = token
     }
 }
 ```
 
-Registra la Application en `AndroidManifest.xml`:
+> No crees un `mapbox_access_token.xml` en `res/values` ni pongas el `pk.*` en
+> ningún archivo versionado (regla del proyecto: ni `pk.*` ni `sk.*` en el
+> repo). Si el token falta, la app arranca igual y el mapa queda gris.
+
+La Application ya está registrada en `AndroidManifest.xml`:
 ```xml
 <application
     android:name=".RaizApplication"
@@ -187,7 +199,7 @@ aporte acumulado al barrio, botón "Pagar aquí").
 | Error | Causa | Solución |
 |---|---|---|
 | `401 Unauthorized` al hacer Gradle sync | Secret token mal o sin scope Downloads:Read | Revisa `~/.gradle/gradle.properties`, regenera el `sk.` con el scope correcto |
-| Mapa carga gris/en blanco | Public token no inicializado | Verifica `MapboxOptions.accessToken` antes de mostrar el mapa |
+| Mapa carga gris/en blanco | Public token no inicializado | Verifica `mapbox.access.token` en `android/local.properties` y recompila (en logcat `RAIZ`: "Mapbox access token vacío") |
 | `Could not find com.mapbox.maps:android` | Repo Maven no configurado | Revisa el bloque maven en settings.gradle.kts |
 | Pines en el océano (lat/lng invertidos) | Orden lng/lat | Mapbox usa `Point.fromLngLat(lng, lat)` — longitud primero |
 | Build falla en CI | Secret token no está en CI | Añade `MAPBOX_DOWNLOADS_TOKEN` como secret/env var del CI |
