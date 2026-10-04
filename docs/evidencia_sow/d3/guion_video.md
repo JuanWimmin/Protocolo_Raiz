@@ -27,9 +27,8 @@ El video del SOW es **solo el depósito**; la conversión al USDC del fondo es u
 - [ ] Grabación: `adb shell screenrecord --time-limit 150 /sdcard/d3.mp4` (al terminar,
       `adb pull /sdcard/d3.mp4`) o `scrcpy --record d3.mp4`. Grabar hasta 2,5 min y recortar a 60 s.
 - [ ] PC con `adb logcat -s RAIZ` corriendo (respaldo si algo falla; ver "Dónde capturar el tx hash").
-- [ ] (Solo si se graba la toma extra "Convertir") APK compilado desde la rama `feat/wp3-sep24` — la
-      conversión no está en `main` al 3-oct; ese APK también sirve para el video del depósito — y
-      cotización viva comprobada en el PC (comando `curl` de `README.md` § "El pool de liquidez").
+- [ ] (Solo si se graba la toma extra "Convertir") cotización viva comprobada en el PC (comando `curl`
+      de `README.md` § "El pool de liquidez"). Vale el mismo APK de `main`.
 
 ## Línea de tiempo (60 s)
 
@@ -48,7 +47,7 @@ El video del SOW es **solo el depósito**; la conversión al USDC del fondo es u
 No forma parte del video del SOW: D3 es el depósito y esos 60 s no se tocan. Es un cierre opcional (o
 un clip aparte) para enseñar que lo depositado acaba siendo saldo con el que sí se paga. Se graba
 **después** de la toma 0:57–1:00, para que el video del SOW conserve el plano del saldo rotulado aparte.
-Necesita el APK de la rama `feat/wp3-sep24`.
+Vale el APK de `main` desde el 3-oct.
 
 | Tiempo | Pantalla | Acción | Qué debe verse | Narración sugerida |
 |---|---|---|---|---|

@@ -330,8 +330,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   depósito USDC mín 1 / máx 10, sin trustline el anchor deja la tx en `pending_trust`. **3-oct — prueba en
   dispositivo hecha** con una wallet semilla nueva (`GABZUFA6…GTISJ3`): depósito SEP-24 real (5 → 4,5 USDC,
   el anchor cobra 0,5; tx `ae4d3e43…df7562`), video de 61 s y 9 capturas en
-  `docs/evidencia_sow/d3/{video,capturas}/`. **Stretch "Convertir a USDC del fondo"** (rama
-  `feat/wp3-sep24`, sin mergear al 3-oct): `PathPaymentStrictSend` firmada por el usuario, destino su
+  `docs/evidencia_sow/d3/{video,capturas}/`. **Stretch "Convertir a USDC del fondo"** (en `main`
+  desde el 3-oct): `PathPaymentStrictSend` firmada por el usuario, destino su
   propia cuenta, contra el pool de liquidez clásico de testnet `23283282…39e9` entre los dos USDC
   (`HorizonStream.quoteStrictSend` → `/paths/strict-send`, tolerancia 1 %; la tx se construye, firma y
   envía UNA vez y se consulta por hash si se pierde la respuesta; aritmética en `data/stellar/SwapMath.kt`),
@@ -358,8 +358,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). Cola
   menor de D2 (sigue abierta al 27-sep): ejecutar #7 Centro y #8 Costa desde la app, añadir sus hashes a
   `execution_hashes.json` + snapshot de la landing y **extender el TTL de `Execution(6)` y `Execution(7)`**
-  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; falta
-  (1) mergear `feat/wp3-sep24` a `main` (conversión + video + capturas + evidencia) y (2) pegar los 3
+  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
+  (conversión, video, capturas y evidencia, mergeado el 3-oct); falta solo pegar los 3
   campos D3 en el portal (`docs/evidencia_sow/README.md`; opcional: video en YouTube no listado). Después
   arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.

@@ -80,15 +80,15 @@ aplicada). Flujo real, hallazgos de la sonda del 27-sep, notas honestas y checkl
 del fondo" — el stretch del plan WP3. Cotiza en Horizon (`/paths/strict-send`) y envía una
 `PathPaymentStrictSend` firmada por el usuario, con destino su propia cuenta y tolerancia del 1 %,
 contra un pool de liquidez de testnet entre los dos USDC (`23283282…39e9`, fee 0,3 %); así lo
-depositado pasa a ser el USDC de Blend con el que sí se paga en comercios. Está en la rama
-`feat/wp3-sep24` (sin mergear a `main` al 3-oct), **probada en el Motorola G04 el 3-oct** (4,5 USDC del
+depositado pasa a ser el USDC de Blend con el que sí se paga en comercios. Está en `main` desde el 3-oct y fue
+**probada en el Motorola G04 ese mismo día** (4,5 USDC del
 anchor → 4,5229258 USDC del fondo, tx [`23e926f4…`](https://stellar.expert/explorer/testnet/tx/23e926f4a24981e4e2f524221b26408273a508722931422b9c62d83be83d3658)), y no bloquea ningún
 campo del portal. En mainnet el paso no existe: el USDC de Circle es uno solo. Detalle, pool
 verificado y límites: [`d3/README.md`](d3/README.md) § "Convertir a USDC del fondo".
 
 | # | Campo del portal | Enlace a pegar | Estado |
 |---|---|---|---|
-| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 | ✅ Grabado el 3-oct en el Motorola G04 (61 s, sin cortes en el paso interactivo). GitHub lo reproduce en el navegador; **el enlace existe tras mergear `feat/wp3-sep24` a `main`**. Versión de 92 s con la conversión: [`d3_deposito_y_conversion_completo.mp4`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_y_conversion_completo.mp4). Si el portal pide YouTube, subir el mismo archivo como no listado |
+| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 | ✅ Grabado el 3-oct en el Motorola G04 (61 s, sin cortes en el paso interactivo). GitHub lo reproduce en el navegador. Versión de 92 s con la conversión: [`d3_deposito_y_conversion_completo.mp4`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_y_conversion_completo.mp4). Si el portal pide YouTube, subir el mismo archivo como no listado |
 | 2 | Tx hash del pago del anchor (Stellar Expert) | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Transfer de 4,5 USDC (issuer `GBBD47IF…LFLA5`) de la cuenta del anchor `GABCKCYP…YCZP` a la wallet del teléfono `GABZUFA6…GTISJ3`, 2026-10-04 03:11:17 UTC. Verificado en Horizon |
 | 3 | Captura de la app con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png | ✅ "¡Depósito recibido! · 4.5 USDC · anchor de prueba" con el chip "Ver en Stellar Expert · ae4d3e…df7562". Carpeta: [`d3/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas) (9 capturas) |
 
@@ -138,6 +138,5 @@ vigentes (= `deployments.json`, los mismos que muestra `/v1/health` del relayer 
 5. D2: pegar en el portal los 3 campos de la tabla D2 (URL viva, 3 links de Stellar Expert, captura).
 6. Cosmético: el `version` que reporta `/v1/health` sigue en `0.1.0` (bump de `package.json` del
    relayer en el próximo deploy).
-7. D3: ✅ prueba en el Motorola G04, video de 60 s y tx hash hechos el 3-oct. Falta **mergear
-   `feat/wp3-sep24` a `main`** (ahí viven el video, las capturas y el extra "Convertir a USDC del
-   fondo") y pegar los 3 campos D3 en el portal. Opcional: subir el video a YouTube como no listado.
+7. D3: ✅ prueba en el Motorola G04, video de 60 s y tx hash hechos el 3-oct. Todo está en `main` desde el 3-oct
+   (video, capturas y el extra "Convertir a USDC del fondo"). Falta pegar los 3 campos D3 en el portal. Opcional: subir el video a YouTube como no listado.

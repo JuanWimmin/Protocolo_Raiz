@@ -3,10 +3,10 @@
 > Estado al **2026-10-03**: **D3 probado de punta a punta en el Motorola G04 y grabado.** El D3 base
 > (SEP-10 + SEP-24) está en `main` desde el 27-sep. El 3-oct se instaló el APK en el teléfono y se
 > completaron **dos depósitos SEP-24 reales** contra `testanchor.stellar.org`, cada uno seguido de la
-> conversión al USDC del fondo (stretch, rama `feat/wp3-sep24`). Hay video de 60 s, capturas y los
+> conversión al USDC del fondo (stretch). Hay video de 60 s, capturas y los
 > hashes de las cuatro transacciones (sección "Resultado de la prueba"). 61 tests JVM en verde.
-> **Pendiente:** subir el video a YouTube (no listado) si el portal exige enlace externo, y mergear la
-> rama a `main` para que los enlaces de GitHub de esta página existan para el revisor.
+> Código, video y capturas están en `main` desde el 3-oct. **Pendiente:** pegar los campos en el
+> portal y, solo si exige un enlace externo, subir el video a YouTube (no listado).
 
 **Entregable D3 (SOW Instaward):** depósito SEP-24 interactivo completado end-to-end desde la app
 contra `testanchor.stellar.org` (anchor de prueba de la Stellar Development Foundation), con
@@ -28,7 +28,7 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
 | Trustline al USDC del anchor creada por la app | `HorizonStream.enableTrustline` (ChangeTrust firmada por el usuario) antes de abrir la web; reintento si el anchor reporta `pending_trust` | `data/stellar/HorizonStream.kt` | Código listo |
 | Saldo del USDC del anchor visible | Card negra "USDC · anchor de prueba" en Depositar; línea "● USDC · anchor de prueba: N USDC" en Inicio (no se suma al saldo USDC de Blend) | `ui/deposit/DepositScreen.kt`, `ui/wallet/WalletScreen.kt` | Código listo |
 | Tests | 17 tests JVM con `MockEngine` (el `stellar.toml` real del anchor pegado tal cual, `/info`, multipart del deposit, mapeo de estados y errores incl. 401 y toml sin TLS, polling con backoff y timeout) | `android/app/src/test/java/com/raiz/app/data/anchor/AnchorClientTest.kt` | Verdes (`./gradlew :app:testDebugUnitTest --tests "com.raiz.app.data.anchor.*"`) |
-| **Extra (stretch del plan WP3, no lo exige el SOW):** conversión al USDC del fondo | Card "Convertir a USDC del fondo": cotización en vivo (`HorizonStream.quoteStrictSend` → `GET /paths/strict-send`) y `PathPaymentStrictSend` firmada por el usuario con destino su propia cuenta y `dest_min` = cotización − 1 % (`HorizonStream.pathPaymentStrictSend`); crea la trustline al USDC de Blend si falta | `data/stellar/SwapMath.kt`, `data/stellar/HorizonStream.kt`, `ui/deposit/DepositViewModel.kt`, `ui/deposit/DepositScreen.kt` | Código en la rama `feat/wp3-sep24`; **probado en el Motorola G04 el 3-oct** (2 conversiones reales) |
+| **Extra (stretch del plan WP3, no lo exige el SOW):** conversión al USDC del fondo | Card "Convertir a USDC del fondo": cotización en vivo (`HorizonStream.quoteStrictSend` → `GET /paths/strict-send`) y `PathPaymentStrictSend` firmada por el usuario con destino su propia cuenta y `dest_min` = cotización − 1 % (`HorizonStream.pathPaymentStrictSend`); crea la trustline al USDC de Blend si falta | `data/stellar/SwapMath.kt`, `data/stellar/HorizonStream.kt`, `ui/deposit/DepositViewModel.kt`, `ui/deposit/DepositScreen.kt` | En `main` desde el 3-oct; **probado en el Motorola G04** (2 conversiones reales) |
 | Tests de la conversión | 19 tests JVM de aritmética entera sobre stroops (stroops ↔ decimal de 7 cifras de Horizon, truncado, `dest_min` con 100 bps, ida y vuelta). La cotización y el envío hablan con Horizon y **no** tienen test unitario | `android/app/src/test/java/com/raiz/app/data/stellar/SwapMathTest.kt` | Verdes (`./gradlew :app:testDebugUnitTest --tests "com.raiz.app.data.stellar.*"`); suite completa: 61 (17 anchor + 24 relayer + 19 conversión + 1 formato de montos) |
 | Prueba en dispositivo físico | Sección "Resultado de la prueba (2026-10-03)" + 9 capturas en [`capturas/`](capturas/) | Motorola G04 / Android 14 | ✅ **Hecha el 3-oct** |
 | Video 60 s | [`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4) (61 s, el depósito sin cortes) y [`video/d3_deposito_y_conversion_completo.mp4`](video/d3_deposito_y_conversion_completo.mp4) (92 s, incluye la conversión y el saldo final) | Esta carpeta; YouTube no listado opcional | ✅ **Grabado el 3-oct** |
@@ -39,7 +39,7 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
 
 | # | Campo del portal (previsto) | Qué se pega | Estado |
 |---|---|---|---|
-| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 (GitHub lo reproduce en el navegador). Si el portal pide YouTube: subir ese mismo archivo como no listado | ✅ Grabado el 3-oct. El enlace de GitHub existe tras mergear `feat/wp3-sep24` a `main` |
+| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 (GitHub lo reproduce en el navegador). Si el portal pide YouTube: subir ese mismo archivo como no listado | ✅ Grabado el 3-oct |
 | 2 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Pago de 4,5 USDC del anchor a la wallet del teléfono, verificado en Horizon |
 | 3 | Captura de la app con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png | ✅ Pantalla "¡Depósito recibido!" con el chip "Ver en Stellar Expert · ae4d3e…df7562" |
 
@@ -50,7 +50,7 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
   `GATALTGT…5V56`): son dos activos distintos con el mismo código. Por eso la UI lo rotula siempre
   **"USDC · anchor de prueba"** y nunca lo suma al saldo principal. Con ese USDC no se puede pagar a un
   comercio de RAÍZ **hasta convertirlo**: el swap a USDC-Blend, que el 27-sep quedó como stretch, se
-  implementó después en la rama `feat/wp3-sep24` y se probó en el teléfono el 3-oct (sección
+  implementó después (en `main` desde el 3-oct) y se probó en el teléfono ese día (sección
   "Convertir a USDC del fondo").
 - **Solo wallets semilla (`G…`).** SEP-10 clásico firma con una cuenta Ed25519; un smart account
   passkey (`C…`) necesita SEP-45, que el anchor de prueba no soporta. Para passkey, la pantalla muestra
@@ -99,7 +99,7 @@ Depositar (DepositScreen / DepositViewModel)
  7. "Volver a la wallet": Inicio muestra "● USDC · anchor de prueba: 4.5 USDC" (el anchor de prueba
     descuenta 0,5 de comisión a un depósito de 5); el saldo USDC (Blend) no cambia mientras ese USDC
     no se convierta.
- 8. (Opcional · rama feat/wp3-sep24) "Convertir a USDC del fondo": cotiza en Horizon y envía un path
+ 8. (Opcional) "Convertir a USDC del fondo": cotiza en Horizon y envía un path
     payment firmado por el usuario → el saldo del anchor vuelve a 0, sube el USDC (Blend) de Inicio y
     el banner de alta ("Paso 3 · Consigue USDC") desaparece. Flujo completo en su sección.
 ```
@@ -139,7 +139,7 @@ intent implícito, y `loadInfo` rechaza un `stellar.toml` cuyos endpoints SEP-10
 
 ## Convertir a USDC del fondo (stretch del plan WP3, cumplido)
 
-> Código en la rama `feat/wp3-sep24` (sin mergear a `main` al 2026-10-03). **Probado en el Motorola
+> Código en `main` desde el 2026-10-03 (desarrollado en la rama `feat/wp3-sep24`). **Probado en el Motorola
 > G04 el 3-oct con dos conversiones reales** y revisado por tres revisores adversariales ese mismo día
 > (10 defectos corregidos antes de grabar; ver "Cambios tras la revisión de la conversión"). No es un
 > entregable del SOW (D3 es el depósito): es el stretch que el plan dejaba para "si sobra tiempo"
@@ -315,7 +315,7 @@ adb logcat -s RAIZ                           # AnchorClient / DepositViewModel l
 | 8 | Tap el chip | Stellar Expert abre la tx: pago de 5 USDC (issuer `GBBD47IF…`) a la G… del dispositivo. **Anotar el hash completo en esta página y en `docs/evidencia_sow/README.md`** | `08_stellar_expert_tx.png` |
 | 9 | "Volver a la wallet" | En Inicio, línea "● USDC · anchor de prueba: 5 USDC" bajo el botón; el saldo USDC (Blend) del BalanceCard **no cambió** | `09_inicio_saldo_anchor.png` |
 | 10 | Contraste en Horizon (PC) | `https://horizon-testnet.stellar.org/accounts/<G…>/payments?order=desc&limit=5` → `transaction_hash` igual al del chip, `asset_issuer = GBBD47IF…LFLA5` | `10_horizon_payments.png` |
-| 11 | **Convertir (extra · APK de la rama `feat/wp3-sep24`).** En Inicio, tap "Depositar · anchor de prueba" otra vez | Card negra con **5 USDC** y, debajo, card blanca de borde púrpura "Convertir a USDC del fondo": "Cotizando…" y luego "Recibirás ≈ N USDC · pool de liquidez de testnet, fee 0,3 %, tolerancia 1 %" + botón púrpura "Convertir…" con el saldo completo. **Anotar N**: es la cotización del momento (para 5 USDC fue 4,44 el 27-sep y 5,05 el 3-oct) | `12_convertir_cotizacion.png` |
+| 11 | **Convertir (extra).** En Inicio, tap "Depositar · anchor de prueba" otra vez | Card negra con **5 USDC** y, debajo, card blanca de borde púrpura "Convertir a USDC del fondo": "Cotizando…" y luego "Recibirás ≈ N USDC · pool de liquidez de testnet, fee 0,3 %, tolerancia 1 %" + botón púrpura "Convertir…" con el saldo completo. **Anotar N**: es la cotización del momento (para 5 USDC fue 4,44 el 27-sep y 5,05 el 3-oct) | `12_convertir_cotizacion.png` |
 | 12 | Tap "Convertir…" | Spinner "Habilitando el USDC del fondo en tu cuenta…" (solo si la wallet no tenía trustline al USDC de Blend) → "Enviando la conversión…". Al terminar, la card negra queda en **0 USDC** y la card de conversión sigue visible con "✓ Convertido: recibiste N USDC del fondo" y el chip del hash. En logcat: `pathPaymentStrictSend: USDC→USDC OK para G…, hash=…` — **anotar el hash** en "Tx hash de la conversión" | `13_convertir_enviando.png` |
 | 13 | Atrás → Inicio. Contraste en Horizon (PC) | El saldo USDC (Blend) del BalanceCard **subió ≈ N** y la línea "● USDC · anchor de prueba" ya no aparece. En `…/accounts/<G…>/operations?order=desc&limit=5`: `path_payment_strict_send` con `from = to = <G…>` y el mismo hash. Opcional: "Escanear y pagar" a un comercio con ese saldo | `14_inicio_saldo_fondo_tras_convertir.png` |
 | 14 | Segundo depósito (p. ej. 1 USDC) y conversión desde la pantalla de éxito | Los pasos de trustline y SEP-10 pasan en un instante (trustline ya existe; sesión cacheada 24 h, sin firma nueva) y se abre la web del anchor directamente. En "¡Depósito recibido!", bajo el chip del hash (desplazar), aparece la card "Convertir a USDC del fondo"; al convertir desde ahí quedan fijos "✓ Convertidos…" y el chip verde "Ver en Stellar Expert · hash" | `15_convertido_hash.png` |
@@ -324,9 +324,8 @@ adb logcat -s RAIZ                           # AnchorClient / DepositViewModel l
 | 17 | Negativo: en la web del anchor, ir a Inicio y matar la app desde recientes; reabrir → Depositar | Restaura el depósito en curso (id en `SavedStateHandle`) y retoma el polling | — |
 | 18 | "Cancelar" a mitad de flujo | Vuelve al formulario con el monto; el `id` guardado se borra | — |
 
-Los pasos 1–10 y 15–18 son los del depósito (D3 del SOW) y valen con el APK de `main`. Los pasos 11–13 y
-la segunda mitad del 14 son el extra de la conversión: necesitan el APK compilado desde la rama
-`feat/wp3-sep24` mientras no se mergee.
+Los pasos 1–10 y 15–18 son los del depósito (D3 del SOW). Los pasos 11–13 y la segunda mitad del 14
+son el extra de la conversión. Todo vale con el APK de `main` desde el 3-oct.
 
 ## Resultado de la prueba (2026-10-03, Motorola G04 / Android 14, operado por adb)
 
@@ -375,10 +374,10 @@ recibido!" con el hash) y [`video/d3_deposito_y_conversion_completo.mp4`](video/
 - **El USDC depositado no sirve para pagar dentro de RAÍZ tal cual; sí después de convertirlo.** El
   Pool y los comercios trabajan con el USDC de Blend; el del anchor es otro activo (mismo código, otro
   emisor) y se sigue mostrando por separado a propósito, para no mentir sobre fungibilidad. Lo que el
-  27-sep era "la siguiente fase" ya existe en la rama `feat/wp3-sep24`: "Convertir a USDC del fondo"
+  27-sep era "la siguiente fase" ya existe (en `main` desde el 3-oct): "Convertir a USDC del fondo"
   cambia ese saldo por USDC de Blend con un path payment firmado por el usuario, y con eso sí se paga
   en comercios (probado en el teléfono el 3-oct). Las salvedades son reales: no es 1:1 (precio de un
-  pool de testnet ajeno a RAÍZ), no está mergeado a `main` al 3-oct, y en mainnet no haría falta porque
+  pool de testnet ajeno a RAÍZ) y en mainnet no haría falta porque
   el USDC de Circle es uno solo. Detalle y límites en "Convertir a USDC del fondo".
 - **El ensayo usó la wallet del modo demo y la toma una wallet nueva.** Las dos son wallets semilla
   reales de testnet firmando en el teléfono; ninguna es la wallet passkey del dueño del dispositivo.
@@ -419,7 +418,7 @@ recibido!" con el hash) y [`video/d3_deposito_y_conversion_completo.mp4`](video/
 | `AndroidManifest.xml`, `libs.versions.toml`, `build.gradle.kts` | `<queries>` para Custom Tabs; `androidx.browser 1.8.0` |
 | `test/.../data/anchor/AnchorClientTest.kt` (nuevo) | 17 tests JVM (`MockEngine`, `runTest`; el `stellar.toml` del testanchor pegado tal cual) |
 
-Añadido por la conversión (rama `feat/wp3-sep24`, sin mergear al 3-oct):
+Añadido por la conversión (en `main` desde el 3-oct):
 
 | Archivo | Qué |
 |---|---|
