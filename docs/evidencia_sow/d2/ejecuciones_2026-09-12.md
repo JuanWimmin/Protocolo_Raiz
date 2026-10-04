@@ -248,6 +248,7 @@ Capturas nuevas (`capturas/`):
 | `15_costa_antes_de_ejecutar_8.png` | Costa: #8 lista para ejecutar |
 | `16_costa_8_ejecutada_hash_en_card.png` | Card de #8 con "✓ Ejecutada on-chain · tx 811f6d08…28ba3b" |
 | `17_costa_ejecuciones_2_8.png` | Costa: #2 "Verificada (archivo)" y #8 "Transacción verificada" |
+| `18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png` | raizapp.xyz en vivo (4-oct): bloque "Ejecuciones del fondo · Treasury" con las 8 filas y "en vivo · 2 confirmadas por el RPC" |
 
 ### Antes de poder ejecutar: `Proposal(n)` de Governance estaba archivada
 
@@ -284,8 +285,10 @@ puras (`readWrite = 0`).
 ### Estado de la landing
 
 `landing/index.html` del monorepo lleva ya #7 y #8 en el snapshot ("snapshot 4·oct·2026", 8 filas).
-raizapp.xyz las muestra en vivo mientras sus eventos sigan en la ventana del RPC (hasta el 11-oct);
-para que queden fijas hay que copiar el HTML al repo Pages (`JuanWimmin/JuanWimmin.github.io`).
+**Publicada el 4-oct** en el repo Pages (`JuanWimmin/JuanWimmin.github.io`, commit `455adce`, solo
+`index.html`; se comprobó antes que lo publicado era idéntico a la versión previa del monorepo).
+raizapp.xyz muestra las 8 filas enlazadas y confirma #7 y #8 en vivo por el RPC — captura
+`18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png`.
 
 ## Pendiente para cerrar D2
 
@@ -298,4 +301,4 @@ para que queden fijas hay que copiar el HTML al repo Pages (`JuanWimmin/JuanWimm
 - [ ] Captura de la landing (sección "05 / La prueba" con el tag "en vivo · N con tx verificable ●")
       tras copiarla al repo Pages.
 - [ ] Probar los 4 links de Stellar Expert en incógnito (WP4).
-- [ ] Copiar `landing/index.html` (snapshot con #7 y #8) al repo Pages y capturar raizapp.xyz con las 8 filas.
+- [x] (hecho el 4-oct, repo Pages `455adce`, captura `18`) Copiar `landing/index.html` (snapshot con #7 y #8) al repo Pages y capturar raizapp.xyz con las 8 filas.

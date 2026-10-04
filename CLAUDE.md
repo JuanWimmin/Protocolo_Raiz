@@ -318,7 +318,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `execution_hashes.json` y al snapshot de `landing/index.html`, TTL de `Execution(6)`/`(7)` extendido
   (≈ 87 días). Para que el Dashboard las listara hubo que restaurar antes `Proposal(5..8)` de Governance,
   archivadas (ver el gotcha de TTL de Governance). **8 ejecuciones con hash real.** Evidencia (capturas
-  12–17): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`. Falta copiar la landing al repo Pages.
+  12–17): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`. Landing publicada el 4-oct (repo Pages `455adce`, 8 filas).
 - **D3 (WP3):** código listo el 27-sep y **mergeado a `main` el mismo día** (**probado en el Motorola G04 y grabado el 3-oct**): SEP-1 +
   SEP-10 + SEP-24 contra `testanchor.stellar.org` con `kmp-stellar-sdk` 1.6.0, sin dependencias Stellar
   nuevas (solo `androidx.browser` 1.8.0 para Custom Tabs). `data/anchor/AnchorClient.kt` (`loadInfo`
@@ -367,7 +367,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 - **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2: código en `main` y landing
   publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). **Cola
   de D2 cerrada el 4-oct** (#7 y #8 ejecutadas desde la app, hashes en el archivo y en el snapshot, TTL
-  extendido); queda copiar `landing/index.html` al repo Pages. **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
+  extendido); landing publicada (repo Pages `455adce`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
   (conversión, video, capturas y evidencia, mergeado el 3-oct); falta solo pegar los 3
   campos D3 en el portal (`docs/evidencia_sow/README.md`; opcional: video en YouTube no listado). Después
   arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.

@@ -40,9 +40,9 @@ determinístico que guarda el contrato. Código en `main`, probado en dispositiv
 
 | # | Campo del portal | Enlace a pegar | Estado |
 |---|---|---|---|
-| 1 | Dashboard Live URL | https://raizapp.xyz/#demo | ✅ Publicado 2026-09-19 (repo Pages `8637196`). Bloque "Ejecuciones del fondo · Treasury": 6 ejecuciones enlazadas; las que siguen en la ventana del RPC se confirman en vivo con `getEvents` |
+| 1 | Dashboard Live URL | https://raizapp.xyz/#demo | ✅ Publicado 2026-10-04 (repo Pages `455adce`; primera versión el 19-sep, `8637196`). Bloque "Ejecuciones del fondo · Treasury": 8 ejecuciones enlazadas; las que siguen en la ventana del RPC se confirman en vivo con `getEvents` |
 | 2 | Stellar Expert TX Links (x3) | Los tres de abajo (#5, #6, #4) | ✅ 8 disponibles; #5, #6, #7 y #8 se ejecutaron **desde la app** |
-| 3 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png | ✅ App (Moto G04): 3 ejecuciones, las 3 con enlace. Web: [`11_landing_viva…png`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/11_landing_viva_raizapp_xyz_6_ejecuciones_con_tx_links.png). Carpeta: [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas) |
+| 3 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png | ✅ App (Moto G04): 3 ejecuciones, las 3 con enlace. Web: [`18_landing_viva…png`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png) (8 ejecuciones, 4-oct). Carpeta: [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas) |
 
 **Los 3 enlaces del campo 2** (cada uno verificado en Horizon: tx exitosa, `execute_proposal(n)` sobre el Treasury):
 
@@ -67,8 +67,8 @@ archivo versionado y en el snapshot de la landing, y el TTL de sus entradas qued
 **8 ejecuciones con hash real** (#5–#8 desde la app). Capturas `12`–`17` en
 [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas);
 detalle en [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) § "Actualización 2026-10-04".
-Queda copiar `landing/index.html` al repo Pages para que el snapshot público incluya las 8 filas
-(mientras tanto raizapp.xyz ya muestra #7 y #8 en vivo, hasta el 11-oct).
+La landing se publicó el 4-oct (repo Pages `455adce`): raizapp.xyz muestra las 8 filas enlazadas
+(captura [`18`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png)).
 
 ## D3 — SEP-10 + SEP-24 · probado en dispositivo; video y tx hash listos (3-oct)
 
