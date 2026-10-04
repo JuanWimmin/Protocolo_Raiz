@@ -1,14 +1,14 @@
 # Evidencia SOW — D3: SEP-10 + SEP-24 (on-ramp con el anchor de prueba del SDF)
 
-> Estado al **2026-10-03**: **D3 probado de punta a punta en el Motorola G04 y grabado.** El D3 base
+> Estado al **2026-10-04**: **D3 probado de punta a punta en el Motorola G04 y grabado.** El D3 base
 > (SEP-10 + SEP-24) está en `main` desde el 27-sep. El 3-oct se instaló el APK en el teléfono y se
 > completaron **dos depósitos SEP-24 reales** contra `testanchor.stellar.org`, cada uno seguido de la
 > conversión al USDC del fondo (stretch). Hay video de 60 s, capturas y los
 > hashes de las cuatro transacciones (sección "Resultado de la prueba"). 61 tests JVM en verde.
 > Código, video y capturas están en `main` desde el 3-oct, y el flujo viaja en el APK final
 > [`raiz-0.3.0.apk`](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) (4-oct).
-> **Pendiente:** pegar los campos en el portal y, solo si exige un enlace externo, subir el video a
-> YouTube (no listado).
+> **Pendiente:** solo pegar los campos en el portal. El video ya está publicado en
+> <https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4>.
 
 **Entregable D3 (SOW Instaward):** depósito SEP-24 interactivo completado end-to-end desde la app
 contra `testanchor.stellar.org` (anchor de prueba de la Stellar Development Foundation), con

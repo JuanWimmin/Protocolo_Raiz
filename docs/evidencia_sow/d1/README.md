@@ -6,9 +6,10 @@ descompilación; regresión en dispositivo físico.
 
 **En una frase:** antes, el APK llevaba la clave privada del admin del protocolo para poder
 registrar comercios, emitir el soulbound de residente y repartir USDC de prueba. Desde la versión
-0.2.0 esa clave vive únicamente en el servicio `raiz-relayer` (variable de entorno del servidor); el
-APK solo tiene direcciones públicas y una API key de aplicación. El 4-oct, además, la clave que
-había viajado en el APK viejo se **revocó on-chain**.
+0.2.0 el APK solo tiene direcciones públicas y una API key de aplicación: quien firma como admin es
+el servicio `raiz-relayer`, con una clave que vive únicamente en una variable de entorno del
+servidor. El 4-oct, además, la clave que había viajado en el APK viejo se **revocó on-chain** y el
+relayer pasó a firmar con una clave nueva, que nunca estuvo en un APK.
 
 ## Tabla entregable → evidencia
 
@@ -43,7 +44,8 @@ había viajado en el APK viejo se **revocó on-chain**.
 ## Rotación de la clave del admin (2026-10-04)
 
 **Qué se encontró.** Al armar este paquete se examinó el APK del hackathon (`RAIZ-v0.1.0.apk`,
-publicado el 30-jun y todavía descargable). El verificador encontró dentro tres claves privadas: las
+publicado el 30-jun y, hasta el 4-oct, todavía descargable). El verificador encontró dentro tres
+claves privadas: las
 de dos wallets demo y **la clave maestra de la cuenta admin vigente**, `GBLS7PL5…YC2P`. El redeploy
 del 31-jul había reutilizado esa misma cuenta, así que la clave nunca se cambió: el APK nuevo ya no
 la llevaba, pero quien hubiera descargado el viejo podía firmar como admin.

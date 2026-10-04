@@ -2,7 +2,7 @@
 
 **Qué demuestra:** el APK de RAÍZ no contiene ninguna clave privada de Stellar. La autoridad del
 admin (alta de comercios, soulbound de residente, faucet y vault) vive en el servicio
-[`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer); la app solo le habla por HTTP.
+[`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer); la app solo le habla por HTTPS.
 
 **Si no eres técnico:** una clave privada de Stellar es un texto de 56 caracteres que empieza por
 `S`. Una dirección pública empieza por `G` (cuenta) o `C` (contrato) y no es secreta: cualquiera la
@@ -24,7 +24,7 @@ debe estar en verde y su recuadro *Annotations* debe decir **"claves privadas v�
 al SHA-256 del APK. Si el verificador encontrara una sola clave, la ejecución saldría en rojo. Con
 sesión de GitHub iniciada se ven además la tabla completa y los logs.
 
-## Opción B — en tu equipo (un comando, solo necesita Python 3)
+## Opción B — en tu equipo (un comando desde una copia del repo; solo necesita Python 3)
 
 ```bash
 python scripts/verify_apk_no_secrets.py https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk
@@ -46,7 +46,7 @@ RESULTADO: OK — cero claves privadas
 ```bash
 unzip -q raiz-0.3.0.apk -d apk
 grep -raEo "S[A-Z0-9]{55}" apk/classes*.dex apk/assets apk/res | sort -u | wc -l   # → 0
-grep -raEo "S[A-Z0-9]{55}" apk | cut -d: -f1 | sort | uniq -c                       # → 32, todas en libmapbox-common.so
+grep -raEo "S[A-Z0-9]{55}" apk | cut -d: -f1 | sort | uniq -c                       # → 4 líneas de 8 (32), todas libmapbox-common.so
 ```
 
 En el código de la app (`classes*.dex`), en `assets/` y en `res/` hay **0** cadenas con forma de

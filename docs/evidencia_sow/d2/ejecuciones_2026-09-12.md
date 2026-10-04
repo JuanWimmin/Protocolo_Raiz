@@ -159,7 +159,8 @@ Remedio aplicado (firmado por `raiz-admin`):
 - `Execution(5)` (la de #6) se creó DESPUÉS de esa extensión, con TTL de 7 días: extendida aparte —
   tx `0a9d821d2fae14b2c0b0864fa92cbfcf09a842e5af271236ad6eedcb94918508` (viva hasta el ledger 6267635).
 
-**Pendiente recurrente:** lo mismo pasará con #7 (`Execution(6)`) y #8 (`Execution(7)`). Tras cada
+**Tarea recurrente** (hecha el 4-oct para #7 y #8, ver "Actualización 2026-10-04"): lo mismo pasa
+con cada ejecución nueva, como `Execution(6)` de #7 y `Execution(7)` de #8. Tras cada
 ejecución hay que extender la `Execution(n)` nueva, hasta que el contrato gestione su TTL (redeploy, H2):
 
 ```bash
@@ -194,7 +195,7 @@ stellar contract extend --network testnet --source-account raiz-admin \
   tras ejecutar. El sha256 del contrato ya no se usa en la UI (solo como espejo del struct).
 - Landing (`landing/index.html`, sección "05 / La prueba"): bloque "Ejecuciones del fondo · Treasury"
   con snapshot estático de las 4 filas y reemplazo en vivo por `getEvents` (misma paginación).
-  Pendiente de copiar al repo Pages (`JuanWimmin/JuanWimmin.github.io`) como siempre.
+  Publicada en el repo Pages (`JuanWimmin/JuanWimmin.github.io`) el 19-sep y de nuevo el 4-oct.
 - Spec (`docs/raiz_v2_spec_contratos.md`, Contrato 3) y `docs/RaizModels.kt`: nota sobre
   `tx_hash` = ID de auditoría; `realTxHash` y `ExecutionEvent` documentados como solo-cliente.
 
@@ -312,7 +313,7 @@ Las capturas `19`, `20` y `21` son los tres enlaces que van en el campo "Stellar
 del portal (#5, #6 y #4). Ese mismo día se comprobó que la landing publicada es idéntica a
 `landing/index.html` del repo y que sirve las 8 filas enlazadas.
 
-## Pendiente para cerrar D2
+## Lista de cierre de D2 (completa)
 
 - [x] Instalar el APK de la rama en el Motorola G04 y capturar el Dashboard (Centro y Norte) con
       los chips "Ver en Stellar Expert" y el contador de verificadas → `capturas/`.

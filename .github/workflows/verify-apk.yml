@@ -24,9 +24,9 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Demuestra que el buscador SI encuentra una clave cuando la hay: planta una clave
       # aleatoria en un APK de mentira (bytecode, UTF-16, zip anidado) y exige detectarla.

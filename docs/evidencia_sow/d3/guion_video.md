@@ -11,6 +11,9 @@ El video del SOW es **solo el depósito**; la conversión al USDC del fondo es u
 
 ## Antes de grabar (checklist)
 
+> Checklist de preparación tal como se usó el 3-oct (las casillas son de trabajo y se dejan sin
+> marcar para la próxima toma).
+
 - [ ] APK **debug** del commit final de `main` instalado
       (`cd android && ./gradlew :app:assembleDebug -q` → `adb install -r app/build/outputs/apk/debug/app-debug.apk`).
       Anotar commit y hora en `README.md` de esta carpeta.
@@ -95,6 +98,10 @@ Anotar el hash en `README.md` de esta carpeta (sección "Tx hash del depósito")
 | (Toma extra) La card dice "No hay liquidez en testnet…" o "La liquidez cambió: vuelve a cotizar." | "Reintentar" vuelve a cotizar. Si persiste, omitir la toma extra: el video del SOW no depende de ella y el USDC del anchor sigue en la cuenta. |
 
 ## Publicación
+
+> Hecho el 4-oct: el video se publicó en <https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4>
+> (y la toma completa en `…/evidencia/d3_deposito_y_conversion_completo.mp4`). YouTube queda como
+> opción si el portal lo exige.
 
 - YouTube **no listado**, título "RAÍZ · Depósito SEP-24 con el anchor de prueba del SDF (testnet)",
   descripción con commit, fecha, `G…` destino y el enlace de Stellar Expert de la tx.

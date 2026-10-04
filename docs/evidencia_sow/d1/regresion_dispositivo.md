@@ -1,14 +1,21 @@
 # D1 — Regresión en dispositivo físico (app 0.2.0 vía relayer)
 
 El SOW pide que los flujos que antes firmaba la app con la clave admin sigan funcionando en un
-teléfono real después de sacar esa clave del APK. Esta checklist se corre a mano; las capturas
-van a `docs/evidencia_sow/d1/capturas/` con el nombre indicado en cada paso.
+teléfono real después de sacar esa clave del APK. Tres capturas de la corrida del 6-sep en el
+Motorola G04 (todas están en [`capturas/`](capturas)):
+
+| Alta de comercio vía relayer | Residente verificado y voto | Faucet vía relayer |
+|---|---|---|
+| <img src="capturas/d1_comercio_02.png" width="230" alt="Negocio registrado, con enlace a la transacción"> | <img src="capturas/d1_residente_04.png" width="230" alt="Voto del residente registrado on-chain"> | <img src="capturas/d1_faucet_seed_03.png" width="230" alt="Saldo de 20 USDC tras el faucet"> |
+
+Lo que sigue es la checklist completa con su resultado. Los nombres de captura que cita cada paso
+son los previstos; las capturas que existen son las de la tabla "Resultado de la corrida", al final.
 
 | Dato | Valor |
 |---|---|
 | Dispositivo de referencia | Motorola G04 · Android 14 (TLS contra `*.stellar.org` confirmado) |
 | APK | `app-release.apk` 0.2.0 (`versionCode 2`, firmado con la clave debug de Android desde H9) instalado con `adb install -r` — o el debug equivalente del mismo commit |
-| Relayer | https://raiz-relayer.fly.dev — antes de empezar: `curl -s https://raiz-relayer.fly.dev/v1/health` → `ok: true`, `network: testnet`, `vaultEndpoints: true` |
+| Relayer | `https://raiz-relayer.fly.dev` — antes de empezar: `curl -s https://raiz-relayer.fly.dev/v1/health` → `ok: true`, `network: testnet`, `vaultEndpoints: true` |
 | Commit | `056af2a` (rama `feat/wp1-app-relayer`) — APK `app-release.apk` sha256 `74ec7529…` instalado con `adb install -r` sobre la 0.1.0 (la sesión passkey previa se conservó) |
 | Fecha / quién prueba | 2026-09-06 19:35–20:10 UTC / Claude Code por adb (Juan conectó el Motorola por USB) |
 

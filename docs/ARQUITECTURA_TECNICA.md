@@ -35,7 +35,7 @@ firmar) y escribe enviando transacciones firmadas con la clave del usuario. Las
 operaciones de admin (alta de comercio, soulbound de residente, faucet de USDC y
 depósito/rescate del vault de yield) las firma server-side **`raiz-relayer`**
 (https://github.com/JuanWimmin/raiz-relayer, desplegado en
-https://raiz-relayer.fly.dev), el **único servicio propio** de RAÍZ. **Todo el
+https://raiz-relayer.fly.dev/v1/health), el **único servicio propio** de RAÍZ. **Todo el
 estado vive on-chain** (5 contratos + Horizon). La clave del admin vive solo en el
 servidor del relayer; el APK no la lleva desde 0.2.0 (rotación de la clave: ver
 `docs/evidencia_sow/d1/`). La infra del passkey usa el relayer/indexer públicos
