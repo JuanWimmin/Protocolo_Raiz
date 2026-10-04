@@ -31,7 +31,8 @@ había viajado en el APK viejo se **revocó on-chain**.
    `RELAYER_ADMIN_SECRET`; el repositorio no contiene ninguna clave.
 3. **APK sin secretos (3 min).** Abre la ejecución más reciente del
    [workflow `verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml)
-   ("Claves privadas válidas: 0") o repítelo tú con [`verificacion_apk.md`](verificacion_apk.md).
+   (en verde, con la anotación "claves privadas válidas: 0") o repítelo tú con
+   [`verificacion_apk.md`](verificacion_apk.md).
 4. **Funciona en un teléfono (3 min).** Abre [`regresion_dispositivo.md`](regresion_dispositivo.md)
    y pulsa dos o tres enlaces de su tabla final: en cada transacción la cuenta de origen es el admin
    `GBLS7PL5…YC2P` (firmó el relayer) y el destinatario es la wallet del usuario.

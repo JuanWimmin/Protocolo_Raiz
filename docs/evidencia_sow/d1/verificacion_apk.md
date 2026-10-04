@@ -19,9 +19,10 @@ El resultado esperado es **0**.
 ## Opción A — sin instalar nada (1 clic)
 
 Abre **[las ejecuciones del workflow `verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml)**
-y entra en la más reciente. GitHub descarga el APK del Release, lo abre y busca claves; el resumen
-de la ejecución debe mostrar **"Claves privadas válidas: 0"** y **"Resultado: ✅ cero claves
-privadas"**.
+y entra en la más reciente. GitHub descarga el APK del Release, lo abre y busca claves. La ejecución
+debe estar en verde y su recuadro *Annotations* debe decir **"claves privadas válidas: 0"**, junto
+al SHA-256 del APK. Si el verificador encontrara una sola clave, la ejecución saldría en rojo. Con
+sesión de GitHub iniciada se ven además la tabla completa y los logs.
 
 ## Opción B — en tu equipo (un comando, solo necesita Python 3)
 

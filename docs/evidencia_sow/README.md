@@ -22,7 +22,8 @@ un servicio (el *relayer*), y la app le pide por internet que firme.
 2. **Es código abierto.** <https://github.com/JuanWimmin/raiz-relayer> (licencia MIT, con pruebas automáticas).
 3. **El APK no lleva claves.** Abre la ejecución más reciente de
    [`verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml):
-   GitHub descarga el APK publicado y busca claves privadas. Debe decir **"Claves privadas válidas: 0"**.
+   GitHub descarga el APK publicado y busca claves privadas. La ejecución debe estar en verde y, en
+   el recuadro *Annotations*, decir **"claves privadas válidas: 0"**.
    Para repetirlo a mano: [cómo verificar, 1 página](d1/verificacion_apk.md).
 4. **Funciona en un teléfono real.** [Regresión en un Motorola G04](d1/regresion_dispositivo.md): los
    flujos de admin (alta de comercio, residente, faucet) pasan por el relayer, con capturas y enlaces.

@@ -23,8 +23,9 @@ The APK used to carry the protocol admin's private key. That key now lives only 
 2. **It is open source.** <https://github.com/JuanWimmin/raiz-relayer> (MIT license, automated tests).
 3. **The APK carries no keys.** Open the latest run of
    [`verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml):
-   GitHub downloads the published APK and searches it for private keys. The run summary must show
-   **"Claves privadas válidas: 0"** (valid private keys: 0). To repeat it by hand:
+   GitHub downloads the published APK and searches it for private keys. The run must be green and
+   its *Annotations* box must say **"claves privadas válidas: 0"** (valid private keys: 0). To repeat
+   it by hand:
    [how to verify, 1 page](d1/verificacion_apk.md).
 4. **It works on a real phone.** [Regression on a Motorola G04](d1/regresion_dispositivo.md): the
    admin flows (merchant registration, resident minting, faucet) go through the relayer, with

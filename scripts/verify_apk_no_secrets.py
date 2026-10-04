@@ -213,6 +213,14 @@ def main() -> int:
         print(f"Dirección pública {args.public[:8]}…{args.public[-4:]} (no es secreta) aparece en: {where}")
     print("RESULTADO:", "OK — cero claves privadas" if ok else "FALLO — el archivo contiene claves privadas")
 
+    # En GitHub Actions, deja el veredicto como anotación de la ejecución: a diferencia del
+    # resumen y de los logs, las anotaciones se ven sin iniciar sesión.
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        name = args.target.rstrip("/").rsplit("/", 1)[-1]
+        level = "notice" if ok else "error"
+        print(f"::{level} title=Verificación del APK::{name} · SHA-256 {digest} · "
+              f"claves privadas válidas: {len(rep.valid)}")
+
     if args.summary:
         with open(args.summary, "a", encoding="utf-8") as out:
             out.write("### Verificación del APK: claves privadas de Stellar\n\n")
