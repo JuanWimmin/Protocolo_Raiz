@@ -6,12 +6,15 @@ import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
+import com.soneso.stellar.sdk.Asset
 import com.soneso.stellar.sdk.AssetTypeCreditAlphaNum4
 import com.soneso.stellar.sdk.ChangeTrustOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.PathPaymentStrictSendOperation
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
+import com.soneso.stellar.sdk.horizon.exceptions.NetworkException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -32,6 +35,18 @@ import java.net.URL
 import kotlin.coroutines.coroutineContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Cotización de [HorizonStream.quoteStrictSend]: el [quote] (montos en stroops, ver
+ * [SwapMath.Quote]) junto con el [path] de assets del SDK (`com.soneso.stellar.sdk.Asset`,
+ * distinto de `com.soneso.stellar.sdk.horizon.responses.Asset` que devuelve Horizon) que
+ * hay que reenviar tal cual a [HorizonStream.pathPaymentStrictSend] — así la operación usa
+ * el MISMO camino que se cotizó, no uno que Horizon pudiera elegir distinto al enviar.
+ */
+data class StrictSendQuote(
+    val quote: SwapMath.Quote,
+    val path: List<Asset>,
+)
 
 /**
  * Stream del balance USDC de una cuenta Stellar y operaciones Horizon auxiliares.
@@ -118,6 +133,26 @@ class HorizonStream @Inject constructor(
     suspend fun getAssetBalance(accountId: String, code: String, issuer: String): Long =
         withContext(Dispatchers.IO) {
             fetchAssetBalance(accountId, code, issuer)
+        }
+
+    /**
+     * Igual que [getAssetBalance] pero distingue "no se pudo leer" (`null`) de "saldo 0"
+     * (sin trustline o balance 0). Para lecturas puntuales cuyo resultado decide qué ve el
+     * usuario (p. ej. si hay USDC del anchor que convertir): un fallo de red no debe
+     * convertirse en un 0 falso. Reintenta errores transitorios ([withRetryOnDns]).
+     */
+    suspend fun getAssetBalanceOrNull(accountId: String, code: String, issuer: String): Long? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                withRetryOnDns {
+                    val account = horizonServer.accounts().account(accountId)
+                    account.balances.firstOrNull { b -> b.assetCode == code && b.assetIssuer == issuer }
+                        ?.balance?.toUsdcStroops() ?: 0L
+                }
+            }.getOrElse { e ->
+                Log.w(TAG, "getAssetBalanceOrNull falló ($code): ${e.message}")
+                null
+            }
         }
 
     private suspend fun fetchAssetBalance(accountId: String, code: String, issuer: String): Long {
@@ -293,6 +328,240 @@ class HorizonStream @Inject constructor(
             )
             is RaizResult.Error -> result
         }
+
+    /**
+     * Cotiza la conversión "USDC del anchor de prueba → USDC del fondo (Blend)" (WP3
+     * stretch) contra `/paths/strict-send` de Horizon: cuánto `USDC:destIssuer` se
+     * recibiría al enviar exactamente `sendStroops` de `USDC:sendIssuer`.
+     *
+     * Elige el record con MAYOR `destinationAmount` (Horizon puede devolver varios
+     * caminos; el pool directo verificado hoy entre los dos USDC de testnet es el único,
+     * pero por si en el futuro hay más de uno tomamos el mejor). El `path` de la
+     * respuesta va en [StrictSendQuote.path], en el mismo orden, para reenviarlo
+     * intacto a [pathPaymentStrictSend].
+     *
+     * `RaizResult.Error(NOT_FOUND, …)` si Horizon no devuelve ningún camino (sin
+     * liquidez ahora mismo). Errores de red → `NETWORK_ERROR` (con reintento DNS
+     * vía [withRetryOnDns]).
+     */
+    suspend fun quoteStrictSend(
+        sendCode: String,
+        sendIssuer: String,
+        sendStroops: Long,
+        destCode: String,
+        destIssuer: String,
+    ): RaizResult<StrictSendQuote> = withContext(Dispatchers.IO) {
+        runCatching {
+            withRetryOnDns {
+                horizonServer.strictSendPaths()
+                    .sourceAsset("credit_alphanum4", sendCode, sendIssuer)
+                    .sourceAmount(SwapMath.stroopsToAmount(sendStroops))
+                    .destinationAssets(listOf(Triple("credit_alphanum4", destCode, destIssuer)))
+                    .execute()
+                    .records
+            }
+        }.fold(
+            onSuccess = { records ->
+                val best = records.maxByOrNull { it.destinationAmount.toUsdcStroops() }
+                if (best == null) {
+                    RaizResult.Error(
+                        RaizErrorCode.NOT_FOUND,
+                        "No hay liquidez en testnet para convertir este USDC ahora.",
+                    )
+                } else {
+                    val destStroops = best.destinationAmount.toUsdcStroops()
+                    val destMinStroops = SwapMath.applySlippageBps(destStroops, SwapMath.SLIPPAGE_BPS)
+                    val path = best.path.map { it.toOperationAsset() }
+                    RaizResult.Success(
+                        StrictSendQuote(
+                            quote = SwapMath.Quote(
+                                sendStroops = sendStroops,
+                                destStroops = destStroops,
+                                destMinStroops = destMinStroops,
+                                hops = path.size,
+                            ),
+                            path = path,
+                        ),
+                    )
+                }
+            },
+            onFailure = { e ->
+                Log.w(TAG, "quoteStrictSend falló ($sendCode→$destCode): ${e.message}")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, e.message ?: "horizon error")
+            },
+        )
+    }
+
+    /**
+     * Convierte una `Asset` de RESPUESTA de Horizon (`horizon.responses.Asset`, la que
+     * trae `PathResponse.path`) en la `Asset` de OPERACIÓN del SDK
+     * (`com.soneso.stellar.sdk.Asset`, la que espera `PathPaymentStrictSendOperation`).
+     * Son dos clases distintas con el mismo nombre corto — de ahí el import calificado.
+     */
+    private fun com.soneso.stellar.sdk.horizon.responses.Asset.toOperationAsset(): Asset =
+        if (assetType == "native") {
+            Asset.createNativeAsset()
+        } else {
+            Asset.createNonNativeAsset(
+                assetCode ?: error("asset credit sin assetCode en la respuesta de Horizon"),
+                assetIssuer ?: error("asset credit sin assetIssuer en la respuesta de Horizon"),
+            )
+        }
+
+    /**
+     * Ejecuta la conversión "USDC del anchor de prueba → USDC del fondo (Blend)" (WP3
+     * stretch) con una `PathPaymentStrictSendOperation` NO custodial: la firma el propio
+     * [signer] y el destino es su MISMA cuenta (`signer.getAccountId()`) — nunca se mueve
+     * a una cuenta ajena, solo cambia de asset. `path` debe ser el mismo que devolvió
+     * [quoteStrictSend] para esa cotización (no se vuelve a pedir aquí).
+     *
+     * Devuelve el hash de la transacción si Horizon la acepta. Errores de Horizon
+     * (result_codes de la operación, en el body de la excepción) se traducen a
+     * `RaizErrorCode`: `op_underfunded` → `INSUFFICIENT_BALANCE`; `op_too_few_offers` /
+     * `op_under_dest_min` (la liquidez se movió entre cotizar y enviar) → `NETWORK_ERROR`;
+     * `op_no_trust` (falta la trustline al USDC destino) → `NOT_FOUND`; el resto →
+     * `UNKNOWN` con el fragmento `result_codes` acotado a 200 caracteres. No se loguea el XDR.
+     *
+     * Un path payment NO es idempotente: la transacción se construye y firma UNA vez (solo
+     * `loadAccount`, que es lectura, se reintenta) y el sobre se envía una sola vez. Si la
+     * conexión se corta sin respuesta de Horizon, se consulta la tx por su hash antes de
+     * declarar fallo — puede haber entrado igualmente.
+     */
+    suspend fun pathPaymentStrictSend(
+        signer: KeyPair,
+        sendCode: String,
+        sendIssuer: String,
+        sendStroops: Long,
+        destCode: String,
+        destIssuer: String,
+        destMinStroops: Long,
+        path: List<Asset>,
+    ): RaizResult<String> = withContext(Dispatchers.IO) {
+        val accountId = signer.getAccountId()
+        // 1. Construir y firmar UNA sola vez. Reconstruir tras un corte de red (secuencia
+        //    nueva) enviaría una segunda conversión.
+        val (envelope, txHash) = try {
+            val source = withRetryOnDns { horizonServer.loadAccount(accountId) }
+            val op = PathPaymentStrictSendOperation(
+                sendAsset = Asset.createNonNativeAsset(sendCode, sendIssuer),
+                sendAmount = SwapMath.stroopsToAmount(sendStroops),
+                destination = accountId,
+                destAsset = Asset.createNonNativeAsset(destCode, destIssuer),
+                destMin = SwapMath.stroopsToAmount(destMinStroops),
+                path = path,
+            )
+            val tx = TransactionBuilder(source, Network.TESTNET)
+                .setBaseFee(100L)
+                .addOperation(op)
+                .setTimeout(60L)
+                .build()
+            tx.sign(signer)
+            tx.toEnvelopeXdrBase64() to tx.hashHex()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "pathPaymentStrictSend: no se pudo preparar la tx ($sendCode→$destCode): ${e.message}")
+            return@withContext RaizResult.Error(
+                RaizErrorCode.NETWORK_ERROR,
+                "No se pudo preparar la conversión. Revisa la red y reintenta.",
+            )
+        }
+
+        // 2. Enviar el MISMO sobre una vez.
+        try {
+            val response = horizonServer.submitTransaction(envelope)
+            Log.i(TAG, "pathPaymentStrictSend: $sendCode→$destCode OK para $accountId, hash=${response.hash}")
+            RaizResult.Success(response.hash)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val httpBody = (e as? NetworkException)?.body
+            if (httpBody.isNullOrBlank()) {
+                // Sin respuesta HTTP de Horizon (corte de red, timeout): resultado ambiguo.
+                if (transactionSucceeded(txHash) == true) {
+                    Log.i(TAG, "pathPaymentStrictSend: respuesta perdida pero la tx entró, hash=$txHash")
+                    RaizResult.Success(txHash)
+                } else {
+                    Log.e(TAG, "pathPaymentStrictSend: sin confirmación ($sendCode→$destCode): ${e.message}")
+                    RaizResult.Error(
+                        RaizErrorCode.NETWORK_ERROR,
+                        "No se pudo confirmar la conversión. Revisa tu saldo antes de reintentar.",
+                    )
+                }
+            } else {
+                mapPathPaymentError(httpBody, e)
+            }
+        }
+    }
+
+    /**
+     * Traduce los `result_codes` de Horizon a [RaizResult.Error]. Viven en el body de la
+     * excepción: el mensaje del SDK solo dice "Bad request (code: 400)". Nunca vuelca el XDR,
+     * solo el fragmento `result_codes` acotado.
+     */
+    private fun mapPathPaymentError(body: String, e: Exception): RaizResult.Error {
+        val lower = body.lowercase()
+        return when {
+            "op_underfunded" in lower ->
+                RaizResult.Error(RaizErrorCode.INSUFFICIENT_BALANCE, "No tienes suficiente USDC del anchor.")
+            "op_too_few_offers" in lower || "op_under_dest_min" in lower ->
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "La liquidez cambió: vuelve a cotizar.")
+            "op_no_trust" in lower ->
+                RaizResult.Error(RaizErrorCode.NOT_FOUND, "Falta la trustline al USDC del fondo.")
+            else -> {
+                val detail = (RESULT_CODES_REGEX.find(body)?.value ?: e.message ?: "horizon error").take(200)
+                Log.e(TAG, "pathPaymentStrictSend falló: $detail")
+                RaizResult.Error(RaizErrorCode.UNKNOWN, "Horizon rechazó la conversión: $detail")
+            }
+        }
+    }
+
+    /**
+     * ¿Entró y tuvo éxito la transacción `hash`? `true`/`false` si Horizon la conoce; `null`
+     * si no aparece tras unos intentos (o no hay red).
+     */
+    private suspend fun transactionSucceeded(hash: String): Boolean? {
+        repeat(TX_LOOKUP_ATTEMPTS) { attempt ->
+            val successful = runCatching { fetchJson("${RaizConstants.TESTNET_HORIZON_URL}/transactions/$hash") }
+                .getOrNull()?.get("successful")?.jsonPrimitive?.contentOrNull
+            if (successful != null) return successful == "true"
+            if (attempt < TX_LOOKUP_ATTEMPTS - 1) delay(TX_LOOKUP_DELAY_MS)
+        }
+        return null
+    }
+
+    /**
+     * Monto realmente recibido por un `path_payment_strict_send` ya aplicado (campo `amount`
+     * de la operación en Horizon), en stroops; `null` si no se pudo leer. Un strict-send
+     * entrega lo que dé el pool en ese ledger (≥ `dest_min`), que puede diferir de lo cotizado.
+     */
+    suspend fun strictSendReceivedStroops(txHash: String): Long? = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = fetchJson("${RaizConstants.TESTNET_HORIZON_URL}/transactions/$txHash/operations?limit=5")
+            json?.get("_embedded")?.jsonObject?.get("records")?.jsonArray
+                ?.map { it.jsonObject }
+                ?.firstOrNull { it["type"]?.jsonPrimitive?.contentOrNull == "path_payment_strict_send" }
+                ?.get("amount")?.jsonPrimitive?.contentOrNull
+                ?.toUsdcStroops()
+        }.getOrNull()
+    }
+
+    /** GET JSON a Horizon por HTTP directo (mismo patrón que [paymentHistory]). `null` si 404. */
+    private fun fetchJson(urlStr: String): JsonObject? {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            if (conn.responseCode == 404) return null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            return jsonCodec.parseToJsonElement(body).jsonObject
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     /**
      * Verifica si la cuenta tiene trustline al USDC de Blend (el que usa el pool).
@@ -486,5 +755,10 @@ class HorizonStream @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
+        /** Intentos de consulta por hash tras un envío sin respuesta (≈ 2 cierres de ledger). */
+        const val TX_LOOKUP_ATTEMPTS = 4
+        const val TX_LOOKUP_DELAY_MS = 2_500L
+        /** Fragmento `"result_codes": {...}` del body de error de Horizon (sin el XDR). */
+        val RESULT_CODES_REGEX = Regex("\"result_codes\"\\s*:\\s*\\{[^}]*\\}")
     }
 }

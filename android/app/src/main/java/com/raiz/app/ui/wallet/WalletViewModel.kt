@@ -132,7 +132,7 @@ class WalletViewModel @Inject constructor(
                 }
                 _state.update { current ->
                     if (current is WalletUiState.Ready)
-                        current.copy(setupStep = step, setupError = null)
+                        current.copy(setupStep = step, setupError = if (step == current.setupStep) current.setupError else null)
                     else current
                 }
                 return@launch
@@ -147,7 +147,7 @@ class WalletViewModel @Inject constructor(
             }
             Log.i(TAG, "Setup step para $accountId: $step")
             _state.update { current ->
-                if (current is WalletUiState.Ready) current.copy(setupStep = step, setupError = null)
+                if (current is WalletUiState.Ready) current.copy(setupStep = step, setupError = if (step == current.setupStep) current.setupError else null)
                 else current
             }
         }
@@ -497,6 +497,12 @@ class WalletViewModel @Inject constructor(
     fun refresh() {
         loadPassport()
         loadCentroPoolBalance()
+        // El alta on-chain puede avanzar fuera del banner (Depositar → Convertir deja USDC del
+        // fondo en la cuenta): mientras haya un paso pendiente se re-evalúa al volver.
+        val ready = _state.value as? WalletUiState.Ready
+        if (ready != null && ready.setupStep != AccountSetupStep.DONE && !ready.setupInProgress) {
+            refreshSetupStep()
+        }
         // El saldo SAC de los smart accounts passkey no tiene SSE — se refresca manualmente.
         if (walletManager.isPasskeyWallet()) {
             viewModelScope.launch { refreshPasskeyBalance() }

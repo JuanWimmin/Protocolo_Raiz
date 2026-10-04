@@ -10,10 +10,13 @@ import com.raiz.app.data.anchor.AnchorDepositStatus
 import com.raiz.app.data.anchor.AnchorPollTimeout
 import com.raiz.app.data.anchor.AnchorSession
 import com.raiz.app.data.anchor.AnchorSessionExpired
+import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.RaizConstants
 import com.raiz.app.data.model.RaizResult
+import com.raiz.app.data.stellar.DeploymentsLoader
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.WalletManager
+import com.soneso.stellar.sdk.Asset
 import com.soneso.stellar.sdk.KeyPair
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -47,6 +50,24 @@ enum class DepositPhase {
     TIMED_OUT,             // Se venció el timeout de polling sin llegar a un estado terminal.
 }
 
+/**
+ * Estado de la conversión "USDC del anchor de prueba → USDC del fondo (Blend)"
+ * (stretch WP3, 2026-09-27): un `PathPaymentStrictSendOperation` NO custodial
+ * — firmado por el propio usuario, destino su misma cuenta — contra el pool
+ * de liquidez clásico de testnet entre ambos USDC. Se convierte SIEMPRE el
+ * saldo completo del anchor. Ver `data/stellar/SwapMath.kt` y
+ * `HorizonStream.quoteStrictSend`/`pathPaymentStrictSend`.
+ */
+sealed interface SwapState {
+    data object Idle : SwapState
+    data object Quoting : SwapState
+    data class Quoted(val sendStroops: Long, val destStroops: Long, val destMinStroops: Long) : SwapState
+    data object Submitting : SwapState
+    /** `destIsExact` = `destStroops` es lo realmente recibido (leído de Horizon), no la cotización. */
+    data class Done(val sendStroops: Long, val destStroops: Long, val txHash: String, val destIsExact: Boolean) : SwapState
+    data class Failed(val message: String) : SwapState
+}
+
 data class DepositUiState(
     val phase: DepositPhase = DepositPhase.LOADING_INFO,
     val account: String = "",
@@ -69,6 +90,10 @@ data class DepositUiState(
     /** stellar_transaction_id del anchor (o respaldo Horizon /payments). */
     val txHash: String? = null,
     val error: String? = null,
+    /** Conversión "anchor-USDC → USDC del fondo" (stretch WP3). Ver [SwapState]. */
+    val swap: SwapState = SwapState.Idle,
+    /** Paso en curso de la conversión. Separado de [stepLabel], que es del depósito. */
+    val swapStepLabel: String? = null,
 )
 
 /**
@@ -98,10 +123,28 @@ class DepositViewModel @Inject constructor(
     private val horizonStream: HorizonStream,
     private val anchorClient: AnchorClient,
     private val savedStateHandle: SavedStateHandle,
+    private val deploymentsLoader: DeploymentsLoader,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DepositUiState())
     val state: StateFlow<DepositUiState> = _state.asStateFlow()
+
+    /**
+     * USDC del fondo (Blend) — el mismo issuer que usa `HorizonStream.usdcBalanceFlow`
+     * para el saldo principal de la wallet. Necesario aquí para cotizar/enviar la
+     * conversión (destino del path payment).
+     */
+    private val deployments: Deployments by lazy { deploymentsLoader.load() }
+    private val blendUsdcIssuer: String by lazy { deployments.usdcIssuer ?: deployments.admin }
+
+    /**
+     * Camino del pool de liquidez devuelto por la última cotización (`quoteStrictSend`).
+     * En el pool verificado hoy es un único salto (`path = []`), pero se guarda tal cual
+     * lo devuelva Horizon para no asumirlo. Se reutiliza al enviar la conversión — pedir
+     * una segunda cotización ahí introduciría una carrera con la que ya se le mostró al
+     * usuario en el botón "Convertir".
+     */
+    private var swapPath: List<Asset> = emptyList()
 
     /** Evento one-shot: la Screen abre esta URL en una Custom Tab al recibirla. */
     private val _openUrl = MutableSharedFlow<String>(extraBufferCapacity = 1)
@@ -170,7 +213,7 @@ class DepositViewModel @Inject constructor(
                 _state.update { it.copy(phase = DepositPhase.NEEDS_XLM) }
                 return@launch
             }
-            refreshAnchorBalance()
+            refreshAnchorBalance(onComplete = ::quoteSwap)
             _state.update { it.copy(phase = DepositPhase.READY) }
 
             // Restauración: había un depósito en curso cuando el proceso murió
@@ -246,6 +289,8 @@ class DepositViewModel @Inject constructor(
     fun startDeposit() {
         val current = state.value
         if (current.phase != DepositPhase.READY) return
+        // Una conversión en vuelo y un depósito no se solapan (comparten cuenta y secuencia).
+        if (current.swap is SwapState.Submitting) return
         // Revalida aquí en vez de confiar solo en amountError: el monto inicial o un
         // cambio de límites del anchor podrían no haber pasado por onAmountChange.
         val amountError = validateAmount(current.amountInput)
@@ -262,7 +307,11 @@ class DepositViewModel @Inject constructor(
                 return@launch
             }
 
-            _state.update { it.copy(phase = DepositPhase.PREPARING, stepLabel = null, error = null) }
+            // Al salir de READY se descarta cualquier cotización previa: COMPLETED no debe
+            // heredar un "Convertir N" viejo mientras llega la cotización nueva.
+            _state.update {
+                it.copy(phase = DepositPhase.PREPARING, stepLabel = null, error = null, swap = SwapState.Idle, swapStepLabel = null)
+            }
 
             if (!horizonStream.accountExists(accountId)) {
                 _state.update { it.copy(phase = DepositPhase.NEEDS_XLM) }
@@ -406,8 +455,13 @@ class DepositViewModel @Inject constructor(
                 elapsedSec = 0,
                 txHash = null,
                 error = null,
+                swap = SwapState.Idle,
+                swapStepLabel = null,
             )
         }
+        // De vuelta en READY puede haber USDC del anchor pendiente de convertir (p. ej. un
+        // depósito anterior): sin re-cotizar, la card quedaría sin botón.
+        refreshAnchorBalance(onComplete = ::quoteSwap)
     }
 
     /**
@@ -463,7 +517,7 @@ class DepositViewModel @Inject constructor(
                             stopTicker()
                             savedStateHandle.remove<String>(KEY_DEPOSIT_ID)
                             val hash = status.stellarTxHash ?: fallbackTxHash()
-                            refreshAnchorBalance()
+                            refreshAnchorBalance(onComplete = ::quoteSwap)
                             _state.update {
                                 it.copy(phase = DepositPhase.COMPLETED, txHash = hash, stepLabel = null)
                             }
@@ -523,11 +577,161 @@ class DepositViewModel @Inject constructor(
         return (result as? RaizResult.Success)?.data?.txHash
     }
 
-    private fun refreshAnchorBalance() {
+    /**
+     * @param onComplete se invoca tras actualizar `anchorUsdcBalanceStroops` en el
+     *   `state` (mismo hilo/corrutina que el `update`, así que ya ve el saldo fresco).
+     *   Usado para encadenar [quoteSwap] sin que lea el saldo todavía-en-0 previo.
+     */
+    private fun refreshAnchorBalance(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
-            val info = anchorClient.loadInfo().getOrNull() ?: return@launch
-            val stroops = horizonStream.getAssetBalance(state.value.account, RaizConstants.ANCHOR_USDC_CODE, info.usdcIssuer)
+            val stroops = anchorClient.loadInfo().getOrNull()?.let { info ->
+                horizonStream.getAssetBalanceOrNull(state.value.account, RaizConstants.ANCHOR_USDC_CODE, info.usdcIssuer)
+            }
+            if (stroops == null) {
+                // No se pudo leer: se conserva el saldo previo (un 0 falso ocultaría la card de
+                // conversión justo tras el depósito). Si alguien esperaba el saldo para cotizar,
+                // la card ofrece "Reintentar".
+                if (onComplete != null) {
+                    _state.update {
+                        if (it.swap is SwapState.Submitting || it.swap is SwapState.Done) it
+                        else it.copy(swap = SwapState.Failed(MSG_BALANCE_UNREADABLE))
+                    }
+                }
+                return@launch
+            }
             _state.update { it.copy(anchorUsdcBalanceStroops = stroops) }
+            onComplete?.invoke()
+        }
+    }
+
+    /**
+     * Cotiza la conversión del saldo COMPLETO de USDC-anchor al USDC del fondo
+     * (Blend) vía el pool de liquidez clásico de testnet. Sin saldo, vuelve a
+     * [SwapState.Idle] (nada que convertir). Guarda el `path` devuelto para
+     * reutilizarlo tal cual en [convertAnchorUsdc] — pedir una segunda cotización
+     * ahí podría no coincidir con lo que el usuario vio en el botón.
+     */
+    fun quoteSwap() {
+        // Una conversión en vuelo no se pisa: re-cotizar devolvería el botón "Convertir" con la
+        // tx aún sin cerrar (segundo path payment concurrente).
+        if (state.value.swap is SwapState.Submitting) return
+        val balance = state.value.anchorUsdcBalanceStroops
+        if (balance <= 0L) {
+            // Sin saldo no hay nada que cotizar; un Done recién logrado se conserva para que el
+            // usuario siga viendo el resultado y el hash.
+            _state.update { if (it.swap is SwapState.Done) it else it.copy(swap = SwapState.Idle) }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(swap = SwapState.Quoting) }
+            val info = anchorClient.loadInfo().getOrNull()
+            if (info == null) {
+                _state.update { it.copy(swap = SwapState.Failed(MSG_ANCHOR_UNREACHABLE)) }
+                return@launch
+            }
+            when (
+                val r = horizonStream.quoteStrictSend(
+                    sendCode = RaizConstants.ANCHOR_USDC_CODE,
+                    sendIssuer = info.usdcIssuer,
+                    sendStroops = balance,
+                    destCode = "USDC",
+                    destIssuer = blendUsdcIssuer,
+                )
+            ) {
+                is RaizResult.Success -> {
+                    swapPath = r.data.path
+                    val quote = r.data.quote
+                    _state.update {
+                        it.copy(
+                            swap = SwapState.Quoted(
+                                sendStroops = quote.sendStroops,
+                                destStroops = quote.destStroops,
+                                destMinStroops = quote.destMinStroops,
+                            ),
+                        )
+                    }
+                }
+                is RaizResult.Error -> _state.update { it.copy(swap = SwapState.Failed(r.message)) }
+            }
+        }
+    }
+
+    /**
+     * Reintento tras [SwapState.Failed]: relee el saldo del anchor ANTES de cotizar. Si el fallo
+     * fue ambiguo (la tx sí entró), el saldo real ya es 0 y cotizar con el viejo llevaría a un
+     * bucle de `op_underfunded`.
+     */
+    fun retryQuote() = refreshAnchorBalance(onComplete = ::quoteSwap)
+
+    /**
+     * Envía la conversión cotizada por [quoteSwap]: si falta la trustline al USDC del fondo, la
+     * crea primero; luego firma y envía el `PathPaymentStrictSendOperation` (destino = la propia
+     * cuenta del usuario — NO custodial). Tras acreditarse lee de Horizon el monto REALMENTE
+     * recibido (un strict-send entrega lo que dé el pool en ese ledger, ≥ `dest_min`, no lo
+     * cotizado) y refresca el saldo del anchor (queda en 0). No vuelve a cotizar: pisaría el
+     * [SwapState.Done] que el usuario necesita ver.
+     */
+    fun convertAnchorUsdc() {
+        val quoted = state.value.swap as? SwapState.Quoted ?: return
+        // Transición síncrona Quoted → Submitting: un segundo tap ya no encuentra Quoted.
+        _state.update { it.copy(swap = SwapState.Submitting, swapStepLabel = null) }
+        viewModelScope.launch {
+            val kp = walletManager.currentKeyPair()
+            if (kp == null) {
+                _state.update { it.copy(swap = SwapState.Failed("No se pudo firmar: no hay wallet activa.")) }
+                return@launch
+            }
+            val info = anchorClient.loadInfo().getOrNull()
+            if (info == null) {
+                _state.update { it.copy(swap = SwapState.Failed(MSG_ANCHOR_UNREACHABLE)) }
+                return@launch
+            }
+
+            val accountId = kp.getAccountId()
+            if (!horizonStream.hasUsdcTrustline(accountId)) {
+                _state.update { it.copy(swapStepLabel = "Habilitando el USDC del fondo en tu cuenta…") }
+                when (val t = horizonStream.enableUsdcTrustline(kp)) {
+                    is RaizResult.Error -> {
+                        _state.update { it.copy(swap = SwapState.Failed(t.message), swapStepLabel = null) }
+                        return@launch
+                    }
+                    is RaizResult.Success -> Unit
+                }
+            }
+
+            _state.update { it.copy(swapStepLabel = "Enviando la conversión…") }
+            when (
+                val r = horizonStream.pathPaymentStrictSend(
+                    signer = kp,
+                    sendCode = RaizConstants.ANCHOR_USDC_CODE,
+                    sendIssuer = info.usdcIssuer,
+                    sendStroops = quoted.sendStroops,
+                    destCode = "USDC",
+                    destIssuer = blendUsdcIssuer,
+                    destMinStroops = quoted.destMinStroops,
+                    path = swapPath,
+                )
+            ) {
+                is RaizResult.Success -> {
+                    val received = horizonStream.strictSendReceivedStroops(r.data)
+                    _state.update {
+                        it.copy(
+                            swap = SwapState.Done(
+                                sendStroops = quoted.sendStroops,
+                                destStroops = received ?: quoted.destStroops,
+                                txHash = r.data,
+                                destIsExact = received != null,
+                            ),
+                            swapStepLabel = null,
+                        )
+                    }
+                    // Sin encadenar quoteSwap: el saldo queda en 0 y no debe pisarse el Done.
+                    refreshAnchorBalance()
+                }
+                is RaizResult.Error -> _state.update {
+                    it.copy(swap = SwapState.Failed(r.message), swapStepLabel = null)
+                }
+            }
         }
     }
 
@@ -554,6 +758,8 @@ class DepositViewModel @Inject constructor(
         const val MAX_REAUTH_ATTEMPTS = 1
         const val MSG_SESSION_REJECTED_TWICE = "El anchor rechazó la sesión dos veces seguidas. Reintenta el depósito."
         const val MSG_UNSAFE_URL = "El anchor devolvió una URL no segura."
+        const val MSG_BALANCE_UNREADABLE = "No se pudo leer tu saldo del anchor. Revisa la red y reintenta."
+        const val MSG_ANCHOR_UNREACHABLE = "No se pudo hablar con el anchor de prueba."
         val RESUMABLE_PHASES = setOf(DepositPhase.AWAITING_USER, DepositPhase.POLLING, DepositPhase.TIMED_OUT)
     }
 }

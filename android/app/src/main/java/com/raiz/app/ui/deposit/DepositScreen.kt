@@ -1,6 +1,7 @@
 package com.raiz.app.ui.deposit
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -97,7 +98,7 @@ fun DepositScreen(
             TopBar(onBack = onBack)
 
             when (state.phase) {
-                DepositPhase.COMPLETED -> CompletedBody(state = state, onDone = onBack)
+                DepositPhase.COMPLETED -> CompletedBody(state = state, viewModel = viewModel, onDone = onBack)
                 else -> DefaultBody(state = state, viewModel = viewModel)
             }
         }
@@ -149,6 +150,18 @@ private fun DefaultBody(state: DepositUiState, viewModel: DepositViewModel) {
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
             color = RaizBlack.copy(alpha = 0.5f),
         )
+
+        // También con saldo 0 si la conversión ya arrancó: tras convertir el saldo del anchor
+        // queda en 0 y la card debe seguir mostrando el resultado y el hash.
+        if (state.phase == DepositPhase.READY &&
+            (state.anchorUsdcBalanceStroops > 0L || state.swap !is SwapState.Idle)
+        ) {
+            ConvertCard(
+                state = state,
+                onConvert = viewModel::convertAnchorUsdc,
+                onRetry = viewModel::retryQuote,
+            )
+        }
 
         when (state.phase) {
             DepositPhase.LOADING_INFO -> LoadingCard(texto = "Cargando el anchor de prueba…")
@@ -209,6 +222,151 @@ private fun AnchorBalanceCard(state: DepositUiState) {
                 color = RaizWhite.copy(alpha = 0.5f),
             )
         }
+    }
+}
+
+// ── Convertir a USDC del fondo (stretch WP3: pool de liquidez de testnet) ─────
+
+/**
+ * Card de la conversión "USDC del anchor de prueba → USDC del fondo (Blend)"
+ * vía un `PathPaymentStrictSendOperation` NO custodial (el propio usuario firma,
+ * destino su misma cuenta). En mainnet este paso no existiría — el USDC de Circle
+ * es uno solo; en testnet el anchor de prueba emite otro USDC distinto al de Blend.
+ *
+ * `send`/`dest` salen de [SwapState.Done] cuando ya terminó (el saldo del anchor
+ * ya se refrescó a 0 en ese punto) o del saldo actual (`state.anchorUsdcBalanceStroops`,
+ * que no cambia hasta que la conversión termina) en el resto de sub-estados.
+ */
+@Composable
+private fun ConvertCard(
+    state: DepositUiState,
+    onConvert: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val context = LocalContext.current
+    val swap = state.swap
+    val send = if (swap is SwapState.Done) swap.sendStroops else state.anchorUsdcBalanceStroops
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, RaizPurple, RoundedCornerShape(16.dp))
+            .background(RaizWhite)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "Convertir a USDC del fondo",
+            style = MaterialTheme.typography.labelLarge,
+            color = RaizBlack,
+        )
+        Text(
+            // formatUsdc() ya incluye la unidad ("4.5 USDC").
+            text = if (swap is SwapState.Done) {
+                "Tus ${send.formatUsdc()} del anchor de prueba ya son USDC del fondo (Blend): con él " +
+                    "sí puedes pagar en los comercios de RAÍZ."
+            } else {
+                "Tienes ${send.formatUsdc()} del anchor de prueba. Con el USDC del fondo (Blend) " +
+                    "sí puedes pagar en los comercios de RAÍZ."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = RaizBlack.copy(alpha = 0.7f),
+        )
+
+        when (swap) {
+            is SwapState.Idle -> Unit
+
+            is SwapState.Quoting -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(color = RaizPurple, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                Text(
+                    text = "Cotizando…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+            }
+
+            is SwapState.Quoted -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Recibirás ≈ ${swap.destStroops.formatUsdc()} · pool de liquidez de " +
+                        "testnet, fee 0,3 %, tolerancia 1 %",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+                Button(
+                    onClick = onConvert,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = RaizPurple, contentColor = RaizWhite),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Convertir ${swap.sendStroops.formatUsdc()}", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
+            is SwapState.Submitting -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(color = RaizPurple, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                Text(
+                    text = state.swapStepLabel ?: "Enviando la conversión…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+            }
+
+            is SwapState.Done -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "✓ Convertido: recibiste ${if (swap.destIsExact) "" else "≈ "}" +
+                        "${swap.destStroops.formatUsdc()} del fondo",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = RaizGreen,
+                )
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(RaizGreen)
+                        .clickable { StellarExpert.open(context, StellarExpert.txUrl(swap.txHash)) }
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.OpenInNew,
+                        contentDescription = null,
+                        tint = RaizWhite,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = "Ver en Stellar Expert · ${shortAddress(swap.txHash)}",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                        color = RaizWhite,
+                    )
+                }
+            }
+
+            is SwapState.Failed -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = swap.message, style = MaterialTheme.typography.bodyMedium, color = RaizError)
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = RaizBlack, contentColor = RaizWhite),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Reintentar", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
+        Text(
+            text = "En mainnet este paso no existe: el USDC de Circle es uno solo. En testnet el " +
+                "anchor de prueba emite otro USDC.",
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+            color = RaizBlack.copy(alpha = 0.45f),
+        )
     }
 }
 
@@ -316,7 +474,7 @@ private fun ReadyCard(
         )
         Button(
             onClick = onDeposit,
-            enabled = state.amountError == null,
+            enabled = state.amountError == null && state.swap !is SwapState.Submitting,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -489,18 +647,23 @@ private fun FailedCard(message: String, onRetry: () -> Unit) {
 // ── Éxito ─────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CompletedBody(state: DepositUiState, onDone: () -> Unit) {
+private fun CompletedBody(state: DepositUiState, viewModel: DepositViewModel, onDone: () -> Unit) {
     val context = LocalContext.current
     val amountOut = state.status?.amountOutUsdc ?: state.amountInput
     val hash = state.txHash
 
+    // Con la ConvertCard debajo del chip el contenido ya no cabe centrado en pantallas
+    // de 360×640 dp: la columna pasa a ser desplazable (verticalScroll) y los dos
+    // Spacer(weight(1f)) que centraban se sustituyen por alturas fijas — weight() dentro
+    // de un scroll lanza IllegalStateException (altura no acotada) en Compose.
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         RaizSuccessAnimation(
             titulo = "¡Depósito recibido!",
@@ -532,7 +695,20 @@ private fun CompletedBody(state: DepositUiState, onDone: () -> Unit) {
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        // Solo cuando hay algo que convertir (saldo del anchor ya refrescado > 0) o la
+        // conversión ya arrancó (Quoting/Quoted/Submitting/Done/Failed): mientras el
+        // refresh post-depósito sigue en vuelo el saldo aún es el previo (0 en el primer
+        // depósito) y la card diría "Tienes 0,00 USDC…".
+        if (state.swap !is SwapState.Idle || state.anchorUsdcBalanceStroops > 0L) {
+            Spacer(modifier = Modifier.height(16.dp))
+            ConvertCard(
+                state = state,
+                onConvert = viewModel::convertAnchorUsdc,
+                onRetry = viewModel::retryQuote,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = onDone,
