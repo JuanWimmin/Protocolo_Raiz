@@ -71,7 +71,10 @@
 > *"Y el USDC de prueba ya no me lo regala nadie: lo deposito con un anchor real, por los estándares de Stellar."*
 - Solo con wallet **semilla** (passkey muestra "Disponible pronto para passkey (SEP-45)") y red estable.
 - **Inicio → "Depositar · anchor de prueba"** → monto **5** → **"Depositar con el anchor"**. La app crea la trustline, se autentica (SEP-10, firma con tu wallet) y abre la web del anchor en una pestaña → confirma el depósito → vuelve a la app → **"¡Depósito recibido!"** con el hash y el chip **"Ver en Stellar Expert"**.
-- En **Inicio** aparece "● USDC · anchor de prueba: 5 USDC", aparte del USDC del fondo (es otro activo: no sirve para pagar comercios, y se dice).
+- En **Inicio** aparece "● USDC · anchor de prueba: 5 USDC", aparte del USDC del fondo (es otro activo: no sirve para pagar comercios hasta convertirlo, y se dice).
+- **Tap "Convertir"** (extra; necesita el APK de la rama `feat/wp3-sep24`): vuelve a **"Depositar · anchor de prueba"** → bajo el saldo, card **"Convertir a USDC del fondo"** con "Recibirás ≈ N USDC" → botón púrpura **"Convertir…"** → "Enviando la conversión…". De vuelta en **Inicio**, el saldo USDC subió ≈ N y la línea del anchor desapareció: con eso ya puedes **"Escanear y pagar"**.
+  > *"En testnet el anchor emite otro USDC, así que lo convierto con un path payment que firmo yo, de mi cuenta a mi cuenta. En mainnet este paso no existe: el USDC de Circle es uno solo."*
+  - N es la cotización en vivo de un pool de liquidez de testnet (para 5 USDC: 4,44 el 27-sep, 5,05 el 3-oct). Si conviertes desde la pantalla "¡Depósito recibido!" (la card está bajo el chip del hash), quedan a la vista "✓ Convertido: recibiste N USDC del fondo" y el chip a Stellar Expert.
 - Tarda 1–2 min con el anchor de prueba. Guion de 60 s y plan B detallado: `docs/evidencia_sow/d3/guion_video.md`.
 
 ---
@@ -86,6 +89,7 @@
 | Onboarding falla | Sáltalo — es opcional. La wallet principal ya está lista. |
 | Relayer caído | Salta **Alta de comercio** y **Onboarding** (son los que pasan por el relayer); pagos, votos y transparencia no dependen del relayer. |
 | Anchor de prueba caído o lento (> 1 min en "Esperando al anchor…") | Salta el **Depósito SEP-24**; el on-ramp demo sigue siendo el faucet del relayer ("USDC demo (Blend) · relayer" en el paso 3 del banner). Nada más depende del anchor. |
+| "Convertir" falla ("No hay liquidez en testnet…" / "La liquidez cambió: vuelve a cotizar.") o cotiza muy lejos de 5 | **"Reintentar"** vuelve a cotizar. Si sigue igual, salta el tap: el depósito ya quedó demostrado y el pago se enseña con el saldo USDC que la wallet ya tenía. |
 
 ---
 

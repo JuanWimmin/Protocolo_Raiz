@@ -1,7 +1,8 @@
 # Paquete de evidencia — SOW Instaward RAÍZ
 
-> Estado al **2026-09-27** (D1 verificado el 12-sep; D2 actualizado el 19-sep; D3 con código listo el
-> 27-sep, pendiente de video y tx hash). Este README es el índice del paquete y el mapa exacto
+> Estado al **2026-10-03** (D1 verificado el 12-sep; D2 actualizado el 19-sep; **D3 probado en el
+> Motorola G04 y grabado el 3-oct**: video de 60 s, capturas y tx hash del depósito). Este README es
+> el índice del paquete y el mapa exacto
 > **campo del portal → enlace a pegar**. Detalle por entregable: [`d1/README.md`](d1/README.md),
 > [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) (continúa
 > [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md)), [`d3/README.md`](d3/README.md).
@@ -66,31 +67,44 @@ extender el TTL de sus entradas (`scripts/treasury_ttl.js`). Opcional: Release d
 **Al 27-sep siguen sin ejecutar** y la ventana del RPC ya no contiene ningún evento `execution`: las
 6 ejecuciones enlazan vía el archivo versionado de hashes (app) y el snapshot (landing).
 
-## D3 — SEP-10 + SEP-24 · código listo, pendiente video + tx hash
+## D3 — SEP-10 + SEP-24 · probado en dispositivo; video y tx hash listos (3-oct)
 
 Objetivo SOW: depósito SEP-24 interactivo completado end-to-end desde la app contra
 `testanchor.stellar.org` (anchor de prueba del SDF), autenticado con SEP-10 firmado por la wallet del
-usuario. **Código listo el 2026-09-27 y mergeado a `main`** (compila; 17 tests JVM del cliente
-del anchor en verde; revisión adversarial aplicada; todavía no está en `main`). Flujo real, hallazgos de la sonda del 27-sep, notas
-honestas y checklist de dispositivo: [`d3/README.md`](d3/README.md). Guion del video de 60 s:
-[`d3/guion_video.md`](d3/guion_video.md).
+usuario. **Código listo el 2026-09-27 y en `main` desde ese mismo día** (commits `8b8993c` y `1de547e`;
+`main` quedó en `a7e9e1d`; compila; 17 tests JVM del cliente del anchor en verde; revisión adversarial
+aplicada). Flujo real, hallazgos de la sonda del 27-sep, notas honestas y checklist de dispositivo:
+[`d3/README.md`](d3/README.md). Guion del video de 60 s: [`d3/guion_video.md`](d3/guion_video.md).
+
+**Extra, fuera de lo que pide el SOW (3-oct):** la pantalla Depositar ofrece además "Convertir a USDC
+del fondo" — el stretch del plan WP3. Cotiza en Horizon (`/paths/strict-send`) y envía una
+`PathPaymentStrictSend` firmada por el usuario, con destino su propia cuenta y tolerancia del 1 %,
+contra un pool de liquidez de testnet entre los dos USDC (`23283282…39e9`, fee 0,3 %); así lo
+depositado pasa a ser el USDC de Blend con el que sí se paga en comercios. Está en la rama
+`feat/wp3-sep24` (sin mergear a `main` al 3-oct), **probada en el Motorola G04 el 3-oct** (4,5 USDC del
+anchor → 4,5229258 USDC del fondo, tx [`23e926f4…`](https://stellar.expert/explorer/testnet/tx/23e926f4a24981e4e2f524221b26408273a508722931422b9c62d83be83d3658)), y no bloquea ningún
+campo del portal. En mainnet el paso no existe: el USDC de Circle es uno solo. Detalle, pool
+verificado y límites: [`d3/README.md`](d3/README.md) § "Convertir a USDC del fondo".
 
 | # | Campo del portal | Enlace a pegar | Estado |
 |---|---|---|---|
-| 1 | Video del depósito SEP-24 (60 s) | *(YouTube no listado — pendiente)* | ⏳ Pendiente de grabar tras la prueba en el Motorola G04 |
-| 2 | Tx hash del pago del anchor (Stellar Expert) | `https://stellar.expert/explorer/testnet/tx/<hash>` — *pendiente* | ⏳ Se obtiene en la misma prueba: la app lo muestra en "¡Depósito recibido!" (campo `stellar_transaction_id` del anchor) y se contrasta en Horizon `/accounts/<G>/payments` |
-| 3 | Captura de la app con el depósito completado | `d3/capturas/07_deposito_recibido_hash.png` — *pendiente* | ⏳ |
+| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 | ✅ Grabado el 3-oct en el Motorola G04 (61 s, sin cortes en el paso interactivo). GitHub lo reproduce en el navegador; **el enlace existe tras mergear `feat/wp3-sep24` a `main`**. Versión de 92 s con la conversión: [`d3_deposito_y_conversion_completo.mp4`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_y_conversion_completo.mp4). Si el portal pide YouTube, subir el mismo archivo como no listado |
+| 2 | Tx hash del pago del anchor (Stellar Expert) | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Transfer de 4,5 USDC (issuer `GBBD47IF…LFLA5`) de la cuenta del anchor `GABCKCYP…YCZP` a la wallet del teléfono `GABZUFA6…GTISJ3`, 2026-10-04 03:11:17 UTC. Verificado en Horizon |
+| 3 | Captura de la app con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png | ✅ "¡Depósito recibido! · 4.5 USDC · anchor de prueba" con el chip "Ver en Stellar Expert · ae4d3e…df7562". Carpeta: [`d3/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas) (9 capturas) |
 
-**Cómo lo verá el revisor (cuando esté):** en el video, la app crea la trustline, firma el challenge
-SEP-10 con la wallet, abre la web del anchor en una pestaña (paso interactivo sin cortes), vuelve,
-sondea el estado hasta `completed` y muestra el hash con un chip a Stellar Expert; en Inicio aparece la
-línea "USDC · anchor de prueba: 5 USDC" separada del USDC del fondo. El enlace del campo 2 debe mostrar
-un pago de USDC (issuer `GBBD47IF…LFLA5`) desde una cuenta del anchor a la `G…` del dispositivo.
+**Cómo lo ve el revisor:** en el video, la app parte del banner "Paso 3 · Consigue USDC", crea la
+trustline, firma el challenge SEP-10 con la wallet, abre la web del anchor en una pestaña (paso
+interactivo sin cortes: formulario y resultado `completed`), vuelve y muestra "¡Depósito recibido! ·
+4.5 USDC" con el hash en un chip a Stellar Expert (el anchor de prueba descuenta 0,5 de comisión a un
+depósito de 5). El enlace del campo 2 muestra ese pago desde la cuenta del anchor a la `G…` del teléfono.
+Evidencia de "SEP-10 auth working" (semana 3 del SOW): captura `03_autenticando_sep10.png` y la línea de
+logcat `AnchorClient.authenticate: sesión SEP-10 obtenida` recogida en `d3/README.md`.
 
 Alcance (decidido, no se re-discute): USDC **del anchor de prueba** a wallets semilla `G…`, rotulado
 "USDC · anchor de prueba" y nunca sumado al USDC de Blend del fondo (son dos activos distintos con el
-mismo código; con el del anchor no se paga a comercios); wallets passkey ven "Disponible pronto para
-passkey (SEP-45)"; el faucet del relayer queda como "USDC demo (Blend) · relayer", secundario.
+mismo código; con el del anchor no se paga a comercios hasta convertirlo); wallets passkey ven
+"Disponible pronto para passkey (SEP-45)"; el faucet del relayer queda como "USDC demo (Blend) ·
+relayer", secundario.
 
 ---
 
@@ -124,6 +138,6 @@ vigentes (= `deployments.json`, los mismos que muestra `/v1/health` del relayer 
 5. D2: pegar en el portal los 3 campos de la tabla D2 (URL viva, 3 links de Stellar Expert, captura).
 6. Cosmético: el `version` que reporta `/v1/health` sigue en `0.1.0` (bump de `package.json` del
    relayer en el próximo deploy).
-7. D3: pasar el checklist de dispositivo de `d3/README.md` en el Motorola G04, grabar el video de 60 s
-   (`d3/guion_video.md`), anotar el tx hash (en `d3/README.md` y en la tabla D3 de arriba), mergear
-   `feat/wp3-sep24` a `main` y pegar los campos D3 en el portal.
+7. D3: ✅ prueba en el Motorola G04, video de 60 s y tx hash hechos el 3-oct. Falta **mergear
+   `feat/wp3-sep24` a `main`** (ahí viven el video, las capturas y el extra "Convertir a USDC del
+   fondo") y pegar los 3 campos D3 en el portal. Opcional: subir el video a YouTube como no listado.

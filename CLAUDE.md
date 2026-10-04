@@ -309,7 +309,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   devuelve **0 eventos `execution`** en la ventana del RPC (las 6 ejecuciones enlazan solo vía
   `execution_hashes.json` / snapshot de la landing). Evidencia y pendientes (capturas en dispositivo,
   copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
-- **D3 (WP3):** código listo el 27-sep y **mergeado a `main` el mismo día** (pendiente de probar en dispositivo): SEP-1 +
+- **D3 (WP3):** código listo el 27-sep y **mergeado a `main` el mismo día** (**probado en el Motorola G04 y grabado el 3-oct**): SEP-1 +
   SEP-10 + SEP-24 contra `testanchor.stellar.org` con `kmp-stellar-sdk` 1.6.0, sin dependencias Stellar
   nuevas (solo `androidx.browser` 1.8.0 para Custom Tabs). `data/anchor/AnchorClient.kt` (`loadInfo`
   toml + `/info`, `authenticate` con JWT **solo en memoria** cacheado por cuenta, `startDeposit`,
@@ -325,11 +325,21 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   aplicada (reanudación rastreada y cancelable, tope de una re-autenticación, 401 → sesión caducada, toml
   y URLs solo `https`, coma decimal, revalidación del monto) — detalle en `docs/evidencia_sow/d3/README.md`. **Alcance decidido:** el USDC del anchor (issuer `GBBD47IF…LFLA5`)
   es OTRO asset que el USDC de Blend del fondo — siempre rotulado "USDC · anchor de prueba", nunca
-  sumado al BalanceCard, no sirve para pagar comercios; wallets passkey (C…) ven "Disponible pronto
+  sumado al BalanceCard, no sirve para pagar comercios hasta convertirlo; wallets passkey (C…) ven "Disponible pronto
   para passkey (SEP-45)". Sonda del 27-sep: JWT SEP-10 dura 24 h, el token de la URL interactiva 10 min,
-  depósito USDC mín 1 / máx 10, sin trustline el anchor deja la tx en `pending_trust`. **Pendiente:**
-  prueba end-to-end en el Motorola G04, video de 60 s y tx hash real. Evidencia, flujo real, hallazgos y
-  checklist de dispositivo: `docs/evidencia_sow/d3/README.md`; guion: `docs/evidencia_sow/d3/guion_video.md`.
+  depósito USDC mín 1 / máx 10, sin trustline el anchor deja la tx en `pending_trust`. **3-oct — prueba en
+  dispositivo hecha** con una wallet semilla nueva (`GABZUFA6…GTISJ3`): depósito SEP-24 real (5 → 4,5 USDC,
+  el anchor cobra 0,5; tx `ae4d3e43…df7562`), video de 61 s y 9 capturas en
+  `docs/evidencia_sow/d3/{video,capturas}/`. **Stretch "Convertir a USDC del fondo"** (rama
+  `feat/wp3-sep24`, sin mergear al 3-oct): `PathPaymentStrictSend` firmada por el usuario, destino su
+  propia cuenta, contra el pool de liquidez clásico de testnet `23283282…39e9` entre los dos USDC
+  (`HorizonStream.quoteStrictSend` → `/paths/strict-send`, tolerancia 1 %; la tx se construye, firma y
+  envía UNA vez y se consulta por hash si se pierde la respuesta; aritmética en `data/stellar/SwapMath.kt`),
+  probado en dispositivo (4,5 → 4,5229258 USDC de Blend, tx `23e926f4…3d3658`). En mainnet ese paso no
+  existe (el USDC de Circle es uno solo). 61 tests JVM. Medido en dispositivo: el anchor paga con
+  `invoke_host_function` (transfer del SAC), no con `payment`; su web NO precarga el monto; pasa a
+  `completed` en ≈ 5 s. Evidencia, flujo real, hallazgos, resultado de la prueba y hashes:
+  `docs/evidencia_sow/d3/README.md`; guion y tiempos de la toma: `docs/evidencia_sow/d3/guion_video.md`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
 - Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
@@ -348,9 +358,8 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). Cola
   menor de D2 (sigue abierta al 27-sep): ejecutar #7 Centro y #8 Costa desde la app, añadir sus hashes a
   `execution_hashes.json` + snapshot de la landing y **extender el TTL de `Execution(6)` y `Execution(7)`**
-  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: código listo el 27-sep y en `main`**; falta
-  (1) instalar el APK debug en el Motorola G04 y pasar el checklist de `docs/evidencia_sow/d3/README.md`,
-  (2) grabar el video de 60 s (`docs/evidencia_sow/d3/guion_video.md`) y anotar el tx hash del depósito
-  en `d3/README.md` y en `docs/evidencia_sow/README.md`, (3) pegar los campos D3 en el portal. Después
+  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; falta
+  (1) mergear `feat/wp3-sep24` a `main` (conversión + video + capturas + evidencia) y (2) pegar los 3
+  campos D3 en el portal (`docs/evidencia_sow/README.md`; opcional: video en YouTube no listado). Después
   arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
   Al cerrar cada WP, actualizar esta línea.
