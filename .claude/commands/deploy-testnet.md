@@ -1,46 +1,44 @@
 ---
-description: Despliega los 5 contratos a Stellar Testnet (requiere scripts/deploy_testnet.sh)
+description: Despliega los 5 contratos a Stellar Testnet (scripts/deploy_testnet.sh)
 allowed-tools: Bash, Read, Write
-argument-hint: [--rebuild] (opcional, fuerza compilar antes de desplegar)
+argument-hint: (sin argumentos; el script compila siempre antes de desplegar)
 ---
 
-Despliega los contratos compilados a Stellar Testnet usando `stellar` CLI (v23.x).
+Despliega los 5 contratos a Stellar Testnet con `scripts/deploy_testnet.sh` (Stellar CLI 23.x).
+
+Un deploy crea contratos NUEVOS con IDs nuevos: confírmalo con el usuario antes de correrlo. Después hay que volver a sembrar (`/seed-testnet`), actualizar el objeto `DEPLOYMENTS` de `landing/*.html`, la allowlist del relayer (`raiz-relayer`) y el archivo `android/app/src/main/assets/execution_hashes.json` (su clave de primer nivel es el ID del Treasury).
 
 Pre-requisitos (verifica antes de correr):
 
-1. `stellar --version` debe responder.
-2. Identidad configurada: `stellar keys ls` debe mostrar al menos una identidad (la del admin del protocolo).
-3. Si no existe, crear con: `stellar keys generate --global raiz-admin --network testnet --fund`.
+1. `stellar --version` responde.
+2. Identidad del admin: `stellar keys address raiz-admin`. OJO: desde el 2026-10-04 la clave maestra de esa cuenta tiene peso 0 (se rotó). La cuenta sigue siendo el admin, pero firma la identidad `raiz-admin-signer`; el script ya lo hace por defecto (variable `SIGNER`). Ver el gotcha "Rotación de la clave del admin" en `CLAUDE.md`.
 
 Pasos:
 
-1. Si pasa `--rebuild` o si no existen los `.wasm`, compila primero:
-   ```bash
-   cd contracts
-   cargo build --release --target wasm32-unknown-unknown -p rewards
-   cargo build --release --target wasm32-unknown-unknown -p governance
-   cargo build --release --target wasm32-unknown-unknown -p treasury
-   cargo build --release --target wasm32-unknown-unknown -p pool
-   ```
-
-2. Ejecuta el script de deploy:
+1. Ejecuta el script (compila con `stellar contract build`, despliega, inicializa en orden Rewards → yield_adapter → Pool → Governance → Treasury, escribe `deployments.json` y lo copia a los assets de la app):
    ```bash
    ./scripts/deploy_testnet.sh
    ```
 
-3. El script debe guardar los IDs de contratos en `deployments.json`. Verifica que el archivo tenga este formato:
+2. Verifica que `deployments.json` tenga este formato:
    ```json
    {
      "network": "testnet",
-     "rewards": "C...",
+     "admin": "G...",
+     "admin_identity": "raiz-admin",
+     "usdc_sac": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+     "pool": "C...",
      "governance": "C...",
      "treasury": "C...",
-     "pool": "C...",
-     "usdc_sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-     "deployed_at": "2026-..."
+     "rewards": "C...",
+     "yield_adapter": "C...",
+     "protocol_fee_bps": 50,
+     "deployed_at": "2026-...",
+     "usdc_issuer": "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+     "blend_pool": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF"
    }
    ```
 
-4. Reporta los IDs al usuario y la URL del Stellar Expert para cada uno.
+3. Reporta los IDs al usuario y la URL de Stellar Expert de cada uno.
 
-Si `scripts/deploy_testnet.sh` no existe aún, créalo siguiendo el patrón estándar (`stellar contract deploy --wasm ... --network testnet --source raiz-admin`) e inicializa cada contrato con sus parámetros.
+Los deploys a testnet son flaky en ráfaga (propagación RPC + rate-limit): el script reintenta cada operación. Si un deploy "se cuelga" o un init da "Contract not found", es propagación — reintenta.

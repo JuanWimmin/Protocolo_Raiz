@@ -8,9 +8,9 @@
 // Uso:
 //   node scripts/treasury_ttl.js          → estado de cada clave (VIVA / ARCHIVADA / no existe)
 //   node scripts/treasury_ttl.js xdr      → XDR base64 de cada clave, para:
-//     stellar contract restore --network testnet --source-account raiz-admin --id <TREASURY> \
+//     stellar contract restore --network testnet --source-account <G del admin> --sign-with-key raiz-admin-signer --id <TREASURY> \
 //       --durability persistent --key-xdr "<XDR>"
-//     stellar contract extend  --network testnet --source-account raiz-admin --id <TREASURY> \
+//     stellar contract extend  --network testnet --source-account <G del admin> --sign-with-key raiz-admin-signer --id <TREASURY> \
 //       --durability persistent --ledgers-to-extend 1500000 --key-xdr "<XDR>" [--key-xdr ...]
 //
 // Requiere @stellar/stellar-sdk ≥ 17 (npm i -g, o el node_modules del repo hermano raiz-relayer).

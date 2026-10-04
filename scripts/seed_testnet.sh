@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RAÍZ · Seed de testnet
 # -----------------------
-# Pobla los 4 contratos desplegados con datos demo: 3 barrios, comercios con
+# Pobla los 5 contratos desplegados con datos demo: 3 barrios, comercios con
 # lat/lng reales, residentes con soulbound, pagos con tip, propuestas activas,
 # y rewards (artesanías).
 #
@@ -15,6 +15,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOYMENTS="$ROOT_DIR/deployments.json"
 NETWORK="testnet"
 ADMIN="raiz-admin"
+# Desde el 2026-10-04 la clave maestra de la cuenta admin tiene peso 0 (se rotó): la cuenta
+# sigue siendo el source, pero firma esta identidad. Vacío = firma la propia identidad $ADMIN.
+ADMIN_SIGNER="${ADMIN_SIGNER-raiz-admin-signer}"
 TOURIST="raiz-tourist"
 
 if [[ ! -f "$DEPLOYMENTS" ]]; then
@@ -41,24 +44,28 @@ if [[ -z "$POOL" || -z "$GOVERNANCE" || -z "$REWARDS" ]]; then
     echo "✗ No se pudieron leer los IDs de $DEPLOYMENTS" >&2
     exit 1
 fi
-log "Contratos: pool=$POOL governance=$GOVERNANCE rewards=$REWARDS treasury=$TREASURY"
-
 GREEN="\033[0;32m"
 YELLOW="\033[0;33m"
 NC="\033[0m"
 log()  { echo -e "${GREEN}→${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
+log "Contratos: pool=$POOL governance=$GOVERNANCE rewards=$REWARDS treasury=$TREASURY yield_adapter=$YIELD_ADAPTER"
 
 invoke() {
     local contract_id="$1"
     local source="$2"
     shift 2
     local output rc tries=0
+    # El admin firma con ADMIN_SIGNER (clave rotada); el resto, con su propia identidad.
+    local sign_args=(--source-account "$source")
+    if [[ "$source" == "$ADMIN" && -n "$ADMIN_SIGNER" ]]; then
+        sign_args=(--source-account "$ADMIN_ADDR" --sign-with-key "$ADMIN_SIGNER")
+    fi
     # Testnet RPC es flaky → reintenta hasta 4 veces.
     while [[ $tries -lt 4 ]]; do
         output=$(stellar contract invoke \
             --id "$contract_id" \
-            --source-account "$source" \
+            "${sign_args[@]}" \
             --network "$NETWORK" \
             -- "$@" 2>&1)
         rc=$?
@@ -306,6 +313,6 @@ echo "  3 propuestas activas con votos"
 echo "  6 rewards (2 por barrio)"
 echo
 echo "Verificación on-chain:"
-echo "  Pool del Centro:   stellar contract invoke --id $POOL --source-account $ADMIN --network testnet -- get_pool_balance --barrio_id $BARRIO_CENTRO"
-echo "  Propuesta 0:       stellar contract invoke --id $GOVERNANCE --source-account $ADMIN --network testnet -- get_proposal --proposal_id 0"
-echo "  Rewards del Costa: stellar contract invoke --id $REWARDS --source-account $ADMIN --network testnet -- list_rewards --barrio_id $BARRIO_COSTA"
+echo "  Pool del Centro:   stellar contract invoke --id $POOL --source-account $ADMIN_ADDR --network testnet --send=no -- get_pool_balance --barrio_id $BARRIO_CENTRO"
+echo "  Propuesta 0:       stellar contract invoke --id $GOVERNANCE --source-account $ADMIN_ADDR --network testnet --send=no -- get_proposal --proposal_id 0"
+echo "  Rewards del Costa: stellar contract invoke --id $REWARDS --source-account $ADMIN_ADDR --network testnet --send=no -- list_rewards --barrio_id $BARRIO_COSTA"

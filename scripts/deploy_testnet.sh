@@ -7,7 +7,7 @@
 # deployments.json.
 #
 # Requisitos:
-#   - Rust toolchain con target wasm32-unknown-unknown.
+#   - Rust 1.97.1 con target wasm32v1-none (lo fija contracts/rust-toolchain.toml).
 #   - Stellar CLI 23.x instalado en PATH.
 #   - Conexión a internet (testnet + friendbot).
 
@@ -15,6 +15,13 @@ set -euo pipefail
 
 NETWORK="${NETWORK:-testnet}"
 IDENTITY="${IDENTITY:-raiz-admin}"
+# Quién FIRMA por la cuenta admin. Desde el 2026-10-04 la clave maestra de `raiz-admin` tiene
+# peso 0 (se rotó: iba embebida en el APK 0.1.0): la cuenta sigue siendo el admin y el source
+# de las transacciones, pero firma la identidad `raiz-admin-signer`. Con otra IDENTITY firma
+# su propia clave, salvo que exportes SIGNER.
+if [[ -z "${SIGNER+x}" ]]; then
+    if [[ "$IDENTITY" == "raiz-admin" ]]; then SIGNER="raiz-admin-signer"; else SIGNER=""; fi
+fi
 PROTOCOL_FEE_BPS="${PROTOCOL_FEE_BPS:-50}"
 # F1: el Pool custodia el USDC de Blend (el que acepta el pool TestnetV2) en
 # vez de un USDC propio. SAC, emisor clásico y pool de Blend — fijos en testnet.
@@ -49,7 +56,13 @@ if ! stellar keys address "$IDENTITY" >/dev/null 2>&1; then
     stellar keys generate "$IDENTITY" --fund --network "$NETWORK"
 fi
 ADMIN_ADDR=$(stellar keys address "$IDENTITY")
-log "Admin: $ADMIN_ADDR"
+if [[ -n "$SIGNER" ]]; then
+    SIGN_ARGS=(--source-account "$ADMIN_ADDR" --sign-with-key "$SIGNER")
+    log "Admin: $ADMIN_ADDR (firma: identidad '$SIGNER')"
+else
+    SIGN_ARGS=(--source-account "$IDENTITY")
+    log "Admin: $ADMIN_ADDR"
+fi
 
 # ── 2. Compilar wasm ───────────────────────────────────────────────────────
 
@@ -88,7 +101,7 @@ deploy_contract() {
     while [[ $tries -lt 5 ]]; do
         out=$(stellar contract deploy \
             --wasm "$wasm" \
-            --source-account "$IDENTITY" \
+            "${SIGN_ARGS[@]}" \
             --network "$NETWORK" 2>/dev/null | tail -1 | tr -d '[:space:]' || true)
         if [[ "$out" == C* && ${#out} -eq 56 ]]; then
             echo "$out"; return 0
@@ -136,7 +149,7 @@ invoke() {
     while [[ $tries -lt 5 ]]; do
         if stellar contract invoke \
             --id "$contract_id" \
-            --source-account "$IDENTITY" \
+            "${SIGN_ARGS[@]}" \
             --network "$NETWORK" \
             -- "$@"; then
             return 0

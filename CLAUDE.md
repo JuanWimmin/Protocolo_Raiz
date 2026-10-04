@@ -26,7 +26,8 @@ propuestas → treasury ejecuta trustless si pasa → dashboard muestra todo on-
 | Stellar SDK | `kmp-stellar-sdk` (Soneso) | Horizon, Soroban RPC, smart accounts |
 | Mapas | Mapbox Maps SDK 11.x + maps-compose | Ver `docs/raiz_mapbox_setup.md` |
 | Wallet | Passkey (WebAuthn) + fallback frase semilla (BIP-39) | `WalletManager` con ambos |
-| Anchors | SEP-10 auth, SEP-24 on/off ramp, SEP-38 RFQ | |
+| Anchors | SEP-10 + SEP-24 (depósito) contra `testanchor.stellar.org` | `data/anchor/AnchorClient.kt`, `ui/deposit/` · pendiente: SEP-38, retiro, SEP-12, SEP-45 |
+| Backend admin | `raiz-relayer` (TS + Fastify, Fly.io, repo aparte) | Firma `register_merchant` / `mint_resident` / faucet / vault; la app lo usa vía `data/relayer/RelayerClient.kt`. Único servicio propio: todo el estado vive on-chain |
 
 ---
 
@@ -42,16 +43,17 @@ Protocolo_Raiz/
 │   ├── rewards/                # puntos + premios
 │   └── yield_adapter/          # BlendAdapter: yield del fondo contra el pool USDC de Blend v2
 ├── android/                    # App Kotlin (Jetpack Compose + Hilt)
-├── scripts/                    # deploy_testnet.sh, seed_testnet.sh, setup_admin_multisig.sh
+├── scripts/                    # deploy_testnet.sh, seed_testnet.sh, setup_admin_multisig.sh, treasury_ttl.js, verify_apk_no_secrets.py
 ├── docs/                       # Fuente de verdad y guías
 │   ├── raiz_v2_spec_contratos.md
 │   ├── RaizModels.kt           # modelos Kotlin espejo de los structs Rust
 │   ├── raiz_mapbox_setup.md
 │   ├── raiz_prompt_claude_code.md   # prompt maestro original
 │   ├── NuevaPropuesta/         # roadmap canónico F1–F6 (propuesta_raiz_ahorro_enjambre.md §8 + plan_trabajo_raiz.md)
-│   ├── ESTADO_PROYECTO_2026-07-31.md  # foto del estado para nuevos colaboradores
+│   ├── ESTADO_PROYECTO_2026-07-31.md  # foto histórica del 31-jul (pre-SOW)
+│   ├── evidencia_sow/          # paquete de evidencia del SOW Instaward (README = página principal; d1/ d2/ d3/)
 │   └── pre_vistas/             # HTMLs con specs visuales de pantallas
-├── .github/workflows/contracts.yml  # CI: build + tests de los contratos
+├── .github/workflows/          # CI: contracts.yml (cargo test --workspace) y verify-apk.yml (APK del Release sin claves privadas)
 ├── deployments.json            # IDs de contratos tras deploy (se versiona — fuente canónica)
 ├── DEMO.md                     # guion de 90 segundos
 ├── README.md                   # setup en español
@@ -141,10 +143,10 @@ Lánzalos con la herramienta Agent cuando la tarea calce:
 ```bash
 # Contratos
 /test-contracts             # cargo test todo el workspace
-/build-contracts            # cargo build --release --target wasm32-unknown-unknown
+/build-contracts            # stellar contract build (wasm32v1-none, un solo paso)
 /spec-check                 # lanza spec-auditor contra el código actual
 
-# Despliegue (cuando estemos listos)
+# Despliegue (re-deploy: crea contratos nuevos, confirmar antes)
 /deploy-testnet             # corre scripts/deploy_testnet.sh
 /seed-testnet               # corre scripts/seed_testnet.sh (3 barrios, comercios, etc.)
 ```
@@ -152,14 +154,14 @@ Lánzalos con la herramienta Agent cuando la tarea calce:
 Comandos directos útiles:
 
 ```bash
-# Build de un contrato puntual (en contracts/<crate>/)
-cargo build --release --target wasm32-unknown-unknown -p pool
+# Build de un contrato puntual (desde contracts/; NUNCA cargo build --target wasm32-unknown-unknown para deploy)
+stellar contract build --package pool
 
 # Test de un contrato puntual
 cargo test -p pool
 
 # Stellar CLI (instalada 23.2.1 — funciona; upgrade a 27.1.0 recomendado, pendiente)
-stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm --network testnet
+stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network testnet
 ```
 
 ---
@@ -182,7 +184,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 - ❌ Cambiar la paleta o el flujo de las 6 pantallas sin avisar — ya están aprobadas.
 - ❌ Usar Google Maps "de paso" si Mapbox da guerra; primero discutir.
 - ❌ Implementar `transfer()` en Governance (es soulbound — viola la tesis).
-- ❌ Hardcodear `pk.*` o `sk.*` de Mapbox en el repo (van en `~/.gradle/gradle.properties`).
+- ❌ Hardcodear `pk.*` o `sk.*` de Mapbox en el repo (el `pk.*` va en `android/local.properties` como `mapbox.access.token`; el `sk.*` de descarga, en `~/.gradle/gradle.properties`).
 - ❌ Llamar a Blend directamente desde Pool — SIEMPRE vía la interfaz `YieldAdapter`.
 
 ## Gotchas conocidos del proyecto
@@ -229,7 +231,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   (`GET https://ewqw4hx7oa.execute-api.us-east-1.amazonaws.com/getAssets?userId=<G>`
   → firmar el XDR → enviar). El admin NO puede acuñarlo.
 
-- **Protocol 23+ (testnet en P28): las entradas archivadas se AUTO-RESTAURAN en la tx**. La
+- **Protocol 23+ (testnet en P29 al 2026-10-04): las entradas archivadas se AUTO-RESTAURAN en la tx**. La
   simulación ya no devuelve `restorePreamble`: mete las entradas caducadas en el `readWrite` del
   footprint con el fee de restauración, y el SDK Soneso (`invoke(signer=null)`) lo rechaza con
   "Signer required for write call" → la app ve 0 comercios / 0 puntos / 0 shares. Remedio
@@ -283,6 +285,19 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `stellar contract extend --ledgers-to-extend 1500000` con `--key-xdr` de cada `Proposal(n)` (hecho el
   4-oct para 5–8; viven hasta el ledger 6 523 485 ≈ fin de dic-2026). **Toda propuesta nueva necesita lo
   mismo si va a pasar más de 7 días sin tocarse** (detalle en `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`).
+
+- **Rotación de la clave del admin (2026-10-04): la identidad `raiz-admin` de la CLI YA NO FIRMA.**
+  El APK 0.1.0 (hackathon) llevaba embebida la clave maestra de la cuenta admin `GBLS7PL5…YC2P` y el
+  redeploy de F1 reutilizó la cuenta. Se rotó sin cambiar la dirección: firmante nuevo
+  `GB42NCO6…BRYL7` (peso 1), clave maestra en peso 0, umbrales 1/1/1 (txs `b7524190…` y `1c56d1ca…`).
+  Para operar como admin desde la CLI:
+  `--source-account GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P --sign-with-key raiz-admin-signer`
+  (con `--source-account raiz-admin` la red responde `TxBadAuth`). Los scripts de `scripts/` ya lo
+  hacen. El relayer (≥ 0.2.0) firma con esa misma clave: su `RELAYER_ADMIN_SECRET` es la de
+  `raiz-admin-signer`, y `/v1/health` expone `signer` y `signerAuthorized`. La clave vive en
+  `~/.config/stellar/identity/raiz-admin-signer.toml` (el equipo de Juan) y en los secrets de Fly:
+  **si se pierde, se pierde el admin** (respaldarla). NUNCA volver a dar peso a la clave maestra:
+  está filtrada. Detalle y transacciones: `docs/evidencia_sow/d1/README.md`.
 
 ## Estado actual (2026-10-04)
 
@@ -350,6 +365,19 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `invoke_host_function` (transfer del SAC), no con `payment`; su web NO precarga el monto; pasa a
   `completed` en ≈ 5 s. Evidencia, flujo real, hallazgos, resultado de la prueba y hashes:
   `docs/evidencia_sow/d3/README.md`; guion y tiempos de la toma: `docs/evidencia_sow/d3/guion_video.md`.
+- **WP4 — paquete de evidencia: CERRADO el 4-oct.** Página principal `docs/evidencia_sow/README.md`
+  (+ `README.en.md`): tabla entregable → evidencia, verificación en 10 minutos, campos del portal y nota
+  de redeploy. APK final **0.3.0** (D1 + D2 + D3) en el Release `v0.3.0` (SHA-256 `50373942…d771f56c`,
+  0 claves privadas: `scripts/verify_apk_no_secrets.py` + workflow `verify-apk`; guía de 1 página en
+  `d1/verificacion_apk.md`). Los 19 hashes de la evidencia se verificaron en Horizon y en Stellar Expert
+  en incógnito. Hallazgo del día: el APK 0.1.0, aún descargable y enlazado desde la landing, llevaba la
+  clave maestra del admin vigente → **clave rotada on-chain** (ver gotcha), relayer 0.2.0 desplegado,
+  asset 0.1.0 retirado y landing enlazando al 0.3.0. Documentation sync: la spec se igualó a los
+  contratos desplegados (la auditoría no halló drift de código) y README, ARQUITECTURA, presentaciones,
+  landing y slash commands quedaron al día. El video de D3 se sirve también desde
+  `raizapp.xyz/evidencia/` (GitHub no reproduce el .mp4 en línea): esa carpeta del repo Pages se copia
+  de `docs/evidencia_sow/d3/video/`. Pendiente menor (WP6): `.claude/agents/*` desactualizados, mapeos de
+  error del cliente y comentarios viejos en `SorobanClient.kt`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
 - Regla nueva: todo contrato nuevo nace con gestión de TTL, `__constructor`, snapshot de
@@ -364,11 +392,9 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 
 ### Próximo paso
 
-- **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2: código en `main` y landing
-  publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). **Cola
-  de D2 cerrada el 4-oct** (#7 y #8 ejecutadas desde la app, hashes en el archivo y en el snapshot, TTL
-  extendido); landing publicada (repo Pages `455adce`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
-  (conversión, video, capturas y evidencia, mergeado el 3-oct); falta solo pegar los 3
-  campos D3 en el portal (`docs/evidencia_sow/README.md`; opcional: video en YouTube no listado). Después
-  arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
+- **Sprint SOW cerrado (WP0–WP4, 4-oct).** Queda del lado del usuario: pegar en el portal los campos
+  de `docs/evidencia_sow/README.md` (en D1, el APK 0.3.0 y la captura del health del 4-oct) y avisar a
+  la Ambassador Lead. Después: **WP5 — spec de F2 `savings_circle`** y **WP6**
+  (lote H3/H7/H9/H10 y TTL on-touch en el próximo redeploy). Recordatorio operativo: renovar el TTL de
+  las entradas de los contratos antes de diciembre de 2026 y respaldar la clave `raiz-admin-signer`.
   Al cerrar cada WP, actualizar esta línea.
