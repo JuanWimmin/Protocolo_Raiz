@@ -15,7 +15,7 @@ relayer pasó a firmar con una clave nueva, que nunca estuvo en un APK.
 
 | Entregable SOW D1 | Evidencia | Dónde | Estado |
 |---|---|---|---|
-| Repositorio público del relayer | TypeScript + Fastify + `@stellar/stellar-sdk`, licencia MIT, README en español (endpoints, modelo de amenazas, runbook), pruebas automáticas (`vitest`) y CI | https://github.com/JuanWimmin/raiz-relayer | ✅ Público desde el 27-ago |
+| Repositorio público del relayer | TypeScript + Fastify + `@stellar/stellar-sdk`, licencia MIT, README en español (endpoints, modelo de amenazas, runbook), 182 pruebas automáticas (`vitest`), integración real contra testnet y CI | https://github.com/JuanWimmin/raiz-relayer | ✅ Público desde el 27-ago |
 | Servicio corriendo en testnet | `GET /v1/health`: `ok`, `network: testnet`, los 5 contratos de `deployments.json`, cuenta admin y clave que firma | https://raiz-relayer.fly.dev/v1/health · captura [`d1_relayer_health_2026-10-04.png`](capturas/d1_relayer_health_2026-10-04.png) | ✅ Desplegado el 6-sep (Fly, región `iad`); versión 0.2.0 desde el 4-oct |
 | App migrada al relayer | `android/app/src/main/java/com/raiz/app/data/relayer/RelayerClient.kt` + 24 tests de mapeo de errores; ningún ViewModel firma como admin | Este repo, `main` (PR #1, 6-sep) | ✅ |
 | APK release sin secretos | [`raiz-0.3.0.apk`](https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk): versión final del sprint, con D1 + D2 + D3. SHA-256 `50373942…d771f56c` | [Release v0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0). La primera versión sin clave admin fue la [v0.2.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.2.0) (12-sep) | ✅ 4-oct |
@@ -61,6 +61,7 @@ dirección como admin, de modo que no hubo que redesplegar nada ni tocar la app:
 | 4 | Con una transacción firmada por la clave **nueva**, la clave maestra quedó con peso 0 y los umbrales en 1/1/1 | tx [`1c56d1ca…35d7`](https://stellar.expert/explorer/testnet/tx/1c56d1ca0c10caaedfeeeccdbca49ce4587500fe76727e868b4c06b4a6b235d7) |
 | 5 | Comprobación: una transacción firmada con la clave vieja es rechazada por la red | `tx_bad_auth` (salida abajo) |
 | 6 | El APK 0.1.0 se retiró de su Release y la landing enlaza al 0.3.0 | [Release v0.1.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.1.0) (sin archivo) · <https://raizapp.xyz> |
+| 7 | La suite de integración del relayer (11 pruebas reales contra testnet) pasa con la clave nueva: faucet, residente, comercio y los rechazos esperados | [`it-testnet-2026-10-04.json`](https://github.com/JuanWimmin/raiz-relayer/blob/main/docs/evidencia/it-testnet-2026-10-04.json) · `mint_resident` [`f5842447…bd8d`](https://stellar.expert/explorer/testnet/tx/f584244713df7d6ec28d59f2cf11be143514db58f3b580334fbecd1039d4bd8d) · `register_merchant` [`684ba48f…7fec`](https://stellar.expert/explorer/testnet/tx/684ba48f31aea7e59b0907969a032652ad4e213776cfe8d6d3892346c6837fec) |
 
 El paso 4 lo firma la clave nueva a propósito: si esa clave no pudiera firmar por la cuenta, la
 transacción habría fallado sin cambiar nada. Así es imposible dejar la cuenta sin dueño.
