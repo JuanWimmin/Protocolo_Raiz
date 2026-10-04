@@ -1,17 +1,20 @@
 package com.raiz.app.data.model
 
-// Los imports de serialización Soroban (Scv, SCVal) viven en SorobanClient.kt,
-// donde se hacen las conversiones fromScVal()/toScVal(). Estos modelos son POJOs puros.
+// La serialización Soroban (Scv, SCVal) NO vive en estos modelos: en la app está en
+// data/stellar/ScvalParse.kt y SorobanClient.kt. Estos modelos son POJOs puros.
 
 /*
  * RAÍZ v2 — Modelo de datos Kotlin
  *
- * Estas data classes son el espejo exacto de los structs Rust de los 4 contratos Soroban.
+ * Estas data classes son el espejo exacto de los structs Rust de los contratos Soroban de RAÍZ
+ * (5 desde F1: Pool, Governance, Treasury, Rewards y yield_adapter; de este último solo se modela
+ * la posición, `YieldPosition`), más algunos modelos solo-cliente rotulados como tales.
  * Convención:
  *   - Montos en USDC se manejan como Long (stroops, 7 decimales). 1 USDC = 10_000_000 stroops.
  *   - barrioId es el hex de un BytesN<32> (64 caracteres).
  *   - Las Address de Stellar se manejan como String (G... para cuentas, C... para contratos).
- *   - Cada tipo trae fromScVal() / toScVal() para serializar contra Soroban RPC.
+ *   - El parseo SCVal vive en data/stellar/ScvalParse.kt y SorobanClient.kt; estos modelos son POJOs puros.
+ *   - "SOLO DOCS" marca lo que existe en este archivo de referencia pero no se portó a la app.
  *
  * Helpers de conversión (USDC <-> stroops) y de puntos al final del archivo.
  */
@@ -30,7 +33,8 @@ object RaizConstants {
     const val QUORUM_PCT = 30                          // 30% de residentes para quórum
     const val BPS_DENOMINATOR = 10_000
 
-    // IDs de contratos desplegados (se rellenan tras el deploy en Testnet)
+    // SOLO DOCS: no portado a la app. Los IDs reales de los contratos desplegados viven en
+    // deployments.json (en la app: data/model/Deployments.kt + data/stellar/DeploymentsLoader.kt).
     const val POOL_CONTRACT_ID = "C..."
     const val GOVERNANCE_CONTRACT_ID = "C..."
     const val TREASURY_CONTRACT_ID = "C..."
@@ -84,6 +88,7 @@ data class Merchant(
     val lat: Double get() = latE6 / 1_000_000.0
     val lng: Double get() = lngE6 / 1_000_000.0
 
+    // SOLO DOCS: encodeLat/encodeLng no se portaron a la app.
     companion object {
         fun encodeLat(lat: Double): Int = (lat * 1_000_000).toInt()
         fun encodeLng(lng: Double): Int = (lng * 1_000_000).toInt()
@@ -150,9 +155,11 @@ data class Proposal(
  * `txHash` es el ID de auditoría on-chain (sha256 determinístico de
  * proposal_id || barrio_id || executed_at), NO el hash de la transacción de
  * Stellar. El hash real vive en `realTxHash` y viene de fuera del contrato:
- * del evento `execution` (RPC getEvents → txHash) o del sendTransaction de la
- * propia app. Null = ejecución "histórica" (evento fuera de la retención del
- * RPC), la UI no enlaza a Stellar Expert.
+ * del evento `execution` (RPC getEvents → txHash), del sendTransaction de la
+ * propia app o, si el evento ya salió de la retención del RPC, del archivo
+ * versionado assets/execution_hashes.json (`realTxHashFromArchive = true`; la
+ * UI lo rotula "Verificada (archivo)"). Null = ejecución "histórica" (sin
+ * ninguna de las tres fuentes): la UI no enlaza a Stellar Expert.
  */
 data class Execution(
     val proposalId: Long,
@@ -207,7 +214,7 @@ data class Redemption(
     val claimed: Boolean
 )
 
-/** Saldo de puntos de un turista (no es un token transferible). */
+/** Saldo de puntos de un turista (no es un token transferible). SOLO DOCS: no portado a la app. */
 data class PointsBalance(
     val tourist: String,
     val points: Long
@@ -236,13 +243,13 @@ data class PaymentPreview(
     val totalUsdc: Double get() = totalStroops.toUsdc()
 }
 
-/** Pin del mapa: merchant + su aporte acumulado para mostrar al tocar. */
+/** Pin del mapa: merchant + su aporte acumulado para mostrar al tocar. SOLO DOCS: no portado a la app. */
 data class MerchantMapPin(
     val merchant: Merchant,
     val contributedToBarrioStroops: Long
 )
 
-/** Resumen del dashboard de transparencia de un barrio. */
+/** Resumen del dashboard de transparencia de un barrio. SOLO DOCS: no portado a la app. */
 data class BarrioDashboard(
     val barrio: Barrio,
     val residentCount: Int,
@@ -353,3 +360,11 @@ fun Long.formatUsdc(): String {
 // memoria, estado de un depósito SEP-24) y el USDC que mueven es el del anchor de
 // prueba (USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5), distinto
 // del USDC de Blend que custodia el Pool. Ver docs/evidencia_sow/d3/README.md.
+//
+// Otros modelos SOLO-CLIENTE de android/.../data/model/ que tampoco se espejan aquí
+// (no existen en Rust):
+//   - PaymentRecord (PaymentRecord.kt): pago leído de Horizon ya parseado; `assetIssuer` (D3)
+//     distingue el USDC del anchor de prueba del USDC de Blend.
+//   - PassportData / PassportLevel (Passport.kt) y UserRole / RoleContext (UserRole.kt).
+//   - Deployments (Deployments.kt): espejo de deployments.json.
+//   - BlendReserveStats (BlendModels.kt): lectura directa de get_reserve del pool de Blend.
