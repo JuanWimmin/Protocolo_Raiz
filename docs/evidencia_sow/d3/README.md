@@ -5,8 +5,10 @@
 > completaron **dos depósitos SEP-24 reales** contra `testanchor.stellar.org`, cada uno seguido de la
 > conversión al USDC del fondo (stretch). Hay video de 60 s, capturas y los
 > hashes de las cuatro transacciones (sección "Resultado de la prueba"). 61 tests JVM en verde.
-> Código, video y capturas están en `main` desde el 3-oct. **Pendiente:** pegar los campos en el
-> portal y, solo si exige un enlace externo, subir el video a YouTube (no listado).
+> Código, video y capturas están en `main` desde el 3-oct, y el flujo viaja en el APK final
+> [`raiz-0.3.0.apk`](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) (4-oct).
+> **Pendiente:** pegar los campos en el portal y, solo si exige un enlace externo, subir el video a
+> YouTube (no listado).
 
 **Entregable D3 (SOW Instaward):** depósito SEP-24 interactivo completado end-to-end desde la app
 contra `testanchor.stellar.org` (anchor de prueba de la Stellar Development Foundation), con
@@ -31,7 +33,7 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
 | **Extra (stretch del plan WP3, no lo exige el SOW):** conversión al USDC del fondo | Card "Convertir a USDC del fondo": cotización en vivo (`HorizonStream.quoteStrictSend` → `GET /paths/strict-send`) y `PathPaymentStrictSend` firmada por el usuario con destino su propia cuenta y `dest_min` = cotización − 1 % (`HorizonStream.pathPaymentStrictSend`); crea la trustline al USDC de Blend si falta | `data/stellar/SwapMath.kt`, `data/stellar/HorizonStream.kt`, `ui/deposit/DepositViewModel.kt`, `ui/deposit/DepositScreen.kt` | En `main` desde el 3-oct; **probado en el Motorola G04** (2 conversiones reales) |
 | Tests de la conversión | 19 tests JVM de aritmética entera sobre stroops (stroops ↔ decimal de 7 cifras de Horizon, truncado, `dest_min` con 100 bps, ida y vuelta). La cotización y el envío hablan con Horizon y **no** tienen test unitario | `android/app/src/test/java/com/raiz/app/data/stellar/SwapMathTest.kt` | Verdes (`./gradlew :app:testDebugUnitTest --tests "com.raiz.app.data.stellar.*"`); suite completa: 61 (17 anchor + 24 relayer + 19 conversión + 1 formato de montos) |
 | Prueba en dispositivo físico | Sección "Resultado de la prueba (2026-10-03)" + 9 capturas en [`capturas/`](capturas/) | Motorola G04 / Android 14 | ✅ **Hecha el 3-oct** |
-| Video 60 s | [`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4) (61 s, el depósito sin cortes) y [`video/d3_deposito_y_conversion_completo.mp4`](video/d3_deposito_y_conversion_completo.mp4) (92 s, incluye la conversión y el saldo final) | Esta carpeta; YouTube no listado opcional | ✅ **Grabado el 3-oct** |
+| Video 60 s | [`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4) (61 s, el depósito sin cortes) y [`video/d3_deposito_y_conversion_completo.mp4`](video/d3_deposito_y_conversion_completo.mp4) (92 s, incluye la conversión y el saldo final) | Esta carpeta; para verlos con un clic: [60 s](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4) · [completo](https://raizapp.xyz/evidencia/d3_deposito_y_conversion_completo.mp4). YouTube no listado opcional | ✅ **Grabado el 3-oct** |
 | Tx hash del depósito | `stellar_transaction_id` que devuelve el anchor + verificación en Horizon | [`ae4d3e43…0edf7562`](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562) (sección "Tx hash del depósito") | ✅ |
 | Tx hash de la conversión (extra) | `hash` con el que Horizon acepta la `PathPaymentStrictSend` del usuario (chip verde de la card / logcat / Horizon `operations`) | [`23e926f4…e83d3658`](https://stellar.expert/explorer/testnet/tx/23e926f4a24981e4e2f524221b26408273a508722931422b9c62d83be83d3658) (sección "Tx hash de la conversión") | ✅ |
 
@@ -39,8 +41,8 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
 
 | # | Campo del portal (previsto) | Qué se pega | Estado |
 |---|---|---|---|
-| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 (GitHub lo reproduce en el navegador). Si el portal pide YouTube: subir ese mismo archivo como no listado | ✅ Grabado el 3-oct |
-| 2 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Pago de 4,5 USDC del anchor a la wallet del teléfono, verificado en Horizon |
+| 1 | Video del depósito SEP-24 (60 s) | https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4 (se reproduce en el navegador con un clic; es una copia del archivo de esta carpeta, [`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4), que GitHub solo deja descargar). Si el portal pide YouTube: subir ese mismo archivo como no listado | ✅ Grabado el 3-oct |
+| 2 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Pago de 4,5 USDC del anchor a la wallet del teléfono, verificado en Horizon. El enlace se abrió el 4-oct en un navegador en incógnito: "Successful", `transfer(GABC…YCZP, GABZ…ISJ3, 45000000)` — captura [`10_stellar_expert_tx_deposito_incognito.png`](capturas/10_stellar_expert_tx_deposito_incognito.png) |
 | 3 | Captura de la app con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png | ✅ Pantalla "¡Depósito recibido!" con el chip "Ver en Stellar Expert · ae4d3e…df7562" |
 
 ## Alcance decidido (no se re-discute)

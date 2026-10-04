@@ -115,7 +115,7 @@ monto reutiliza la `idempotency-key` → no se mueve el fondo dos veces. Captúr
 - Los flujos del turista con la wallet demo siguen igual en el **build debug** (botón "Probar
   modo demo" en Welcome, solo si el debug se compiló con `raiz.tourist.secret`). El APK release
   no tiene modo demo: el `buildType` `release` fuerza las dos seeds demo a `""` (ver
-  `verificacion_apk.md` §0), así que ese botón no aparece.
+  `verificacion_apk_0.2.0_bitacora.md` §0), así que ese botón no aparece.
 - `DEMO.md` (guion de 90 s) se ejecuta sin cambios: los mismos pasos, ahora vía relayer.
 
 ---
@@ -150,7 +150,7 @@ monto reutiliza la `idempotency-key` → no se mueve el fondo dos veces. Captúr
 | 4 paso 2 (violar colchón, 0.06 en Norte) | **OK**: "El depósito violaría el colchón líquido del barrio." (422 `CONTRACT_ERROR`, Pool #10). Con 0.5 USDC (> líquido) la app mostró "Monto inválido." (Pool #7), también correcto | `d1_yield_03.png` |
 | 4 paso 3 (rescatar todo) | Bloqueado en la UI por la incidencia 1 (la app leía 0 shares); el rescate se ejecutó vía `POST /v1/vault/redeem` con la misma app key → Norte volvió a vault 0 / líquido ≈ 0.07 USDC. Tras el fix de TTL la pantalla ya muestra las posiciones | — |
 | 5.1 sin red | **OK**: Tesorería muestra su propio estado de lectura ("No pudimos cargar el vault. blend.getReserveData: null"), sin crash; las llamadas al relayer nunca llegan a lanzarse porque las lecturas fallan antes | `d1_sinrelayer_01.png` |
-| 5.2 / 5.3 (key vacía / incorrecta) | No corridos en dispositivo (requieren recompilar). 5.2 cubierto por el APK sin key de la pasada 18:11 UTC (`verificacion_apk.md` §0: botones deshabilitados con aviso) y por `RelayerClientTest`; 5.3 por el test `unauthorizedAppMapeaAUnauthorizedConTextoPropio` | — |
+| 5.2 / 5.3 (key vacía / incorrecta) | No corridos en dispositivo (requieren recompilar). 5.2 cubierto por el APK sin key de la pasada 18:11 UTC (`verificacion_apk_0.2.0_bitacora.md` §0: botones deshabilitados con aviso) y por `RelayerClientTest`; 5.3 por el test `unauthorizedAppMapeaAUnauthorizedConTextoPropio` | — |
 | 6 pago QR | No cubierto por adb (requiere escanear un QR con la cámara); el código de `pay_merchant` no cambió en esta rama (`git diff main -- ui/pay data/stellar/SorobanClient.kt` no toca ese flujo) | — |
 
 ### Incidencias encontradas

@@ -290,6 +290,28 @@ puras (`readWrite = 0`).
 raizapp.xyz muestra las 8 filas enlazadas y confirma #7 y #8 en vivo por el RPC — captura
 `18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png`.
 
+## Enlaces comprobados en incógnito (2026-10-04, WP4)
+
+Cada enlace de Stellar Expert se abrió en un Chrome sin sesión ni cookies (perfil nuevo, modo
+incógnito, sin extensiones), que es lo que verá un revisor. Los 8 cargan y muestran la transacción
+como exitosa con la llamada `execute_proposal(n)` sobre el Treasury `CACZ…PATB`. Además, cada hash
+se contrastó con Horizon (`successful: true`, mismo ledger y fecha).
+
+| # | tx | Lo que muestra Stellar Expert | Ledger | Captura |
+|---|---|---|---|---|
+| 1 | `91c1c35c…04596d` | Successful · `GBLS…YC2P invoked contract CACZ…PATB execute_proposal(1)` | 4537950 | — |
+| 2 | `9ca06287…3b4a18` | Successful · `execute_proposal(2)` | 4537952 | — |
+| 3 | `aa303a0f…90f5f1` | Successful · `execute_proposal(3)` | 4644673 | — |
+| 4 | `db0bcd5f…94eac3` | Successful · `execute_proposal(4)` | 4644679 | `21_stellar_expert_tx_4_incognito.png` |
+| 5 | `c891ec26…e24ddc` | Successful · `GAIR…274H invoked contract CACZ…PATB execute_proposal(5)` | 4767487 | `19_stellar_expert_tx_5_incognito.png` |
+| 6 | `76452c3a…3cf6e1` | Successful · `execute_proposal(6)` | 4767588 | `20_stellar_expert_tx_6_incognito.png` |
+| 7 | `b188f6d7…18dd89` | Successful · `GABZ…ISJ3 invoked contract CACZ…PATB execute_proposal(7)` | 5023515 | — |
+| 8 | `811f6d08…28ba3b` | Successful · `execute_proposal(8)` | 5023532 | — |
+
+Las capturas `19`, `20` y `21` son los tres enlaces que van en el campo "Stellar Expert TX Links"
+del portal (#5, #6 y #4). Ese mismo día se comprobó que la landing publicada es idéntica a
+`landing/index.html` del repo y que sirve las 8 filas enlazadas.
+
 ## Pendiente para cerrar D2
 
 - [x] Instalar el APK de la rama en el Motorola G04 y capturar el Dashboard (Centro y Norte) con
@@ -298,7 +320,8 @@ raizapp.xyz muestra las 8 filas enlazadas y confirma #7 y #8 en vivo por el RPC 
       "✓ Ejecutada on-chain · tx …" y el chip (camino feliz).
 - [x] (hecho el 4-oct, capturas 12–17) Desde el **22-sep ≈ 23:10 UTC**: ejecutar #7 (Centro) y #8 (Costa) desde la app y, antes del
       26-sep, capturar el Dashboard de los tres barrios con ≥3 filas verificadas en total.
-- [ ] Captura de la landing (sección "05 / La prueba" con el tag "en vivo · N con tx verificable ●")
-      tras copiarla al repo Pages.
-- [ ] Probar los 4 links de Stellar Expert en incógnito (WP4).
+- [x] (capturas `11` del 19-sep y `18` del 4-oct) Captura de la landing (sección "05 / La prueba" con
+      el tag "en vivo · N con tx verificable ●") tras copiarla al repo Pages.
+- [x] (hecho el 4-oct en WP4, los 8; ver "Enlaces comprobados en incógnito") Probar los links de
+      Stellar Expert en incógnito.
 - [x] (hecho el 4-oct, repo Pages `455adce`, captura `18`) Copiar `landing/index.html` (snapshot con #7 y #8) al repo Pages y capturar raizapp.xyz con las 8 filas.

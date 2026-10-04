@@ -1,145 +1,112 @@
-# Paquete de evidencia — SOW Instaward RAÍZ
+# RAÍZ — Paquete de evidencia del SOW Instaward
 
-> Estado al **2026-10-03** (D1 verificado el 12-sep; D2 actualizado el 19-sep; **D3 probado en el
-> Motorola G04 y grabado el 3-oct**: video de 60 s, capturas y tx hash del depósito). Este README es
-> el índice del paquete y el mapa exacto
-> **campo del portal → enlace a pegar**. Detalle por entregable: [`d1/README.md`](d1/README.md),
-> [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) (continúa
-> [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md)), [`d3/README.md`](d3/README.md).
->
-> Verificado el 19-sep: `/v1/health` del relayer responde 200 en vivo (uptime ≈ 6 días, protocolo 28),
-> raizapp.xyz sirve los contratos vigentes, y `main` local == GitHub en ambos repos
-> (`Protocolo_Raiz@6faa296`, `raiz-relayer@7aa28dd`).
+> **Estado al 2026-10-04: los tres entregables del SOW están completos.** Todo lo de esta página es
+> público y se comprueba con un clic, sin instalar nada y sin conocimientos técnicos (≈ 10 minutos).
+> Red: Stellar **testnet**. [English version](README.en.md).
 
----
+| | Entregable (SOW §4.1) | Evidencia comprometida (SOW §6.1) | Evidencia entregada | Completado |
+|---|---|---|---|---|
+| **D1** | Admin Relayer Service | Repo + APK release + doc de verificación + capturas | [Repo del relayer](https://github.com/JuanWimmin/raiz-relayer) · [servicio en vivo](https://raiz-relayer.fly.dev/v1/health) · [APK 0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) · [cómo verificar (1 página)](d1/verificacion_apk.md) · [capturas de los flujos](d1/regresion_dispositivo.md) | ✅ 6-sep (APK final y rotación de la clave: 4-oct) |
+| **D2** | Real Transaction Linking | Dashboard en vivo + 3 enlaces de Stellar Expert | [Dashboard en vivo](https://raizapp.xyz/#demo) · tx [#5](https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc) · [#6](https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1) · [#4](https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3) · [captura de la app](d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png) | ✅ 19-sep (8 ejecuciones enlazadas: 4-oct) |
+| **D3** | SEP-10 + SEP-24 On-Ramp | Video demo + tx hash | [Video de 60 s](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4) · [tx hash del depósito](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562) · [captura de la app](d3/capturas/06_deposito_recibido_hash_y_cotizacion.png) | ✅ 3-oct |
 
-## D1 — Admin Relayer · enlaces para los 5 campos del portal
+## Cómo verificarlo en 10 minutos
 
-| # | Campo del portal | Enlace a pegar | Estado |
-|---|---|---|---|
-| 1 | Relayer GitHub Repository | https://github.com/JuanWimmin/raiz-relayer | ✅ Listo |
-| 2 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.2.0/raiz-0.2.0-relayer.apk | ✅ **Publicada 2026-09-12** — notas, SHA-256 y verificación en la [página del Release](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.2.0) |
-| 3 | APK Decompilation Verification Doc | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/verificacion_apk.md | ✅ Listo (tras `git push` de esta carpeta) |
-| 4 | Relayer Live Endpoint Screenshot | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/capturas/d1_relayer_health_2026-09-12.png | ✅ Captura añadida hoy (respuesta real del 12-sep). Respaldo: [deploy_fly.md](https://github.com/JuanWimmin/raiz-relayer/blob/main/docs/evidencia/deploy_fly.md) |
-| 5 | Admin Flow Test Screenshots | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/regresion_dispositivo.md | ✅ Listo — regresión narrada con capturas y hashes; carpeta completa: [`d1/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d1/capturas) |
+### D1 — La clave del admin ya no viaja en la app (≈ 4 min)
 
-**Release v0.2.0 publicada el 2026-09-12** — "RAÍZ 0.2.0 — la app consume el relayer (D1 del SOW
-Instaward)", asset `raiz-0.2.0-relayer.apk` (97,7 MB, SHA-256
-`74ec75292bee1ad443eefdf365e8e869f2c0ec90a779958075536719a40dff0a`, el mismo verificado en
-`d1/verificacion_apk.md`). En el campo 2 va el enlace de descarga directa; la página del tag es el
-respaldo con notas y hash. Firmado con clave debug de Android (H9): para WP4 puede re-firmarse con
-keystore propio sin afectar esta evidencia.
+Antes, el APK llevaba dentro la clave privada del admin del protocolo. Ahora esa clave vive solo en
+un servicio (el *relayer*), y la app le pide por internet que firme.
 
----
+1. **El servicio está vivo.** Abre <https://raiz-relayer.fly.dev/v1/health>: responde `"ok":true` y
+   `"network":"testnet"`.
+2. **Es código abierto.** <https://github.com/JuanWimmin/raiz-relayer> (licencia MIT, con pruebas automáticas).
+3. **El APK no lleva claves.** Abre la ejecución más reciente de
+   [`verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml):
+   GitHub descarga el APK publicado y busca claves privadas. Debe decir **"Claves privadas válidas: 0"**.
+   Para repetirlo a mano: [cómo verificar, 1 página](d1/verificacion_apk.md).
+4. **Funciona en un teléfono real.** [Regresión en un Motorola G04](d1/regresion_dispositivo.md): los
+   flujos de admin (alta de comercio, residente, faucet) pasan por el relayer, con capturas y enlaces.
+5. **La clave vieja quedó revocada.** Abre la
+   [cuenta del admin en Stellar Expert](https://stellar.expert/explorer/testnet/account/GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P):
+   en *Signers*, la clave original tiene peso 0. Detalle en [`d1/README.md`](d1/README.md#rotación-de-la-clave-del-admin-2026-10-04).
 
-## D2 — Real Transaction Linking · enlaces para los 3 campos del portal
+### D2 — Cada gasto del fondo enlaza a su transacción real (≈ 3 min)
 
-Objetivo SOW: cada Execution del dashboard enlaza a su transacción real de Stellar (el cliente
-captura el hash del resultado del RPC y correlaciona los eventos `execution`), en lugar del hash
-determinístico que guarda el contrato. Código en `main`, probado en dispositivo físico el 2026-09-19.
+1. Abre <https://raizapp.xyz/#demo> y busca el bloque **"Ejecuciones del fondo · Treasury"**: 8
+   ejecuciones, cada una con su enlace.
+2. Haz clic en cualquiera, o en estas tres:
+   [#5 Centro](https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc) ·
+   [#6 Norte](https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1) ·
+   [#4 Norte](https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3).
+   Stellar Expert muestra **Status: Successful** y la llamada `execute_proposal(n)`.
+3. La misma lista dentro de la app: [captura del Dashboard](d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png)
+   (3 ejecuciones, las 3 con el botón "Ver en Stellar Expert").
 
-| # | Campo del portal | Enlace a pegar | Estado |
-|---|---|---|---|
-| 1 | Dashboard Live URL | https://raizapp.xyz/#demo | ✅ Publicado 2026-10-04 (repo Pages `455adce`; primera versión el 19-sep, `8637196`). Bloque "Ejecuciones del fondo · Treasury": 8 ejecuciones enlazadas; las que siguen en la ventana del RPC se confirman en vivo con `getEvents` |
-| 2 | Stellar Expert TX Links (x3) | Los tres de abajo (#5, #6, #4) | ✅ 8 disponibles; #5, #6, #7 y #8 se ejecutaron **desde la app** |
-| 3 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png | ✅ App (Moto G04): 3 ejecuciones, las 3 con enlace. Web: [`18_landing_viva…png`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png) (8 ejecuciones, 4-oct). Carpeta: [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas) |
+### D3 — Un depósito SEP-24 completo desde la app (≈ 3 min)
 
-**Los 3 enlaces del campo 2** (cada uno verificado en Horizon: tx exitosa, `execute_proposal(n)` sobre el Treasury):
+1. Mira el **[video de 60 segundos](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4)**: la app
+   se autentica con el anchor de prueba del SDF (SEP-10), abre su web para el depósito (SEP-24) y
+   termina en "¡Depósito recibido!" con el hash.
+2. Abre ese **[hash en Stellar Expert](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562)**:
+   **Successful**, un `transfer` de 4,5 USDC de la cuenta del anchor a la wallet del teléfono.
 
-1. #5 Centro, ejecutada desde la app (2026-09-19): https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc
-2. #6 Norte, ejecutada desde la app (2026-09-19): https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1
-3. #4 Norte (2026-09-12): https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3
+## Campos del portal: qué pegar en cada uno
 
-Resto: #1 [`91c1c35c…`](https://stellar.expert/explorer/testnet/tx/91c1c35c0a796970bbb5bf59da1c79d23339969eb0325c3d00206219cf04596d) ·
-#2 [`9ca06287…`](https://stellar.expert/explorer/testnet/tx/9ca0628758b556ea05eb89780cc44ec06d22a822853ce206fb41e630753b4a18) ·
-#3 [`aa303a0f…`](https://stellar.expert/explorer/testnet/tx/aa303a0f7ed6459994650d28c426a0fda02389085fe80853208b3dc09290f5f1).
+| Entregable | Campo | Enlace |
+|---|---|---|
+| D1 | Relayer GitHub Repository | https://github.com/JuanWimmin/raiz-relayer |
+| D1 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk |
+| D1 | APK Decompilation Verification Doc | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/verificacion_apk.md |
+| D1 | Relayer Live Endpoint Screenshot | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/capturas/d1_relayer_health_2026-10-04.png |
+| D1 | Admin Flow Test Screenshots | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/regresion_dispositivo.md |
+| D2 | Dashboard Live URL | https://raizapp.xyz/#demo |
+| D2 | Stellar Expert TX Links (x3) | Los tres enlaces del paso 2 de D2 (#5, #6, #4) |
+| D2 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png |
+| D3 | Video del depósito SEP-24 (60 s) | https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4 |
+| D3 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 |
+| D3 | Captura con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png |
 
-**Cómo enlaza el dashboard (para el revisor):** (1) cuando la app ejecuta una propuesta, fija el hash
-al firmar y lo confirma con el resultado del RPC — capturas `02` y `06`; (2) al cargar, correlaciona
-por `proposal_id` los eventos `execution` del Treasury (`getEvents`) con `get_execution_log`; (3) el
-RPC de testnet solo retiene ~7 días de eventos, así que las ejecuciones más antiguas toman su hash
-de un archivo versionado (`android/app/src/main/assets/execution_hashes.json`) y la UI las rotula
-"Verificada (archivo)". La captura `08` muestra Stellar Expert abierto desde el chip de la app.
+## Nota de redeploy: los contratos del Annex A ya no son los vigentes
 
-**Cola de D2 cerrada el 4-oct:** #7 Centro ([`b188f6d7…`](https://stellar.expert/explorer/testnet/tx/b188f6d72ec36d82ab40b5d2521b95d4318a57dc78d7eeeb28383cda7818dd89)) y #8 Costa
-([`811f6d08…`](https://stellar.expert/explorer/testnet/tx/811f6d080a8110fc67c82583c34dcd8b756f8d3f860661d137e9a9069228ba3b)) se ejecutaron **desde la app** en el Motorola G04; sus hashes están en el
-archivo versionado y en el snapshot de la landing, y el TTL de sus entradas quedó extendido. Hay
-**8 ejecuciones con hash real** (#5–#8 desde la app). Capturas `12`–`17` en
-[`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas);
-detalle en [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) § "Actualización 2026-10-04".
-La landing se publicó el 4-oct (repo Pages `455adce`): raizapp.xyz muestra las 8 filas enlazadas
-(captura [`18`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/18_landing_viva_raizapp_xyz_8_ejecuciones_con_tx_links.png)).
+El Annex A del SOW (15-jul) enlaza los contratos del hackathon. El 31-jul el protocolo se
+re-desplegó para rendir directo en Blend v2, sin DeFindex. Los contratos vigentes son los que
+muestran `deployments.json`, raizapp.xyz y `/v1/health` del relayer; los del Annex A siguen en la
+red, pero sin actividad nueva.
 
-## D3 — SEP-10 + SEP-24 · probado en dispositivo; video y tx hash listos (3-oct)
-
-Objetivo SOW: depósito SEP-24 interactivo completado end-to-end desde la app contra
-`testanchor.stellar.org` (anchor de prueba del SDF), autenticado con SEP-10 firmado por la wallet del
-usuario. **Código listo el 2026-09-27 y en `main` desde ese mismo día** (commits `8b8993c` y `1de547e`;
-`main` quedó en `a7e9e1d`; compila; 17 tests JVM del cliente del anchor en verde; revisión adversarial
-aplicada). Flujo real, hallazgos de la sonda del 27-sep, notas honestas y checklist de dispositivo:
-[`d3/README.md`](d3/README.md). Guion del video de 60 s: [`d3/guion_video.md`](d3/guion_video.md).
-
-**Extra, fuera de lo que pide el SOW (3-oct):** la pantalla Depositar ofrece además "Convertir a USDC
-del fondo" — el stretch del plan WP3. Cotiza en Horizon (`/paths/strict-send`) y envía una
-`PathPaymentStrictSend` firmada por el usuario, con destino su propia cuenta y tolerancia del 1 %,
-contra un pool de liquidez de testnet entre los dos USDC (`23283282…39e9`, fee 0,3 %); así lo
-depositado pasa a ser el USDC de Blend con el que sí se paga en comercios. Está en `main` desde el 3-oct y fue
-**probada en el Motorola G04 ese mismo día** (4,5 USDC del
-anchor → 4,5229258 USDC del fondo, tx [`23e926f4…`](https://stellar.expert/explorer/testnet/tx/23e926f4a24981e4e2f524221b26408273a508722931422b9c62d83be83d3658)), y no bloquea ningún
-campo del portal. En mainnet el paso no existe: el USDC de Circle es uno solo. Detalle, pool
-verificado y límites: [`d3/README.md`](d3/README.md) § "Convertir a USDC del fondo".
-
-| # | Campo del portal | Enlace a pegar | Estado |
-|---|---|---|---|
-| 1 | Video del depósito SEP-24 (60 s) | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_sep24_60s.mp4 | ✅ Grabado el 3-oct en el Motorola G04 (61 s, sin cortes en el paso interactivo). GitHub lo reproduce en el navegador. Versión de 92 s con la conversión: [`d3_deposito_y_conversion_completo.mp4`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/video/d3_deposito_y_conversion_completo.mp4). Si el portal pide YouTube, subir el mismo archivo como no listado |
-| 2 | Tx hash del pago del anchor (Stellar Expert) | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 | ✅ Transfer de 4,5 USDC (issuer `GBBD47IF…LFLA5`) de la cuenta del anchor `GABCKCYP…YCZP` a la wallet del teléfono `GABZUFA6…GTISJ3`, 2026-10-04 03:11:17 UTC. Verificado en Horizon |
-| 3 | Captura de la app con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png | ✅ "¡Depósito recibido! · 4.5 USDC · anchor de prueba" con el chip "Ver en Stellar Expert · ae4d3e…df7562". Carpeta: [`d3/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas) (9 capturas) |
-
-**Cómo lo ve el revisor:** en el video, la app parte del banner "Paso 3 · Consigue USDC", crea la
-trustline, firma el challenge SEP-10 con la wallet, abre la web del anchor en una pestaña (paso
-interactivo sin cortes: formulario y resultado `completed`), vuelve y muestra "¡Depósito recibido! ·
-4.5 USDC" con el hash en un chip a Stellar Expert (el anchor de prueba descuenta 0,5 de comisión a un
-depósito de 5). El enlace del campo 2 muestra ese pago desde la cuenta del anchor a la `G…` del teléfono.
-Evidencia de "SEP-10 auth working" (semana 3 del SOW): captura `03_autenticando_sep10.png` y la línea de
-logcat `AnchorClient.authenticate: sesión SEP-10 obtenida` recogida en `d3/README.md`.
-
-Alcance (decidido, no se re-discute): USDC **del anchor de prueba** a wallets semilla `G…`, rotulado
-"USDC · anchor de prueba" y nunca sumado al USDC de Blend del fondo (son dos activos distintos con el
-mismo código; con el del anchor no se paga a comercios hasta convertirlo); wallets passkey ven
-"Disponible pronto para passkey (SEP-45)"; el faucet del relayer queda como "USDC demo (Blend) ·
-relayer", secundario.
-
----
-
-## Nota de redeploy — contratos del Annex A del SOW vs vigentes
-
-El Annex A del SOW (15-jul) enlaza los contratos del deploy del hackathon. El 31-jul (F1) el
-protocolo se re-desplegó para independizarse de DeFindex e integrar Blend v2 directo. Los IDs
-vigentes (= `deployments.json`, los mismos que muestra `/v1/health` del relayer y raizapp.xyz):
-
-| Contrato | Annex A (pre-F1, sin actividad nueva) | Vigente (redeploy F1, 2026-07-31) |
+| Contrato | Annex A (hackathon) | Vigente desde el 2026-07-31 |
 |---|---|---|
 | Pool | `CAKYU5HW…XEVN2FK` | [`CD775D33…4LCKBE2`](https://stellar.expert/explorer/testnet/contract/CD775D33SPEO3BTAZIEQTQGN6HERTR5YNEQOZWWKXLDKLJ2B34LCKBE2) |
 | Governance | `CAENXDX7…B77PVE` | [`CBBYI45J…QXHAL32`](https://stellar.expert/explorer/testnet/contract/CBBYI45J3VWQ53QATRWTARCFWNIG7EEZTFCS5OXJWS7KRCPOHQXHAL32) |
 | Treasury | `CDGGFSV7…BWQGPXA` | [`CACZWU3B…ZVXDFPATB`](https://stellar.expert/explorer/testnet/contract/CACZWU3BXMCHI23CFN2GTPWCGSQKABMYF7EOMA2J63RMGAEZVXDFPATB) |
 | Rewards | `CD5OET7F…CEW2I6PPT` | [`CDTTEZX2…U5SHFU5DZJ`](https://stellar.expert/explorer/testnet/contract/CDTTEZX2QO3L2A4EC34VGVAWYAI4CQD42SGYMFQNNTEQWYU5SHFU5DZJ) |
-| Vault DeFindex | `CBMVK2JK…DACXDFZDWHN` | **Eliminado en F1** → `yield_adapter` [`CA5J6YVH…GI4ASBJPJUC`](https://stellar.expert/explorer/testnet/contract/CA5J6YVHZQQKB64ODHCUI65AIK24BQGLL42UZTBV7NPT5GI4ASBJPJUC) + pool USDC de Blend v2 |
+| Vault DeFindex | `CBMVK2JK…DACXDFZDWHN` | Eliminado. Lo sustituye `yield_adapter` [`CA5J6YVH…GI4ASBJPJUC`](https://stellar.expert/explorer/testnet/contract/CA5J6YVHZQQKB64ODHCUI65AIK24BQGLL42UZTBV7NPT5GI4ASBJPJUC), que presta en el pool USDC de Blend v2 |
 
----
+## Notas honestas
 
-## Checklist para dejar el portal en verde
+- **La clave del admin estuvo expuesta y se rotó.** El APK del hackathon (0.1.0) llevaba dentro la
+  clave privada del admin; era el bloqueador que declara el SOW. Ese APK se retiró y, el 4-oct, la
+  clave se revocó on-chain: la cuenta admin conserva su dirección, pero ahora firma una clave nueva
+  que nunca estuvo en un APK. Transacciones y pasos: [`d1/README.md`](d1/README.md#rotación-de-la-clave-del-admin-2026-10-04).
+- **Todo corre en testnet.** No hay dinero real. Si la red de pruebas se reiniciara, los enlaces a
+  Stellar Expert dejarían de resolver; por eso cada entregable guarda también capturas.
+- **El APK va firmado con la clave de depuración de Android**, no con una de tienda. Es intencional:
+  las wallets passkey están atadas a esa firma. La firma de publicación llega con mainnet, fuera del
+  alcance del SOW.
+- **D2:** el RPC de testnet solo guarda 7 días de eventos. Las ejecuciones más antiguas enlazan
+  gracias a un archivo versionado de hashes, y la app las rotula "Verificada (archivo)".
+- **D3:** el USDC del anchor de prueba es un activo distinto del USDC del fondo; la app lo rotula
+  aparte y ofrece convertirlo. Las wallets passkey aún no pueden depositar (falta SEP-45 en el
+  anchor). El video se grabó operando el teléfono por `adb`; app, anchor y transacciones son reales.
+- **Mantenimiento:** en testnet los datos de los contratos caducan si nadie los renueva. Están
+  renovados hasta comienzos de diciembre de 2026.
 
-1. ÚNICO push pendiente: este `README.md` y `d1/capturas/d1_relayer_health_2026-09-12.png` aún no
-   están en `main` (`git add docs/evidencia_sow && git commit && git push`) — el enlace del campo 4
-   existe para el revisor solo después de ese push. Todo lo demás de D1 ya está publicado
-   (`ab6eba5` + Release v0.2.0).
-2. ✅ Release v0.2.0 publicada (2026-09-12).
-3. Pegar los 5 enlaces de la tabla D1 en el portal.
-4. (Opcional) Reemplazar `d1_relayer_health_2026-09-12.png` por una captura de navegador con la
-   barra de URL visible — la actual es la respuesta real del 12-sep renderizada tal cual, con
-   URL y fecha rotuladas.
-5. D2: pegar en el portal los 3 campos de la tabla D2 (URL viva, 3 links de Stellar Expert, captura).
-6. Cosmético: el `version` que reporta `/v1/health` sigue en `0.1.0` (bump de `package.json` del
-   relayer en el próximo deploy).
-7. D3: ✅ prueba en el Motorola G04, video de 60 s y tx hash hechos el 3-oct. Todo está en `main` desde el 3-oct
-   (video, capturas y el extra "Convertir a USDC del fondo"). Falta pegar los 3 campos D3 en el portal. Opcional: subir el video a YouTube como no listado.
+## Detalle por entregable
+
+- **D1:** [`d1/README.md`](d1/README.md) (relayer, APK, rotación de la clave) ·
+  [`d1/verificacion_apk.md`](d1/verificacion_apk.md) · [`d1/regresion_dispositivo.md`](d1/regresion_dispositivo.md) ·
+  [`d1/capturas/`](d1/capturas)
+- **D2:** [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) (las 8 ejecuciones, cómo
+  enlaza el dashboard, comprobación en incógnito) · [`d2/siembra_2026-09-06.md`](d2/siembra_2026-09-06.md) ·
+  [`d2/capturas/`](d2/capturas)
+- **D3:** [`d3/README.md`](d3/README.md) (flujo, hallazgos, hashes) · [`d3/guion_video.md`](d3/guion_video.md) ·
+  [`d3/video/`](d3/video) · [`d3/capturas/`](d3/capturas)
