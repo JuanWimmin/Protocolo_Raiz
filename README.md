@@ -1,9 +1,9 @@
 # 🌱 RAÍZ
 > **Tu paga, el barrio crece.**
 
-🌐 [raizapp.xyz](https://raizapp.xyz) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo](https://www.youtube.com/watch?v=y-9pglgVnnA)
+🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo](https://www.youtube.com/watch?v=y-9pglgVnnA)
 
-**RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo **on-chain**, sin backend propio y sin que nadie tenga la llave del fondo.
+**RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo el estado **on-chain** y sin que nadie tenga la llave del fondo. El único servicio propio es el relayer [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer), que firma las operaciones de admin para que el APK no lleve ninguna clave privada.
 
 App Android nativa + 5 contratos Soroban (Rust) desplegados y poblados en **Stellar Testnet**.
 
@@ -31,16 +31,18 @@ El turista gana **puntos canjeables** por artesanías locales; el comercio cobra
 
 ## 2. Arquitectura 🏗️
 
-RAÍZ no tiene servidor propio: **todo el estado vive on-chain** en 5 contratos Soroban; el yield del fondo va directo al pool USDC de **Blend v2** a través del contrato propio `yield_adapter`. La app Android es un cliente delgado que **lee por simulación** (Soroban RPC, sin firmar) y **escribe** enviando transacciones firmadas con la clave del usuario.
+**Todo el estado vive on-chain** en 5 contratos Soroban; el yield del fondo va directo al pool USDC de **Blend v2** a través del contrato propio `yield_adapter`. La app Android es un cliente delgado que **lee por simulación** (Soroban RPC, sin firmar) y **escribe** con transacciones firmadas por el usuario. El único servicio propio es [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (https://raiz-relayer.fly.dev/v1/health): firma en el servidor las cuatro operaciones de admin (`register_merchant`, `mint_resident`, faucet de USDC y depósito/rescate del vault), de modo que la app no lleva la clave del admin.
 
 ```mermaid
 graph TD
     subgraph APP["📱 App Android (Kotlin · Jetpack Compose · Hilt)"]
-        UI["Capa UI — 7 pantallas Compose + onboarding"]
+        UI["Capa UI — 7 pantallas Compose + Depositar + onboarding"]
         subgraph DATA["Capa data/ (servicios singleton)"]
             WM["WalletManager<br/>(seed BIP-39 + passkey)"]
             SC["SorobanClient<br/>(fachada de contratos)"]
-            HS["HorizonStream<br/>(balances / friendbot / faucet)"]
+            HS["HorizonStream<br/>(balances / friendbot / trustlines / path payments)"]
+            RC["RelayerClient<br/>(operaciones de admin por HTTP)"]
+            AC["AnchorClient<br/>(SEP-1 / SEP-10 / SEP-24)"]
             BC["BlendClient<br/>(yield: reservas / APY)"]
             RR["RoleResolver<br/>(rol on-chain)"]
         end
@@ -49,6 +51,9 @@ graph TD
 
     APP -->|"escribe (tx firmada)"| RPC["Soroban RPC"]
     APP -->|"lee (simula)"| HOR["Horizon"]
+    RC -->|"HTTPS"| REL["raiz-relayer (Fly.io)<br/>firma como admin"]
+    REL -->|"tx firmada"| RPC
+    AC -->|"SEP-10 + SEP-24"| ANCH["testanchor.stellar.org<br/>(anchor de prueba del SDF)"]
     RPC --> LEDGER
     HOR --> LEDGER
 
@@ -93,7 +98,10 @@ graph TD
 | `WalletManager` | Custodia de claves. Prioridad: wallet guardada > demo (`BuildConfig`) > placeholder. Deriva BIP-39 / SEP-05. |
 | `PasskeyWalletManager` | Smart accounts secp256r1 (WebAuthn) vía `OZSmartAccountKit` de Soneso. |
 | `SorobanClient` | Fachada de los contratos RAÍZ. Lecturas con `signer=null` (simulación), escrituras firmadas. Cachea un `ContractClient` por contrato. |
-| `HorizonStream` | Balances USDC/XLM (polling + `distinctUntilChanged`), trustlines, friendbot, faucet de USDC. |
+| `HorizonStream` | Balances por asset (polling + `distinctUntilChanged`), trustlines, friendbot, cotización y envío de path payments (D3). |
+| `RelayerClient` (`data/relayer`) | Cliente HTTP del relayer admin (D1): alta de comercio, soulbound de residente, faucet de USDC y vault. La app no firma nada como admin. |
+| `AnchorClient` (`data/anchor`) | SEP-1 (`stellar.toml`), SEP-10 (JWT solo en memoria) y depósito SEP-24 contra el anchor de prueba (D3). |
+| `ExecutionHashStore` (`data/local`) | Hash real de cada ejecución del Treasury (D2): el capturado al firmar, el del evento `execution` y el archivo `assets/execution_hashes.json`. |
 | `BlendClient` | Lecturas puras del yield: `get_reserve` del pool de Blend + `apy_hint` del adapter. Alimenta la pantalla Yield ("Pool Blend v2 · USDC", APY estimado · variable), sin API key. |
 | `RoleResolver` | Deriva el rol on-chain (residente → comerciante → turista). |
 | `SecureWalletStore` · `ScvalParse` · `DeploymentsLoader` | Persistencia cifrada de la seed · parseo SCVal→Kotlin · carga de `deployments.json`. |
@@ -252,7 +260,7 @@ resolve(address):
 
 ### ✅ Resuelto en 0.2.0 (D1 del SOW): la clave del admin ya no va en el APK
 
-Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_SECRET`) para demostrar el alta de comercios y el mint de residentes sin coordinación offline. Desde **0.2.0** esa autoridad vive en [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (TypeScript + Fastify, open source): la app hace HTTP con una API key de aplicación (`raiz.relayer.key`) y el relayer firma server-side el **registro de comercios**, el **soulbound de residente**, el **faucet** de USDC y el **vault** de yield. La app sigue firmando con la wallet del usuario todo lo demás (pagos, votos, propuestas, canjes). Verificación por descompilación (0 claves `S…` en el APK release): `docs/evidencia_sow/d1/verificacion_apk.md`.
+Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_SECRET`) para demostrar el alta de comercios y el mint de residentes sin coordinación offline. Desde **0.2.0** esa autoridad vive en [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (TypeScript + Fastify, open source): la app hace HTTP con una API key de aplicación (`raiz.relayer.key`) y el relayer firma server-side el **registro de comercios**, el **soulbound de residente**, el **faucet** de USDC y el **vault** de yield. La app sigue firmando con la wallet del usuario todo lo demás (pagos, votos, propuestas, canjes). Verificación por descompilación (0 claves `S…` en el APK release): `docs/evidencia_sow/d1/verificacion_apk.md`. La clave que iba embebida hasta 0.1.0 se revocó on-chain el 2026-10-04 (rotación documentada en `docs/evidencia_sow/d1/README.md`).
 
 ---
 
@@ -286,7 +294,7 @@ Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_S
 
 ### Requisitos
 
-- Rust toolchain con target `wasm32-unknown-unknown` + **Stellar CLI 23.x**.
+- Rust 1.97.1 (pineado en `contracts/rust-toolchain.toml`; instala el target `wasm32v1-none`) + **Stellar CLI 23.x**.
 - Android Studio (JDK **17/21** — no 25; usa el JBR de Android Studio).
 - Node (para parsear `deployments.json` en los scripts de seed).
 
@@ -298,11 +306,9 @@ cd contracts
 # Build a wasm. IMPORTANTE: usar `stellar contract build` (target wasm32v1-none).
 # `cargo build --target wasm32-unknown-unknown` NO sirve para deploy: emite
 # instrucciones reference-types que el host de Soroban rechaza.
-# (rewards se compila también a wasm32-unknown-unknown para el contractimport! del Pool)
-cargo build --release --target wasm32-unknown-unknown -p rewards
 stellar contract build
 
-# Tests del workspace (55/55 pasando)
+# Tests del workspace (85 pasando)
 cargo test
 ```
 
@@ -364,9 +370,13 @@ passkey.rp.name=RAIZ
 ### ✅ Hecho (código corriendo, no promesas)
 
 - **5 contratos** desplegados en testnet + **85 tests** pasando (CI en GitHub Actions).
-- **App Android** con **7 pantallas**: Wallet (+ RAÍZ Passport), Pagar, Premios, Mapa (Mapbox), Dashboard de transparencia, Tesorería/Yield y Perfil — más onboarding (Welcome / crear / importar / passkey / elegir rol) y alta de comercio.
+- **App Android 0.3.0** con **7 pantallas**: Wallet (+ RAÍZ Passport), Pagar, Premios, Mapa (Mapbox), Propuestas y Dashboard de transparencia, Tesorería/Yield y Perfil — más **Depositar** (SEP-24), onboarding (Welcome / crear / importar / passkey / elegir rol) y alta de comercio.
 - **Flujos verificados end-to-end on-chain:** pago con Tip Barrio + puntos, votación, ejecución trustless de propuesta, alta de comercio, onboarding de wallet nueva con rampa de USDC.
 - **F1 — Independencia de DeFindex (2026-07-31):** el fondo rinde **directo en Blend v2** vía el contrato propio `yield_adapter` (verificado on-chain: 0.2 USDC del Centro Histórico en bTokens, APY calculado on-chain, colchón líquido 20%). La fuente de yield es intercambiable — primer paso del roadmap **F1–F6** hacia el protocolo de ahorro comunitario (`docs/NuevaPropuesta/` + `docs/ESTADO_PROYECTO_2026-07-31.md`).
+- **Sprint SOW Instaward (sep–oct 2026)**, evidencia en [`docs/evidencia_sow/`](docs/evidencia_sow/README.md):
+  - **D1 — Admin relayer:** la clave del admin salió del APK; la firma el servicio open source [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer). El APK release tiene 0 claves privadas, verificable por descompilación (`scripts/verify_apk_no_secrets.py`).
+  - **D2 — Transacción real por ejecución:** el Dashboard (app) y la landing enlazan cada `Execution` a su transacción en Stellar Expert (hash capturado al firmar + eventos `execution` vía `getEvents` + `assets/execution_hashes.json`); 8 ejecuciones verificadas. El campo on-chain `tx_hash` es un ID de auditoría (sha256), no un hash de transacción.
+  - **D3 — SEP-10 + SEP-24:** depósito interactivo desde la app contra el anchor de prueba del SDF, más la conversión al USDC del fondo.
 - **RBAC dinámico** (`RoleResolver` on-chain) + **seguridad fase 1** (bloqueo biométrico/PIN, seed cifrada).
 - **Passkey smart-wallet** (`OZSmartAccountKit` de Soneso) **implementado y demostrado**.
 
@@ -374,14 +384,14 @@ passkey.rp.name=RAIZ
 
 El roadmap canónico es **F1–F6** de la propuesta de protocolo de ahorro (`docs/NuevaPropuesta/propuesta_raiz_ahorro_enjambre.md` §8 + `plan_trabajo_raiz.md`): **F1** Blend directo ✅ → **F2** Cadena de Barrio (`savings_circle`, ROSCA soulbound) → **F3** custodia de enjambre + atestación vecinal → **F4** metas/retos/sorteo → **F5** enjambre frontera (mesh, light-verify, DePIN) → **F6** voto secreto ZK.
 
-Pendientes de mainnet (subordinados al roadmap F1–F6; F3 elimina los dos primeros):
+Pendientes de mainnet (subordinados al roadmap F1–F6; F3 elimina el primero y el KYC de residencia):
 
 - **Admin → custodia sin clave única** (multisig 2-de-3 ya preparado en `scripts/setup_admin_multisig.sh`; smart account comunal en F3) — requisito de **mainnet**.
 - **Anchors SEP de producción**: SEP-10/24 ya funcionan contra el anchor de prueba del SDF (D3); faltan SEP-38 (quotes), retiro, SEP-45 para passkey y anchors reales fiat↔USDC (MoneyGram, Vibrant/Anclap).
 - **Passkey con dominio propio** — hoy `github.io` choca con la Public Suffix List para el `rpId`; se resuelve con dominio propio + `assetlinks.json`.
 - **KYC de residencia (SEP-12)** en vez del mint manual del admin.
 - **IPFS** para las imágenes de premios (hoy URLs).
-- **`tx_hash` real** de Stellar en las `Execution` (hoy es un sha256 determinístico) y **mainnet**.
+- **Mainnet** (despliegue de contratos, keystore propio del APK y auditoría de seguridad).
 
 ---
 
@@ -401,18 +411,26 @@ Protocolo_Raiz/
 │       │   ├── stellar/              # WalletManager, PasskeyWalletManager,
 │       │   │                         #   SorobanClient, HorizonStream,
 │       │   │                         #   BlendClient, RoleResolver, ScvalParse…
+│       │   ├── relayer/              # RelayerClient: operaciones de admin por HTTP (D1)
+│       │   ├── anchor/               # AnchorClient: SEP-1 / SEP-10 / SEP-24 (D3)
+│       │   ├── local/                # ExecutionHashStore: hash real de cada ejecución (D2)
 │       │   ├── security/             # AppLock (biométrico/PIN)
 │       │   └── model/                # data classes espejo de los structs Rust
-│       └── ui/                       # wallet, pay, rewards, map, dashboard,
-│                                     #   treasury(yield), profile, welcome,
-│                                     #   become_merchant, security
+│       └── ui/                       # wallet, pay, rewards, map, governance, dashboard,
+│                                     #   treasury(yield), deposit, profile, welcome,
+│                                     #   become_merchant, become_resident, security
 ├── scripts/
 │   ├── deploy_testnet.sh             # despliegue de los 5 contratos + sync assets
-│   └── seed_testnet.sh               # datos demo (barrios, comercios, residentes…)
+│   ├── seed_testnet.sh               # datos demo (barrios, comercios, residentes…)
+│   ├── setup_admin_multisig.sh       # admin a multisig 2-de-3 (preparado)
+│   ├── treasury_ttl.js               # estado del TTL de las entradas del Treasury
+│   └── verify_apk_no_secrets.py      # verifica que un APK no lleva claves privadas (D1)
+├── landing/                          # raizapp.xyz (se publica en un repo Pages aparte)
 ├── docs/                             # spec, arquitectura técnica, pitch, guías
 │   ├── raiz_v2_spec_contratos.md     # spec canónica de los 5 contratos
 │   ├── ARQUITECTURA_TECNICA.md       # estado real implementado, verificado vs código
 │   ├── RaizModels.kt                 # modelos Kotlin espejo de los structs Rust
+│   ├── evidencia_sow/                # paquete de evidencia del SOW Instaward (D1, D2, D3)
 │   └── presentacion/pitch.md         # guion del pitch (7–10 min)
 ├── deployments.json                  # IDs de contratos en testnet (versionado)
 ├── CLAUDE.md                         # convenciones, comandos y subagentes del proyecto
@@ -423,7 +441,7 @@ Protocolo_Raiz/
 
 ## Licencia
 
-MIT.
+MIT — ver [`LICENSE`](LICENSE).
 
 ---
 

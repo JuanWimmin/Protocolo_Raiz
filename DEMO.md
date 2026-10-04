@@ -13,7 +13,7 @@
 - [ ] Mirroring de pantalla al proyector (scrcpy / cable).
 - [ ] App abierta en **Inicio** (WalletScreen), mostrando el saldo.
 - [ ] Tener listo el QR de un comercio para escanear (segundo teléfono o impreso).
-- [ ] Modo demo activo: el cambio de rol (turista/residente/comercio) está en **Perfil → Mi rol**.
+- [ ] Modo demo activo: el cambio de rol (turista/residente/comercio) está en **Perfil → Configuración → "Modo demo · ver como…"**.
 - [ ] APK **debug** compilado con `raiz.tourist.secret` en `local.properties` (el release no tiene modo demo).
 - [ ] Relayer vivo: `curl -s $RELAYER/v1/health` → `ok:true`, `faucet.enabled:true`, `vaultEndpoints:true` (`RELAYER` = URL del relayer; default `https://raiz-relayer.fly.dev`).
 - [ ] (Solo si se enseña el **Depósito SEP-24**) anchor de prueba vivo: `curl -s https://testanchor.stellar.org/sep24/info` → `deposit.USDC.enabled:true`; wallet **semilla** con XLM y Chrome instalado.
@@ -41,7 +41,7 @@
 
 **1:05 — Ahora soy residente y decido.**
 > *"Quien vive aquí vota en qué se gasta el fondo. Un residente, un voto — no se compra."*
-- **Perfil → Mi rol →** cambia a **Residente** → **vota** una propuesta (ej. "arreglar la plaza").
+- **Perfil → Configuración → "Modo demo · ver como…" →** cambia a **Residente** → **vota** una propuesta (ej. "arreglar la plaza").
 
 **1:20 — Todo es verificable.**
 > *"Cada pago, cada voto, cada ejecución — leído directo de la cadena."*
@@ -60,7 +60,7 @@
 
 **+ Alta de comercio (become merchant).**
 > *"Y cualquiera registra su negocio en 20 segundos."*
-- **Perfil → Mi rol →** (como turista) **"Registrarme como comerciante"** → nombre + categoría + barrio → **Registrar**.
+- **Perfil → Configuración →** (como turista) **"Registrarme como comerciante"** → nombre + categoría + barrio → **Registrar**.
 - Tras éxito, el rol pasa a **Comercio** y el negocio aparece en el mapa. *(Escribe `register_merchant` on-chain de verdad.)*
 
 **+ Onboarding de wallet nueva.**
