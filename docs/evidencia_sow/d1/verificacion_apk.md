@@ -22,7 +22,8 @@ Abre **[las ejecuciones del workflow `verify-apk`](https://github.com/JuanWimmin
 y entra en la más reciente. GitHub descarga el APK del Release, lo abre y busca claves. La ejecución
 debe estar en verde y su recuadro *Annotations* debe decir **"claves privadas válidas: 0"**, junto
 al SHA-256 del APK. Si el verificador encontrara una sola clave, la ejecución saldría en rojo. Con
-sesión de GitHub iniciada se ven además la tabla completa y los logs.
+sesión de GitHub iniciada se ven además la tabla completa y los logs. Captura de la ejecución del 4-oct,
+tal como la ve alguien sin sesión: [`d1_verify_apk_workflow_2026-10-04.png`](capturas/d1_verify_apk_workflow_2026-10-04.png).
 
 ## Opción B — en tu equipo (un comando desde una copia del repo; solo necesita Python 3)
 
