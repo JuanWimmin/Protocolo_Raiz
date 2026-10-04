@@ -41,7 +41,7 @@ determinístico que guarda el contrato. Código en `main`, probado en dispositiv
 | # | Campo del portal | Enlace a pegar | Estado |
 |---|---|---|---|
 | 1 | Dashboard Live URL | https://raizapp.xyz/#demo | ✅ Publicado 2026-09-19 (repo Pages `8637196`). Bloque "Ejecuciones del fondo · Treasury": 6 ejecuciones enlazadas; las que siguen en la ventana del RPC se confirman en vivo con `getEvents` |
-| 2 | Stellar Expert TX Links (x3) | Los tres de abajo (#5, #6, #4) | ✅ 6 disponibles; #5 y #6 se ejecutaron **desde la app** |
+| 2 | Stellar Expert TX Links (x3) | Los tres de abajo (#5, #6, #4) | ✅ 8 disponibles; #5, #6, #7 y #8 se ejecutaron **desde la app** |
 | 3 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png | ✅ App (Moto G04): 3 ejecuciones, las 3 con enlace. Web: [`11_landing_viva…png`](https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/11_landing_viva_raizapp_xyz_6_ejecuciones_con_tx_links.png). Carpeta: [`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas) |
 
 **Los 3 enlaces del campo 2** (cada uno verificado en Horizon: tx exitosa, `execute_proposal(n)` sobre el Treasury):
@@ -61,11 +61,14 @@ RPC de testnet solo retiene ~7 días de eventos, así que las ejecuciones más a
 de un archivo versionado (`android/app/src/main/assets/execution_hashes.json`) y la UI las rotula
 "Verificada (archivo)". La captura `08` muestra Stellar Expert abierto desde el chip de la app.
 
-Pendiente menor (no bloquea los 3 campos): ejecutar #7 Centro y #8 Costa desde la app a partir del
-**22-sep ≈ 23:10 UTC** (mínimo on-chain de 3 días por propuesta), añadir sus hashes al archivo y
-extender el TTL de sus entradas (`scripts/treasury_ttl.js`). Opcional: Release del APK con D2.
-**Al 27-sep siguen sin ejecutar** y la ventana del RPC ya no contiene ningún evento `execution`: las
-6 ejecuciones enlazan vía el archivo versionado de hashes (app) y el snapshot (landing).
+**Cola de D2 cerrada el 4-oct:** #7 Centro ([`b188f6d7…`](https://stellar.expert/explorer/testnet/tx/b188f6d72ec36d82ab40b5d2521b95d4318a57dc78d7eeeb28383cda7818dd89)) y #8 Costa
+([`811f6d08…`](https://stellar.expert/explorer/testnet/tx/811f6d080a8110fc67c82583c34dcd8b756f8d3f860661d137e9a9069228ba3b)) se ejecutaron **desde la app** en el Motorola G04; sus hashes están en el
+archivo versionado y en el snapshot de la landing, y el TTL de sus entradas quedó extendido. Hay
+**8 ejecuciones con hash real** (#5–#8 desde la app). Capturas `12`–`17` en
+[`d2/capturas/`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/main/docs/evidencia_sow/d2/capturas);
+detalle en [`d2/ejecuciones_2026-09-12.md`](d2/ejecuciones_2026-09-12.md) § "Actualización 2026-10-04".
+Queda copiar `landing/index.html` al repo Pages para que el snapshot público incluya las 8 filas
+(mientras tanto raizapp.xyz ya muestra #7 y #8 en vivo, hasta el 11-oct).
 
 ## D3 — SEP-10 + SEP-24 · probado en dispositivo; video y tx hash listos (3-oct)
 

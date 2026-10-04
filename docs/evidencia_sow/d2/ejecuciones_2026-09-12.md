@@ -221,14 +221,81 @@ EOF
 
 Salida del 2026-09-12: 4 filas (#1, #2, #3, #4) con los hashes de la tabla.
 
-## Pendiente para cerrar D2 (necesita dispositivo)
+## Actualización 2026-10-04 — #7 y #8 ejecutadas desde la app; cola de D2 cerrada
 
-- [ ] Instalar el APK de la rama en el Motorola G04 y capturar el Dashboard (Centro y Norte) con
+Ejecutadas pulsando "Ejecutar trustless" en el Dashboard del Motorola G04 (APK debug de `main`
+`c2a6291`), firmadas por la wallet semilla del dispositivo
+`GABZUFA64FJOIO5MFOZGQ4CBIOPHN47U7CXTSM4NXEPCIKUJ2BGTISJ3` (la misma de la evidencia D3; cualquier cuenta
+puede ejecutar una propuesta aprobada: es trustless). Cada hash lo mostró la app al confirmar y se
+verificó después en Horizon y contra el evento `execution` del RPC.
+
+| # | Barrio | Propuesta | Monto | Ejecutada (UTC) | Ledger | Destinatario | tx `execute_proposal` | Stellar Expert |
+|---|---|---|---|---|---|---|---|---|
+| 7 | Centro | Pintura para la fachada del mercado | 0.05 USDC | 2026-10-04 19:12:42 | 5023515 | `GAGVM6AT…` | `b188f6d72ec36d82ab40b5d2521b95d4318a57dc78d7eeeb28383cda7818dd89` | https://stellar.expert/explorer/testnet/tx/b188f6d72ec36d82ab40b5d2521b95d4318a57dc78d7eeeb28383cda7818dd89 |
+| 8 | Costa | Señalización del sendero costero | 0.05 USDC | 2026-10-04 19:14:07 | 5023532 | `GDOBC2KF…` | `811f6d080a8110fc67c82583c34dcd8b756f8d3f860661d137e9a9069228ba3b` | https://stellar.expert/explorer/testnet/tx/811f6d080a8110fc67c82583c34dcd8b756f8d3f860661d137e9a9069228ba3b |
+
+Con esto hay **8 ejecuciones con hash real** (#1–#8); #5–#8 ejecutadas desde la app. Los eventos de #7 y
+#8 están en la ventana del RPC hasta el **11-oct ≈ 19:10 UTC**; pasada esa fecha enlazan por el archivo
+versionado (`execution_hashes.json`, ya con las dos líneas nuevas) y por el snapshot de la landing.
+
+Capturas nuevas (`capturas/`):
+
+| Archivo | Qué muestra |
+|---|---|
+| `12_centro_antes_de_ejecutar_7.png` | Centro: #7 "Votación cerrada · lista para ejecutar" con el botón Ejecutar trustless |
+| `13_centro_7_ejecutada_hash_en_card.png` | Card de #7 con "✓ Ejecutada on-chain · tx b188f6d7…18dd89" y el chip |
+| `14_centro_ejecuciones_3_5_7.png` | Centro: 3 ejecuciones registradas, **las 3 con transacción verificable** (#3 archivo, #5 y #7 verificadas) |
+| `15_costa_antes_de_ejecutar_8.png` | Costa: #8 lista para ejecutar |
+| `16_costa_8_ejecutada_hash_en_card.png` | Card de #8 con "✓ Ejecutada on-chain · tx 811f6d08…28ba3b" |
+| `17_costa_ejecuciones_2_8.png` | Costa: #2 "Verificada (archivo)" y #8 "Transacción verificada" |
+
+### Antes de poder ejecutar: `Proposal(n)` de Governance estaba archivada
+
+El Dashboard no habría mostrado #7 ni #8: al simular `list_active_proposals` de los tres barrios, el
+footprint traía entradas en `readWrite` (auto-restore de Protocol 23+), y la app, que lee sin firmante,
+falla con `Signer required for write call`. Las archivadas eran cuatro entradas persistentes de
+Governance: `Proposal(5)`, `Proposal(6)`, `Proposal(7)` y `Proposal(8)`. **Governance, igual que el
+Treasury, crea sus entradas con el TTL mínimo (7 días) y no lo extiende** (H2). Las propuestas se
+sembraron el 12 y el 19-sep; el 4-oct ya estaban archivadas.
+
+Cómo se detectó (solo lectura): simular la llamada y mirar `sim.transactionData.getReadWrite()`; si no
+está vacío, cada `LedgerKey` del footprint es una entrada que hay que restaurar.
+
+Remedio aplicado (firmado por `raiz-admin`):
+
+- `stellar contract restore --id <governance> --durability persistent --key-xdr …` de las cuatro —
+  tx `6d4edecf406188d2372db3f50373652cf930155ef74e269c861e72877fdf33a5`.
+- `stellar contract extend --ledgers-to-extend 1500000` de las cuatro —
+  tx `ffdade2f9fb9ab092b0185f83e90d66f2d8d3c4e035f8c03e4abe2422d7606a9` (vivas hasta el ledger 6523485,
+  ≈ fin de dic-2026).
+
+Claves (`--key-xdr`, ScVal `Vec[Symbol("Proposal"), U64(n)]`): `Proposal(5)`
+`AAAAEAAAAAEAAAACAAAADwAAAAhQcm9wb3NhbAAAAAUAAAAAAAAABQ==`, `(6)` `…AAAAAAAABg==`, `(7)` `…AAAAAAAABw==`,
+`(8)` `…AAAAAAAACA==` (solo cambia el último byte).
+
+### TTL de las ejecuciones nuevas
+
+`Execution(6)` (la de #7) y `Execution(7)` (la de #8) nacieron con 7 días de vida. Extendidas a
++1 500 000 ledgers (≈ 87 días) — tx `b1654327d26b4c6835a83ca06322312f68647128c9f9aa4727dd4075aa76c03c`.
+Verificado con `node scripts/treasury_ttl.js`: las 15 claves del Treasury están VIVAS (≥ 72 días) y,
+tras ejecutar, `list_active_proposals` y `get_execution_log` de los tres barrios vuelven a ser lecturas
+puras (`readWrite = 0`).
+
+### Estado de la landing
+
+`landing/index.html` del monorepo lleva ya #7 y #8 en el snapshot ("snapshot 4·oct·2026", 8 filas).
+raizapp.xyz las muestra en vivo mientras sus eventos sigan en la ventana del RPC (hasta el 11-oct);
+para que queden fijas hay que copiar el HTML al repo Pages (`JuanWimmin/JuanWimmin.github.io`).
+
+## Pendiente para cerrar D2
+
+- [x] Instalar el APK de la rama en el Motorola G04 y capturar el Dashboard (Centro y Norte) con
       los chips "Ver en Stellar Expert" y el contador de verificadas → `capturas/`.
-- [ ] Ejecutar #5 (Centro) y #6 (Norte) desde la app (ya ejecutables) → captura de la card con
+- [x] Ejecutar #5 (Centro) y #6 (Norte) desde la app (ya ejecutables) → captura de la card con
       "✓ Ejecutada on-chain · tx …" y el chip (camino feliz).
-- [ ] Desde el **22-sep ≈ 23:10 UTC**: ejecutar #7 (Centro) y #8 (Costa) desde la app y, antes del
+- [x] (hecho el 4-oct, capturas 12–17) Desde el **22-sep ≈ 23:10 UTC**: ejecutar #7 (Centro) y #8 (Costa) desde la app y, antes del
       26-sep, capturar el Dashboard de los tres barrios con ≥3 filas verificadas en total.
 - [ ] Captura de la landing (sección "05 / La prueba" con el tag "en vivo · N con tx verificable ●")
       tras copiarla al repo Pages.
 - [ ] Probar los 4 links de Stellar Expert en incógnito (WP4).
+- [ ] Copiar `landing/index.html` (snapshot con #7 y #8) al repo Pages y capturar raizapp.xyz con las 8 filas.

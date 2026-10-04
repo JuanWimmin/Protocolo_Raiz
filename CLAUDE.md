@@ -275,7 +275,16 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   `stellar contract invoke` ENVÍA una tx firmada cuando una "lectura" trae auto-restore; para solo
   simular usar `--send=no`.
 
-## Estado actual (2026-09-27)
+- **Governance tampoco extiende el TTL de `Proposal(n)` (medido 2026-10-04).** A los 7 días de crear una
+  propuesta su entrada se archiva y `list_active_proposals` del barrio deja de ser lectura pura: la app no
+  lista las propuestas (ni ofrece "Ejecutar trustless") por el mismo `Signer required for write call`.
+  Detectar sin escribir: simular la lectura y mirar `sim.transactionData.getReadWrite()` (> 0 = hay
+  entradas archivadas; cada `LedgerKey` dice cuál). Remedio: `stellar contract restore` +
+  `stellar contract extend --ledgers-to-extend 1500000` con `--key-xdr` de cada `Proposal(n)` (hecho el
+  4-oct para 5–8; viven hasta el ledger 6 523 485 ≈ fin de dic-2026). **Toda propuesta nueva necesita lo
+  mismo si va a pasar más de 7 días sin tocarse** (detalle en `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`).
+
+## Estado actual (2026-10-04)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
 - **PRIORIDAD ABSOLUTA: sprint SOW Instaward (D1 relayer, D2 tx hash real, D3 SEP-10/24).**
@@ -304,11 +313,12 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
   (`android/app/src/main/assets/execution_hashes.json`, rotulado "Verificada (archivo)" en la UI;
   **añadir una línea tras cada ejecución nueva**). **En `main` y pusheado el 19-sep (`9904ff5`);
   landing publicada en raizapp.xyz (repo Pages `8637196`) con las 6 ejecuciones enlazadas.** Los 3
-  campos del portal D2 están mapeados en `docs/evidencia_sow/README.md`. Quedan #7 Centro y #8 Costa,
-  ejecutables desde el 22-sep ≈ 23:10 UTC — **al 27-sep siguen sin ejecutar** y `getEvents` del Treasury
-  devuelve **0 eventos `execution`** en la ventana del RPC (las 6 ejecuciones enlazan solo vía
-  `execution_hashes.json` / snapshot de la landing). Evidencia y pendientes (capturas en dispositivo,
-  copia de la landing al Pages): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`.
+  campos del portal D2 están mapeados en `docs/evidencia_sow/README.md`. **4-oct: #7 Centro (`b188f6d7…`) y #8 Costa
+  (`811f6d08…`) ejecutadas DESDE LA APP** (Dashboard, wallet semilla `GABZUFA6…`); hashes añadidos a
+  `execution_hashes.json` y al snapshot de `landing/index.html`, TTL de `Execution(6)`/`(7)` extendido
+  (≈ 87 días). Para que el Dashboard las listara hubo que restaurar antes `Proposal(5..8)` de Governance,
+  archivadas (ver el gotcha de TTL de Governance). **8 ejecuciones con hash real.** Evidencia (capturas
+  12–17): `docs/evidencia_sow/d2/ejecuciones_2026-09-12.md`. Falta copiar la landing al repo Pages.
 - **D3 (WP3):** código listo el 27-sep y **mergeado a `main` el mismo día** (**probado en el Motorola G04 y grabado el 3-oct**): SEP-1 +
   SEP-10 + SEP-24 contra `testanchor.stellar.org` con `kmp-stellar-sdk` 1.6.0, sin dependencias Stellar
   nuevas (solo `androidx.browser` 1.8.0 para Custom Tabs). `data/anchor/AnchorClient.kt` (`loadInfo`
@@ -355,10 +365,9 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/pool.wasm -
 ### Próximo paso
 
 - **WP1 cerrado (2026-09-06, PR #1 mergeado en `main`).** **WP2 — D2: código en `main` y landing
-  publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). Cola
-  menor de D2 (sigue abierta al 27-sep): ejecutar #7 Centro y #8 Costa desde la app, añadir sus hashes a
-  `execution_hashes.json` + snapshot de la landing y **extender el TTL de `Execution(6)` y `Execution(7)`**
-  (`scripts/treasury_ttl.js`). **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
+  publicada el 19-sep**; los 3 campos del portal tienen enlace (`docs/evidencia_sow/README.md`). **Cola
+  de D2 cerrada el 4-oct** (#7 y #8 ejecutadas desde la app, hashes en el archivo y en el snapshot, TTL
+  extendido); queda copiar `landing/index.html` al repo Pages. **WP3 — D3 SEP-10/24: probado en el Motorola G04 y grabado el 3-oct**; todo está en `main`
   (conversión, video, capturas y evidencia, mergeado el 3-oct); falta solo pegar los 3
   campos D3 en el portal (`docs/evidencia_sow/README.md`; opcional: video en YouTube no listado). Después
   arranca **WP4 — paquete de evidencia y cierre del SOW** según `docs/PLAN_CLAUDE_CODE_SOW.md`.
