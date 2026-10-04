@@ -1,0 +1,62 @@
+name: verify-apk
+
+# Evidencia D1 del SOW Instaward: "release APK with zero embedded secrets, verifiable by
+# decompilation". Descarga el APK publicado en un Release, lo abre (es un zip) y busca claves
+# privadas de Stellar en todos sus archivos. El resultado queda en el resumen de la ejecucion,
+# que cualquiera puede leer sin instalar nada. Mismo script que se corre en local:
+#   python scripts/verify_apk_no_secrets.py <ruta o URL del APK>
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag del Release a verificar (vacio = el ultimo publicado)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths: ["scripts/verify_apk_no_secrets.py", ".github/workflows/verify-apk.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Demuestra que el buscador SI encuentra una clave cuando la hay: planta una clave
+      # aleatoria en un APK de mentira (bytecode, UTF-16, zip anidado) y exige detectarla.
+      - name: Autoprueba del verificador
+        run: python3 scripts/verify_apk_no_secrets.py --self-test
+
+      - name: Localizar el APK del Release
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.tag }}
+          TAG_RELEASE: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${TAG_INPUT:-$TAG_RELEASE}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          URL=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '[.assets[] | select(.name | endswith(".apk"))][0].url // ""')
+          if [ -z "$URL" ]; then
+            echo "El Release $TAG no tiene ningun APK adjunto." >&2
+            exit 1
+          fi
+          echo "Release: $TAG"
+          echo "APK:     $URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Buscar claves privadas de Stellar en el APK
+        env:
+          APK_URL: ${{ steps.apk.outputs.url }}
+        run: |
+          ADMIN=$(python3 -c "import json; print(json.load(open('deployments.json'))['admin'])")
+          python3 scripts/verify_apk_no_secrets.py "$APK_URL" --public "$ADMIN" --summary "$GITHUB_STEP_SUMMARY"

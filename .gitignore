@@ -30,6 +30,7 @@ Thumbs.db
 
 # ─── Node / scripts ─────────────────────────────────────────────────
 node_modules/
+__pycache__/
 scripts/dist/
 scripts/.env
 scripts/.env.local
