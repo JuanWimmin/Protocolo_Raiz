@@ -337,7 +337,8 @@ fun pointsForTip(tipStroops: Long): Long = tipStroops / RaizConstants.POINTS_PER
 
 /** Formatea stroops como string USDC legible: 42_840_000 -> "4.284 USDC". */
 fun Long.formatUsdc(): String {
-    val trimmed = "%.3f".format(this.toUsdc()).trimEnd('0').trimEnd('.')
+    // Locale.US fijo: con el locale del dispositivo (es-CO usa coma) "5,000" quedaba "5, USDC".
+    val trimmed = String.format(java.util.Locale.US, "%.3f", this.toUsdc()).trimEnd('0').trimEnd('.')
     return "$trimmed USDC"
 }
 
