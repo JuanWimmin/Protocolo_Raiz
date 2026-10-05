@@ -6,21 +6,22 @@ descompilación; regresión en dispositivo físico.
 
 **En una frase:** antes, el APK llevaba la clave privada del admin del protocolo para poder
 registrar comercios, emitir el soulbound de residente y repartir USDC de prueba. Desde la versión
-0.2.0 el APK solo tiene direcciones públicas y una API key de aplicación: quien firma como admin es
-el servicio `raiz-relayer`, con una clave que vive únicamente en una variable de entorno del
-servidor. El 4-oct, además, la clave que había viajado en el APK viejo se **revocó on-chain** y el
-relayer pasó a firmar con una clave nueva, que nunca estuvo en un APK.
+0.2.0 el APK no lleva ninguna clave privada: quien firma como admin es el servicio `raiz-relayer`,
+con una clave que vive únicamente en una variable de entorno del servidor. El 4-oct, además, la
+clave que había viajado en el APK viejo se **revocó on-chain** y el relayer pasó a firmar con una
+clave nueva, que nunca estuvo en un APK. Y desde la **0.4.0** (también del 4-oct) el APK tampoco
+lleva la API key con la que se identificaba ante el relayer: solo contiene direcciones públicas.
 
 ## Tabla entregable → evidencia
 
 | Entregable SOW D1 | Evidencia | Dónde | Estado |
 |---|---|---|---|
-| Repositorio público del relayer | TypeScript + Fastify + `@stellar/stellar-sdk`, licencia MIT, README en español (endpoints, modelo de amenazas, runbook), 182 pruebas automáticas (`vitest`), integración real contra testnet y CI | https://github.com/JuanWimmin/raiz-relayer | ✅ Público desde el 27-ago |
-| Servicio corriendo en testnet | `GET /v1/health`: `ok`, `network: testnet`, los 5 contratos de `deployments.json`, cuenta admin y clave que firma | https://raiz-relayer.fly.dev/v1/health · captura [`d1_relayer_health_2026-10-04.png`](capturas/d1_relayer_health_2026-10-04.png) | ✅ Desplegado el 6-sep (Fly, región `iad`); versión 0.2.0 desde el 4-oct |
-| App migrada al relayer | `android/app/src/main/java/com/raiz/app/data/relayer/RelayerClient.kt` + 24 tests de mapeo de errores; ningún ViewModel firma como admin | Este repo, `main` (PR #1, 6-sep) | ✅ |
-| APK release sin secretos | [`raiz-0.3.0.apk`](https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk): versión final del sprint, con D1 + D2 + D3. SHA-256 `50373942…d771f56c` | [Release v0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0). La primera versión sin clave admin fue la [v0.2.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.2.0) (12-sep) | ✅ 4-oct |
+| Repositorio público del relayer | TypeScript + Fastify + `@stellar/stellar-sdk`, licencia MIT, README en español (endpoints, modelo de amenazas, runbook), 200 pruebas automáticas (`vitest`), integración real contra testnet y CI | https://github.com/JuanWimmin/raiz-relayer | ✅ Público desde el 27-ago |
+| Servicio corriendo en testnet | `GET /v1/health`: `ok`, `network: testnet`, los 5 contratos de `deployments.json`, cuenta admin y clave que firma | https://raiz-relayer.fly.dev/v1/health · captura [`d1_relayer_health_2026-10-04.png`](capturas/d1_relayer_health_2026-10-04.png) | ✅ Desplegado el 6-sep (Fly, región `iad`); versión 0.3.0 desde el 4-oct (pública, sin API key, con cupos por IP) |
+| App migrada al relayer | `android/app/src/main/java/com/raiz/app/data/relayer/RelayerClient.kt` + 27 tests de mapeo de errores; ningún ViewModel firma como admin | Este repo, `main` (PR #1, 6-sep) | ✅ |
+| APK release sin secretos | [`raiz-0.4.0.apk`](https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.4.0/raiz-0.4.0.apk): versión final del sprint, con D1 + D2 + D3 y sin ninguna credencial. SHA-256 `296f30d8…802569d0` | [Release v0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0). La anterior, [v0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0), aún llevaba la API key del relayer. La primera versión sin clave admin fue la [v0.2.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.2.0) (12-sep) | ✅ 4-oct |
 | Verificable por descompilación | Documento de 1 página + script reproducible + ejecución automática en GitHub | [`verificacion_apk.md`](verificacion_apk.md) · [`scripts/verify_apk_no_secrets.py`](../../../scripts/verify_apk_no_secrets.py) · [workflow `verify-apk`](https://github.com/JuanWimmin/Protocolo_Raiz/actions/workflows/verify-apk.yml) | ✅ 0 claves privadas |
-| Regresión en dispositivo físico | 4 flujos vía relayer en un Motorola G04 (faucet con passkey y con semilla, alta de comercio, residente + voto, yield), con capturas y hashes | [`regresion_dispositivo.md`](regresion_dispositivo.md) · [`capturas/`](capturas) | ✅ 6-sep (APK 0.2.0). El APK 0.3.0 pasó una prueba de humo el 4-oct: capturas `d1_v030_*` |
+| Regresión en dispositivo físico | 4 flujos vía relayer en un Motorola G04 (faucet con passkey y con semilla, alta de comercio, residente + voto, yield), con capturas y hashes | [`regresion_dispositivo.md`](regresion_dispositivo.md) · [`capturas/`](capturas) | ✅ 6-sep (APK 0.2.0). El APK 0.3.0 pasó una prueba de humo el 4-oct (capturas `d1_v030_*`) y el **APK 0.4.0 completó un depósito real** ese mismo día: capturas [`d1_v040_01`](capturas/d1_v040_01_inicio_release.png), [`02`](capturas/d1_v040_02_deposito_completo_release.png), [`03`](capturas/d1_v040_03_inicio_tras_deposito_release.png) |
 | La clave que viajó en el APK ya no sirve | Rotación on-chain: la clave maestra de la cuenta admin tiene peso 0 | [Sección de abajo](#rotación-de-la-clave-del-admin-2026-10-04) | ✅ 4-oct |
 
 ## Cómo lo verifica un revisor en 10 minutos
@@ -60,7 +61,7 @@ dirección como admin, de modo que no hubo que redesplegar nada ni tocar la app:
 | 3 | El relayer (versión 0.2.0) pasó a firmar con la clave nueva. `/v1/health` lo muestra: `signer: GB42NCO6…`, `signerAuthorized: true` | commit [`9620123`](https://github.com/JuanWimmin/raiz-relayer/commit/96201239576071b27f1221a9e719e9f8e76032cf) · faucet de prueba firmado con la clave nueva: [`b3092c56…7189`](https://stellar.expert/explorer/testnet/tx/b3092c56bd9db1b0417b4b3d0a51b1d311d3b4887b32f5e193b92f8fc8197189) (pago clásico) y [`04d0a525…7ad4`](https://stellar.expert/explorer/testnet/tx/04d0a5253118f9d2abe886a76392d2c1d7ab85d5ec829a9ee8b4c8d7b75f7ad4) (contrato) |
 | 4 | Con una transacción firmada por la clave **nueva**, la clave maestra quedó con peso 0 y los umbrales en 1/1/1 | tx [`1c56d1ca…35d7`](https://stellar.expert/explorer/testnet/tx/1c56d1ca0c10caaedfeeeccdbca49ce4587500fe76727e868b4c06b4a6b235d7) |
 | 5 | Comprobación: una transacción firmada con la clave vieja es rechazada por la red | `tx_bad_auth` (salida abajo) |
-| 6 | El APK 0.1.0 se retiró de su Release y la landing enlaza al 0.3.0 | [Release v0.1.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.1.0) (sin archivo) · <https://raizapp.xyz> |
+| 6 | El APK 0.1.0 se retiró de su Release y la landing enlaza al APK vigente (0.4.0) | [Release v0.1.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.1.0) (sin archivo) · <https://raizapp.xyz> |
 | 7 | La suite de integración del relayer (11 pruebas reales contra testnet) pasa con la clave nueva: faucet, residente, comercio y los rechazos esperados | [`it-testnet-2026-10-04.json`](https://github.com/JuanWimmin/raiz-relayer/blob/main/docs/evidencia/it-testnet-2026-10-04.json) · `mint_resident` [`f5842447…bd8d`](https://stellar.expert/explorer/testnet/tx/f584244713df7d6ec28d59f2cf11be143514db58f3b580334fbecd1039d4bd8d) · `register_merchant` [`684ba48f…7fec`](https://stellar.expert/explorer/testnet/tx/684ba48f31aea7e59b0907969a032652ad4e213776cfe8d6d3892346c6837fec) |
 
 El paso 4 lo firma la clave nueva a propósito: si esa clave no pudiera firmar por la cuenta, la
@@ -90,9 +91,15 @@ y la app: ninguno depende de qué clave firma, solo de la cuenta.
 
 - **La dirección pública del admin sí está en el APK** (`assets/deployments.json`). Es pública y
   necesaria como cuenta de origen de las lecturas por simulación; con ella no se firma nada.
-- **La API key de la app viaja en el APK** a propósito: limita peticiones por aplicación, no es
-  autenticación fuerte. El relayer lo documenta como modelo de amenazas de **testnet**; la custodia
-  comunal real es la fase F3 del roadmap.
+- **El relayer es público: no hay API key.** De 0.2.0 a 0.3.0 la app enviaba una API key de
+  aplicación que viajaba en el APK; no firmaba nada, pero cualquiera podía extraerla, así que no
+  protegía de verdad. Desde el 4-oct (app 0.4.0 + relayer 0.3.0) no existe: cualquiera puede llamar
+  al relayer y lo que acota el abuso son cupos del lado del servidor (por IP y minuto, por IP y día,
+  por dirección destino y un tope global diario), además de que cada operación solo se firma si las
+  reglas de los contratos lo permiten. El relayer lo documenta como modelo de amenazas de
+  **testnet**. Lo que viene después — que cada petición vaya autenticada por la wallet del usuario
+  (SEP-10 y SEP-45) — está planificado en detalle como WP7 de
+  [`PLAN_CLAUDE_CODE_SOW.md`](../../PLAN_CLAUDE_CODE_SOW.md); la custodia comunal real es la fase F3.
 - **Wallets demo.** Las claves de las wallets demo (turista y residente) existen solo en el build
   *debug* de desarrollo; el build *release* las deja vacías. Son las otras dos claves que llevaba el
   APK 0.1.0: son cuentas de prueba sin autoridad sobre el protocolo y siguen activas porque la demo
@@ -122,6 +129,11 @@ y la app: ninguno depende de qué clave firma, solo de la cuenta.
 
 Lo que el usuario sigue firmando con su propia wallet: pagar a un comercio, votar, crear
 propuestas, canjear premios, ejecutar propuestas aprobadas (trustless), friendbot y trustlines.
+
+**Desde 0.4.0 (4-oct):** se eliminaron `BuildConfig.RELAYER_APP_KEY` y la cabecera
+`x-raiz-app-key`; `RelayerClient` solo necesita la URL del relayer, y un `401` del servidor se
+muestra como "El relayer no autorizó la petición". Además, el faucet dejó de ser un camino normal
+de la app: el USDC se consigue depositando con el anchor (D3) y el faucet queda como contingencia.
 
 Bitácora completa de la primera verificación del APK (0.2.0, 6-sep):
 [`verificacion_apk_0.2.0_bitacora.md`](verificacion_apk_0.2.0_bitacora.md).

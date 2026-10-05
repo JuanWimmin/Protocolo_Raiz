@@ -112,8 +112,8 @@ monto reutiliza la `idempotency-key` → no se mueve el fondo dos veces. Captúr
 | # | Situación | Esperado | Captura |
 |---|---|---|---|
 | 1 | Modo avión y entrar a Inicio / Propuestas / Tesorería | Inicio y Propuestas: los botones siguen habilitados (la key está configurada) y al pulsar muestran en rojo "No se pudo contactar con el relayer". Tesorería: "Comprobando el relayer…" y, cuando `health()` agota su timeout (10 s), "Tesorería en modo lectura (relayer no disponible: No se pudo contactar con el relayer)." con los botones deshabilitados. Las lecturas on-chain muestran su propio estado sin red. Sin crash | `d1_sinrelayer_01.png` |
-| 2 | APK compilado con `raiz.relayer.key` **vacía** | Botón deshabilitado + aviso rojo "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)" en Inicio (paso 3), Propuestas y Tesorería; **no sale ninguna petición** al relayer | `d1_sinrelayer_02.png` |
-| 3 | APK compilado con `raiz.relayer.key` **incorrecta** | Cualquier acción admin → `401 UNAUTHORIZED_APP` → texto rojo "La app no está autorizada en el relayer"; reintentable tras corregir la key (recompilar) | `d1_sinrelayer_03.png` |
+| 2 | (Histórico: APK 0.2.0–0.3.0; desde la 0.4.0 la app no lleva API key y este caso ya no existe) APK compilado con `raiz.relayer.key` **vacía** | Botón deshabilitado + aviso rojo "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)" en Inicio (paso 3), Propuestas y Tesorería; **no sale ninguna petición** al relayer | `d1_sinrelayer_02.png` |
+| 3 | (Histórico, igual que el anterior: el relayer 0.3.0 ya no devuelve `UNAUTHORIZED_APP`) APK compilado con `raiz.relayer.key` **incorrecta** | Cualquier acción admin → `401 UNAUTHORIZED_APP` → texto rojo "La app no está autorizada en el relayer"; reintentable tras corregir la key (recompilar) | `d1_sinrelayer_03.png` |
 
 ## 6. Lo que NO debe haber cambiado
 
