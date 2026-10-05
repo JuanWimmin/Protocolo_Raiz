@@ -36,6 +36,7 @@
 | Días 10–15 | WP3 SEP-10/24 (D3) | Depósito completo desde la app + video 60s |
 | Días 16–17 | WP4 paquete de evidencia | Evidence package entregado al chapter |
 | Después | WP5 F2 `savings_circle` / WP6 UI+fixes | — |
+| Después (requisito de mainnet) | WP7 autenticación por wallet en el relayer (SEP-10 + SEP-45) | Los POST del relayer exigen una sesión firmada por la wallet; cupos por wallet |
 
 La conversación con Laura Estupiñán va HOY con esta tabla (fechas absolutas), no cuando esté todo listo. Mensaje sugerido: F1 fortaleció el protocolo (yield propio, sin API keys — enseñar el fondo rindiendo), el sprint D1-D3 arranca ya con este calendario; confirmar contra qué fecha corre el reloj del award.
 
@@ -235,6 +236,224 @@ Orden por (impacto público × esfuerzo):
 **Prompt lote corto (1-4):**
 ```text
 Lee docs/REVISION_2026-08-27.md hallazgos H3, H7, H9, H10-1, H10-2 y docs/PLAN_CLAUDE_CODE_SOW.md WP6. Implementa los 5 en commits separados (fix(seguridad): …, fix(pool): …, etc.), cada uno con su test de regresión donde aplique (H7 no lleva test unit — verifica manualmente que debug sigue conectando a testnet). Gate: cargo test --workspace todo verde + assembleDebug. Actualiza raiz_v2_spec_contratos.md donde cambie comportamiento (H3, H9).
+```
+
+---
+
+## WP7 — Autenticación por wallet en el relayer: SEP-10 + SEP-45 (después del SOW; 2–3 días)
+
+> Añadido el 2026-10-04. **Estado: planificado, sin empezar.** Es el sucesor de la API key estática que
+> se quitó ese mismo día, y requisito de mainnet.
+
+**De dónde venimos.** Hasta la app 0.3.0 el APK llevaba una API key de aplicación (`x-raiz-app-key`) para
+hablar con el relayer. Era seguridad aparente: se extrae del APK en un minuto y no protegía nada que no
+protejan los cupos del servidor. El 4-oct se eliminó (app 0.4.0 + relayer 0.3.0) para que el APK no lleve
+ninguna credencial propia ("zero secrets" del SOW). Desde entonces el relayer es un **servicio público de
+testnet con cupos**: por IP y minuto, por IP y día, por dirección y globales por día.
+
+**Lo que eso NO resuelve (y este WP sí).** Cualquiera puede pedir al relayer que firme como admin, dentro de
+los cupos: faucet a cualquier dirección, registrar un comercio, acuñar un residente (el KYC es un mock) o
+mover el fondo ocioso entre líquido y Blend. Los cupos acotan el daño; no identifican a nadie. En mainnet
+eso es inaceptable.
+
+**Objetivo.** Que cada petición al relayer vaya asociada a una wallet que **demostró** controlar su
+dirección, sin ningún secreto compartido: sesión JWT emitida tras un reto firmado por la propia wallet
+(SEP-10 para cuentas clásicas `G…`, SEP-45 para smart accounts `C…`), con dos reglas en el servidor: una
+wallet solo puede actuar sobre **su propia dirección**, y los cupos pasan a ser **por wallet**.
+
+**Viabilidad comprobada el 4-oct (no hay que re-investigarla):**
+- Relayer (`@stellar/stellar-sdk` 17.0.1): trae el lado servidor de SEP-10 (`WebAuth.buildChallengeTx`,
+  `readChallengeTx`, `verifyChallengeTxSigners`, `verifyChallengeTxThreshold`). Para SEP-45 no trae ayudas,
+  pero sí las piezas: `authorizeEntry` (firmar la entrada del servidor) y `rpc.simulateTransaction`.
+- App (`kmp-stellar-sdk` 1.6.0): `sep.sep10.WebAuth` (ya se usa contra el anchor) y
+  `sep.sep45.WebAuthForContracts` (`getChallenge`, `validateChallenge`, `sendSignedChallenge`,
+  `decodeAuthorizationEntries`). Su `jwtToken(…, signers: List<KeyPair>)` solo sirve para contratos que
+  aceptan firmas Ed25519; para el smart account de OpenZeppelin con passkey hay que firmar la entrada a
+  mano con `smartaccount.core.SmartAccountAuth.buildAuthPayloadHash(…)` + una aserción WebAuthn
+  (`AndroidWebAuthnProvider.authenticate`) + `SmartAccountAuth.signAuthEntry(entry, signer, signature,
+  expirationLedger)`.
+- La wallet passkey ya firma autorizaciones de Soroban con WebAuthn (pagos, votos y propuestas:
+  `PasskeyWalletManager.payMerchantWithPasskey` y compañía, vía `kit.transactionOperations.contractCall`).
+- Referencias: spec https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0045.md
+  (Draft 0.1.1); implementación de referencia https://github.com/stellar/sep45-reference (carpetas
+  `contracts/web_auth`, `contracts/account` y `server/`; el repo no declara licencia: usarlo como guía,
+  no copiar código); y el anchor de prueba como oráculo (`https://testanchor.stellar.org/auth` y `/sep45/auth`, contrato
+  `CD3LA6RK…QXMX`): comparar la forma de nuestros retos con los suyos.
+
+### Decisiones de arquitectura (tomadas; no re-discutir con el agente)
+
+1. **Descubrimiento estándar (SEP-1).** Se publica `https://raizapp.xyz/.well-known/stellar.toml` (repo
+   Pages; GitHub Pages ya responde con `Access-Control-Allow-Origin: *`) con `NETWORK_PASSPHRASE`,
+   `SIGNING_KEY`, `WEB_AUTH_ENDPOINT = https://raiz-relayer.fly.dev/v1/auth`,
+   `WEB_AUTH_FOR_CONTRACTS_ENDPOINT = https://raiz-relayer.fly.dev/v1/auth/contract` y
+   `WEB_AUTH_CONTRACT_ID`. *Home domain* = `raizapp.xyz`; *web auth domain* = `raiz-relayer.fly.dev`. La
+   app descubre todo con `WebAuth.fromDomain` / `WebAuthForContracts.fromDomain`: no se hornea ninguna
+   clave ni URL de autenticación en el APK.
+2. **Clave de firma del servidor dedicada.** Secret nuevo `RELAYER_AUTH_SIGNING_SECRET` (Ed25519). NO es
+   la clave que firma como admin (`RELAYER_ADMIN_SECRET`): si se filtra una, la otra sigue intacta. Su
+   cuenta `G…` debe **existir en la red** (friendbot en testnet): en SEP-45 el host comprueba sus
+   firmantes al verificar la entrada del servidor.
+3. **Sesión = JWT HS256** firmado con `RELAYER_JWT_SECRET` (solo servidor), con `iss`, `sub` (la `G…` o
+   `C…` autenticada), `iat`, `exp` y `jti`. Duración 24 h (compromiso entre seguridad y no pedir huella
+   a cada rato). Librería `jose` (sin dependencias; no escribir JWT a mano). Algoritmo fijo, nunca leído
+   del token.
+4. **SEP-10 (cuentas `G…`).** `GET /v1/auth?account=G…&home_domain=raizapp.xyz` → `{transaction,
+   network_passphrase}` (reto de 5 min). `POST /v1/auth {transaction}` → si la cuenta existe,
+   `verifyChallengeTxThreshold` contra sus firmantes y umbral medio (leídos de Horizon); si no existe,
+   `verifyChallengeTxSigners` con su clave maestra → `{token}`.
+5. **SEP-45 (cuentas `C…`).** `GET /v1/auth/contract?account=C…&home_domain=raizapp.xyz` →
+   `{authorization_entries, network_passphrase}`. El servidor arma la invocación
+   `web_auth_verify({account, home_domain, web_auth_domain, web_auth_domain_account, nonce})`, la
+   **simula en modo grabación** para obtener las entradas de autorización (cliente y servidor), firma la
+   suya con `authorizeEntry` (expiración = ledger actual + ~60) y devuelve ambas. `POST
+   /v1/auth/contract {authorization_entries}` → valida campo a campo lo que exige la spec (contrato,
+   función, argumentos idénticos en todas las entradas, nonce emitido por nosotros, no usado y no
+   caducado, firma propia intacta, entrada del cliente presente, expiración del cliente no lejana),
+   construye la transacción con esas entradas y la **simula en modo estricto**: si la simulación pasa, el
+   `__check_auth` del smart account aceptó la firma → `{token}`. Nada se envía a la red.
+6. **Contrato de web auth propio.** Crate nuevo y mínimo `contracts/web_auth` (unas 30 líneas, escrito a
+   partir del ejemplo de la propia spec: `web_auth_verify(args: Map<Symbol, String>)` hace `require_auth`
+   de `account` y de `web_auth_domain_account`), desplegado en testnet, en vez de depender de la
+   instancia de un tercero. Su ID va a `deployments.json` (campo nuevo `web_auth`) y al `stellar.toml`.
+   Cumple la regla de contratos nuevos: `__constructor` y TTL gestionado (extender la instancia al
+   invocar y dejarla en la rutina de renovación, H2).
+7. **Anti-replay.** Nonce aleatorio por reto, guardado en memoria con caducidad de 5 min y de un solo
+   uso (una sola máquina en Fly: coherente con la cola en memoria), más la expiración por ledger de las
+   firmas. Reiniciar el proceso invalida los retos en vuelo, no las sesiones (el JWT se verifica con el
+   secret).
+8. **Reglas de autorización en los POST** (`Authorization: Bearer <jwt>`):
+   - `faucet`, `register-merchant`, `mint-resident`: la `address` del cuerpo debe ser **igual al `sub`**.
+   - `vault/deposit` y `vault/redeem`: exige sesión y que el `sub` sea **residente del barrio**
+     (lectura on-chain `get_resident`). Es la decisión por defecto; ver "Decisiones abiertas".
+   - Cupos por wallet (además de los de IP y globales): faucet 1 cada 10 min y 3 al día; registro y
+     residencia 1 al día; vault 5 al día.
+   - Errores nuevos: `401 UNAUTHENTICATED` (sin sesión o caducada; la app re-autentica una vez),
+     `403 FORBIDDEN_SUBJECT` (la dirección no es la de la sesión), `403 NOT_A_RESIDENT`.
+9. **Transición sin romper nada: `AUTH_MODE = off | optional | required`** (env del relayer).
+   `optional`: acepta peticiones anónimas como hoy y, si llega un JWT válido, aplica las reglas por
+   wallet. `required`: sin sesión no hay POST. Se despliega en `optional`, se publica la app que
+   autentica, se verifica en dispositivo y solo entonces se pasa a `required`. Ese día los APK
+   anteriores pierden las operaciones de admin (avisarlo en el Release).
+10. **App.** `data/relayer/RelayerAuth.kt` (`@Singleton`): `ensureSession(activity)` → SEP-10 para
+    semilla, SEP-45 para passkey; JWT **solo en memoria**, por cuenta, con margen de 60 s antes de `exp`
+    (mismo patrón que `AnchorClient`); ante un `401`, re-autentica **una** vez. `RelayerClient` añade la
+    cabecera. Para passkey el inicio de sesión muestra el diálogo de huella una vez por sesión, con un
+    texto previo ("Confirma con tu huella para identificarte ante el relayer del barrio").
+
+### Fases (una sesión de Claude Code por fase; plan mode en las tres: tocan firma y autenticación)
+
+| Fase | Qué | Entregable verificable | Estimación |
+|---|---|---|---|
+| **7a** | SEP-10 de punta a punta + JWT + `AUTH_MODE=optional` + `stellar.toml` en raizapp.xyz | Wallet de semilla obtiene sesión y pide faucet con `Bearer`; tests del relayer; integración real en testnet | 0,5–1 día |
+| **7b** | SEP-45: contrato de web auth desplegado, endpoints del relayer, firma del reto con la passkey en la app | Wallet passkey obtiene sesión con huella; integración real con una cuenta de contrato de prueba | 1–1,5 días |
+| **7c** | Reglas por wallet, cupos por wallet, `AUTH_MODE=required`, documentación y evidencia | Los POST sin sesión dan 401; regresión de los 4 flujos en el Motorola con ambos tipos de wallet | 0,5 día |
+
+### Micro-detalles que ahorran días
+
+- **7b empieza por un spike de 1–2 h** en la app: firmar con la passkey una entrada de autorización
+  *ajena* (el reto de `testanchor.stellar.org/sep45/auth`, que ya funciona) y conseguir su JWT. Si eso
+  sale, el cliente SEP-45 está resuelto antes de escribir una línea del servidor. Además desbloquea, como
+  efecto secundario, el depósito SEP-24 nativo para passkey (ver "Relación con D3").
+- Hay que comprobar cómo expone `OZSmartAccountKit` el firmante y la credencial guardados
+  (`SmartAccountSigner`, `OZCredentialManager`) para llamar a `SmartAccountAuth.signAuthEntry` fuera de
+  `contractCall`. Si no los expone, alternativa: construir la invocación `web_auth_verify` y dejar que
+  `contractCall` firme, **sin enviar** (mirar si admite "solo firmar").
+- El cliente DEBE validar el reto antes de firmar (lo hace `validateChallenge`): contrato =
+  `WEB_AUTH_CONTRACT_ID` del toml, función `web_auth_verify`, sin sub-invocaciones, argumentos esperados
+  y firma del servidor. Y simular para confirmar que el `read_write` del footprint solo trae nonces.
+- La entrada del servidor se firma con expiración corta; la del cliente debe llevar expiración cercana
+  (la spec recomienda ledger actual + 1; tolerar hasta +60 por la latencia del diálogo de huella).
+- `SorobanAuthorizationEntries` viaja como un arreglo XDR en base64: comprobar si el SDK JS 17 trae el
+  tipo; si no, codificar a mano (4 bytes de longitud + entradas). Chuleta de XDR del SDK 17 en
+  `raiz-relayer/docs/SDK17_XDR.md`.
+- Un smart account recién creado puede no estar desplegado todavía: SEP-45 fallará en la simulación.
+  Responder `404 ACCOUNT_NOT_FOUND` como ya hace el faucet a `C…`.
+- La instancia del smart account o del contrato de web auth puede estar archivada: la simulación
+  devolverá restauración en el footprint. La spec 0.1.1 lo contempla; el servidor no envía nada, así que
+  basta con aceptar ese caso en la validación del footprint.
+- `verifyChallengeTxThreshold` necesita los firmantes de la cuenta: reutilizar el cargador de Horizon
+  del relayer (el mismo que usa `stellar/signer.ts`).
+- Tests de SEP-45 sin passkey: desplegar en testnet una cuenta de contrato de prueba cuyo `__check_auth`
+  acepte una firma Ed25519 (el repo de referencia trae una en `contracts/account`, como guía) y
+  autenticar contra ella en la suite de integración.
+- La passkey no se puede automatizar por `adb`: las pruebas de 7b y 7c en dispositivo necesitan el dedo
+  de Juan en el Motorola.
+- El JWT no se persiste (ni `SharedPreferences` ni disco) y nunca se loguea.
+- Los cupos por wallet viven en memoria como los demás; documentar que un reinicio los pone a cero.
+
+### Aceptación
+
+- Con `AUTH_MODE=required`: un `POST /v1/faucet` sin `Authorization` responde `401 UNAUTHENTICATED`; con
+  la sesión de la wallet A y la `address` de la wallet B, `403 FORBIDDEN_SUBJECT`.
+- Wallet de semilla y wallet passkey completan en el Motorola: faucet, alta de comercio, verificación de
+  residente y depósito/rescate del vault, cada una con su sesión.
+- El APK sigue con 0 claves privadas (`scripts/verify_apk_no_secrets.py`) y sin ninguna credencial
+  propia; `git grep` no encuentra `RELAYER_AUTH_SIGNING_SECRET` ni `RELAYER_JWT_SECRET` fuera de la
+  documentación.
+- Suite del relayer en verde + integración real: SEP-10 con una cuenta nueva, SEP-45 con la cuenta de
+  contrato de prueba, reto reutilizado rechazado, reto caducado rechazado, JWT manipulado rechazado.
+- Revisión adversarial aplicada (es código de autenticación) y modelo de amenazas del README del relayer
+  reescrito: qué demuestra una sesión, qué no (sigue sin haber KYC: eso es SEP-12).
+
+### Decisiones abiertas (para Juan, antes de 7c)
+
+1. **¿Quién puede mover el fondo al yield?** Propuesta: solo residentes del barrio (coherente con la
+   tesis: el fondo es de quienes viven ahí). Alternativa: solo el admin del barrio. Cambia la pantalla
+   Tesorería ("Mover fondos" deja de estar visible para turistas).
+2. **Duración de la sesión passkey:** 24 h (una huella al día) frente a 1 h (más seguro, más molesto).
+3. **¿Se mantiene un faucet anónimo?** Con `required`, una wallet nueva ya puede autenticarse (SEP-10 no
+   exige que la cuenta exista), así que no hace falta; decidir si se deja para demos.
+
+### Relación con D3 (depósito de wallets passkey)
+
+Desde la app 0.4.0 una wallet passkey deposita con el anchor a través de una **cuenta de depósito**
+clásica creada en el teléfono (SEP-10 + SEP-24 con esa cuenta, conversión y `transfer` al smart
+account). Cuando exista la firma SEP-45 con passkey (fase 7b), el smart account podrá autenticarse
+**directamente** con el anchor (`WEB_AUTH_FOR_CONTRACTS_ENDPOINT`, que el anchor de prueba ya ofrece). La
+cuenta de depósito seguirá haciendo falta en testnet para la conversión (un contrato no puede hacer un
+path payment clásico); en mainnet, con un solo USDC, desaparece.
+
+### Prompts listos
+
+**Fase 7a (relayer + app, SEP-10):**
+```text
+Lee CLAUDE.md, docs/PLAN_CLAUDE_CODE_SOW.md WP7 completo (decisiones tomadas: respétalas) y el README de
+raiz-relayer (modelo de amenazas). Implementa la fase 7a. Plan mode primero: enséñame los endpoints, el
+formato del JWT y el flujo de la app antes de escribir código.
+Relayer (repo hermano raiz-relayer): GET/POST /v1/auth con WebAuth de @stellar/stellar-sdk (reto de 5 min,
+home_domain raizapp.xyz, web_auth_domain raiz-relayer.fly.dev), clave RELAYER_AUTH_SIGNING_SECRET (el
+proceso se niega a arrancar si falta con AUTH_MODE != off), JWT HS256 con jose y RELAYER_JWT_SECRET (24 h),
+hook que lee Authorization: Bearer y deja `req.wallet`, AUTH_MODE=off|optional|required (default optional),
+regla address == sub en faucet/register/mint cuando hay sesión, errores 401 UNAUTHENTICATED y 403
+FORBIDDEN_SUBJECT. Tests unitarios + integración real en testnet (cuenta nueva con friendbot).
+Monorepo: landing/.well-known/stellar.toml (y recordatorio de copiarlo al repo Pages), app:
+data/relayer/RelayerAuth.kt (SEP-10 con WebAuth.fromDomain, JWT solo en memoria por cuenta, re-auth una vez
+ante 401) y RelayerClient con la cabecera. Solo wallets de semilla en esta fase; passkey sigue anónima.
+Gates: npm run typecheck && npm test; ./gradlew :app:testDebugUnitTest :app:assembleDebug; prueba en el
+Motorola por adb con una wallet de semilla (faucet con sesión). NO pases a AUTH_MODE=required.
+```
+
+**Fase 7b (SEP-45):**
+```text
+Lee docs/PLAN_CLAUDE_CODE_SOW.md WP7 (fase 7b y micro-detalles) y la spec de SEP-45. Empieza por el SPIKE:
+en la app, firma con la wallet passkey el reto del anchor de prueba (testanchor.stellar.org/sep45/auth) usando
+WebAuthForContracts (getChallenge/validateChallenge/sendSignedChallenge) y SmartAccountAuth.signAuthEntry con
+una aserción WebAuthn; objetivo: obtener su JWT. Enséñame el resultado antes de seguir (necesito poner la
+huella en el teléfono). Después: (1) crea el crate contracts/web_auth a partir del ejemplo de la spec (con
+__constructor y TTL), despliégalo en testnet y añade `web_auth` a deployments.json y al stellar.toml; (2) relayer: GET/POST
+/v1/auth/contract (simulación en grabación para obtener las entradas, authorizeEntry para la del servidor,
+validación campo a campo, nonce de un solo uso, simulación estricta para verificar) → mismo JWT;
+(3) app: RelayerAuth para passkey con el texto previo al diálogo de huella. Tests: unitarios con RPC falso
++ integración real con una cuenta de contrato de prueba (firma Ed25519). Revisión adversarial al final.
+```
+
+**Fase 7c (cierre):**
+```text
+Lee docs/PLAN_CLAUDE_CODE_SOW.md WP7 (reglas de autorización, cupos por wallet, aceptación y decisiones
+abiertas: pregúntame las 3 antes de empezar). Implementa las reglas por wallet y los cupos por wallet en el
+relayer, la regla del vault que yo elija, y el paso a AUTH_MODE=required tras la regresión en el Motorola con
+los dos tipos de wallet (yo pongo la huella). Actualiza el modelo de amenazas del README del relayer, las
+notas del Release y docs/evidencia. Deja escrito qué APK dejan de funcionar para operaciones de admin.
 ```
 
 ---
