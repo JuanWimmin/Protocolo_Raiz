@@ -2,12 +2,15 @@
 
 Objetivo (aceptación WP3): un depósito completo **desde la app → web del anchor (sin cortes) → saldo
 actualizado + tx hash**. Un solo plano de pantalla del teléfono, narración en off en español.
-Estado al 2026-10-03: **grabado** en el Motorola G04 — [`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4)
-(61 s, el depósito) y [`video/d3_deposito_y_conversion_completo.mp4`](video/d3_deposito_y_conversion_completo.mp4)
-(92 s, con la conversión). Tiempos reales al final ("Toma real del 2026-10-03"). Lo que sigue es el guion
-previo; donde difiere de lo medido, manda la toma real.
-El video del SOW es **solo el depósito**; la conversión al USDC del fondo es una toma extra opcional
-(al final de este guion) que no cuenta dentro de los 60 s.
+Estado al 2026-10-04: **el video vigente es [`video/d3_deposito_passkey_60s.mp4`](video/d3_deposito_passkey_60s.mp4)**
+(wallet passkey, app 0.4.0, 60 s a velocidad real; tiempos en "Toma real del 2026-10-04", al final).
+Desde 0.4.0 el depósito termina solo en USDC del fondo, así que la conversión y el envío a la wallet
+caben dentro de los 60 s y ya no son una toma aparte.
+Siguen en la carpeta las tomas del 3-oct con wallet semilla y app 0.3.0:
+[`video/d3_deposito_sep24_60s.mp4`](video/d3_deposito_sep24_60s.mp4) (61 s, el depósito) y
+[`video/d3_deposito_y_conversion_completo.mp4`](video/d3_deposito_y_conversion_completo.mp4) (92 s, con
+la conversión hecha a mano). El guion que sigue es el de esas tomas; donde difiere de lo medido, manda
+la toma real.
 
 ## Antes de grabar (checklist)
 
@@ -17,7 +20,8 @@ El video del SOW es **solo el depósito**; la conversión al USDC del fondo es u
 - [ ] APK **debug** del commit final de `main` instalado
       (`cd android && ./gradlew :app:assembleDebug -q` → `adb install -r app/build/outputs/apk/debug/app-debug.apk`).
       Anotar commit y hora en `README.md` de esta carpeta.
-- [ ] Wallet **semilla** (`G…`) — passkey no sirve (muestra "Disponible pronto para passkey (SEP-45)").
+- [ ] Wallet **semilla** (`G…`) para este guion del 3-oct. Desde 0.4.0 sirve cualquiera: la toma del
+      4-oct se hizo con una wallet passkey (hasta 0.3.0 mostraba "Disponible pronto para passkey (SEP-45)").
       Con XLM (≥ 2 XLM: reserva de la trustline + fees) y **0 USDC del anchor**, para que el saldo pase de
       0 a 5 en cámara. Ideal: wallet nueva fondeada con friendbot justo antes — así también se ve el
       paso "Habilitando USDC del anchor en tu cuenta…" (la trustline).
@@ -30,8 +34,11 @@ El video del SOW es **solo el depósito**; la conversión al USDC del fondo es u
 - [ ] Grabación: `adb shell screenrecord --time-limit 150 /sdcard/d3.mp4` (al terminar,
       `adb pull /sdcard/d3.mp4`) o `scrcpy --record d3.mp4`. Grabar hasta 2,5 min y recortar a 60 s.
 - [ ] PC con `adb logcat -s RAIZ` corriendo (respaldo si algo falla; ver "Dónde capturar el tx hash").
-- [ ] (Solo si se graba la toma extra "Convertir") cotización viva comprobada en el PC (comando `curl`
-      de `README.md` § "El pool de liquidez"). Vale el mismo APK de `main`.
+- [ ] Cotización del pool comprobada en el PC: `node scripts/rebalance_anchor_pool.js` (por debajo del
+      97 % la app 0.4.0 no convierte sola; `--apply` lo reequilibra).
+- [ ] Después de grabar y ANTES de versionar o publicar: `python scripts/mask_video_autofill.py`. La
+      barra de autocompletar y la fila de predicciones del teclado muestran datos personales mientras
+      se rellena el formulario del anchor.
 
 ## Línea de tiempo (60 s)
 
@@ -99,9 +106,10 @@ Anotar el hash en `README.md` de esta carpeta (sección "Tx hash del depósito")
 
 ## Publicación
 
-> Hecho el 4-oct: el video se publicó en <https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4>
-> (y la toma completa en `…/evidencia/d3_deposito_y_conversion_completo.mp4`). YouTube queda como
-> opción si el portal lo exige.
+> Hecho el 4-oct: el video vigente está en <https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4>.
+> En la misma carpeta siguen los del 3-oct (`d3_deposito_sep24_60s.mp4`,
+> `d3_deposito_y_conversion_completo.mp4`) y la toma de la wallet semilla
+> (`d3_deposito_semilla_conversion_automatica.mp4`). YouTube queda como opción si el portal lo exige.
 
 - YouTube **no listado**, título "RAÍZ · Depósito SEP-24 con el anchor de prueba del SDF (testnet)",
   descripción con commit, fecha, `G…` destino y el enlace de Stellar Expert de la tx.
@@ -129,3 +137,37 @@ grabación con `adb shell screenrecord`). Los datos del formulario del anchor so
 
 El corte de 60 s es el tramo 0:02–1:04 de la toma, sin cortes internos (velocidad ×1,04).
 Hashes: depósito `ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562`, conversión `23e926f4a24981e4e2f524221b26408273a508722931422b9c62d83be83d3658`.
+Los dos archivos se volvieron a publicar el 4-oct con la franja de sugerencias del teclado tapada.
+
+## Toma real del 2026-10-04 (wallet passkey, app 0.4.0)
+
+Wallet passkey del teléfono (`CAU5FLVT…W53LCZ`), que ya tenía su cuenta de depósito
+(`GDESMGCG…DXXOTZ`, creada en el primer depósito del día), APK debug del código final, teléfono
+operado por adb. Es el depósito 7 de la tabla de `README.md`. Video:
+[`video/d3_deposito_passkey_60s.mp4`](video/d3_deposito_passkey_60s.mp4), 60 s exactos — el tramo
+0:02,3–1:02,3 de la grabación — a **velocidad real y sin cortes**. Lo único editado es la franja de
+sugerencias del teclado, tapada mientras se rellena el formulario.
+
+| Tiempo (≈) | Qué se ve |
+|---|---|
+| 0:00 | Inicio: saldo **42.418 USDC**, wallet `CAU5FLVT…W53LCZ` |
+| 0:03 | Tap "Depositar · anchor de prueba" → "Depositar USDC": card negra "Cuenta de depósito · GDESMG…DXXOTZ", card "Así llega a tu wallet passkey", monto 5 |
+| 0:11 | Tap "Depositar con el anchor" → "Abriendo el depósito (SEP-24)…" (sin friendbot ni trustlines: la cuenta de depósito ya existía, y la sesión SEP-10 se renueva en ≈ 1 s) |
+| 0:15 | Custom Tab del anchor ("SEP-24 Reference UI"): formulario Deposit |
+| 0:19–0:24 | Formulario con datos ficticios y Submit |
+| 0:25–0:32 | "Transaction information": `incomplete` → `pending_anchor` → `completed`, con `STELLAR TRANSACTION ID e4603f18…` |
+| 0:32 | Cierro la pestaña → la app consulta el estado al instante → "¡Depósito recibido! · 4.5 USDC · anchor de prueba" + chip `e4603f…fb9357`; "Cotizando…" → "Enviando la conversión…" |
+| 0:41 | "✓ Convertido: recibiste 4.484 USDC del fondo" + chip `aacce2…03561f`; "Enviando a tu wallet…" → "Confirmando el envío…" |
+| 0:47 | "✓ Llegó a tu wallet: 4.484 USDC" + chip `90df87…ceb1d7` · "Ya puedes pagar en los comercios de RAÍZ." |
+| 0:57 | "Volver a la wallet" → Inicio con **46.902 USDC** |
+
+Hashes: pago del anchor `e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357`, conversión
+`aacce26a5bb0f2bf52cec6d8893f76ac7a0c48a789a32c74bcf37a28e103561f`, envío a la wallet
+`90df876cdb62d505470b24709598cd80f7fc50af247604866d286fd093ceb1d7`.
+
+Toma complementaria con wallet semilla (depósito 6, 63 s):
+[`video/d3_deposito_semilla_conversion_automatica.mp4`](video/d3_deposito_semilla_conversion_automatica.mp4)
+— tras "¡Depósito recibido!" la conversión arranca sola ("✓ Convertido: recibiste 4.504 USDC del
+fondo"), sin el tap que sí se ve en la toma de 92 s del 3-oct. Se grabó con el código ya corregido
+tras la revisión, antes de los dos últimos pulidos (consulta inmediata al volver de la web del anchor
+y la marca de "depósito en camino").
