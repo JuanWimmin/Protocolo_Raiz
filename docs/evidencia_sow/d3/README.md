@@ -55,7 +55,9 @@ Anclap…) para convertir efectivo o una transferencia en USDC.
   implementó después (en `main` desde el 3-oct) y se probó en el teléfono ese día (sección
   "Convertir a USDC del fondo").
 - **Solo wallets semilla (`G…`).** SEP-10 clásico firma con una cuenta Ed25519; un smart account
-  passkey (`C…`) necesita SEP-45, que el anchor de prueba no soporta. Para passkey, la pantalla muestra
+  passkey (`C…`) necesita SEP-45. Corrección del 4-oct: el anchor de prueba **sí** lo ofrece ya (su
+  `stellar.toml` publica `WEB_AUTH_FOR_CONTRACTS_ENDPOINT` y el endpoint responde); lo que falta es
+  implementarlo en la app, cuyo texto en pantalla todavía dice lo contrario. Para passkey, la pantalla muestra
   "Disponible pronto para passkey (SEP-45)" sin botón.
 - **El faucet del relayer no se borra:** pasa a ser la acción secundaria "USDC demo (Blend) · relayer"
   del paso 3 del onboarding; el CTA principal es "Depositar (anchor de prueba)".
@@ -388,7 +390,7 @@ recibido!" con el hash) y [`video/d3_deposito_y_conversion_completo.mp4`](video/
 - **Anchor de prueba, KYC simulado.** La web interactiva del testanchor es la "SEP-24 Reference UI"
   del SDF: pide datos de prueba y no mueve dinero real. Lo que sí es real es el protocolo (SEP-1/10/24
   tal cual lo usaría un anchor de producción) y el pago on-chain en testnet.
-- **Passkey fuera** hasta que exista SEP-45 en el anchor (o un anchor que lo soporte).
+- **Passkey fuera** hasta que la app implemente SEP-45 (el anchor de prueba ya lo ofrece, comprobado el 4-oct).
 - **El camino feliz de SEP-10 no tiene test unitario**: validar un challenge exige que lo firme la
   `SIGNING_KEY` del anchor; con `MockEngine` solo se cubre el error de transporte del challenge
   (`500 → NETWORK_ERROR`). El resto (toml, `/info`, deposit, estados, polling) sí está cubierto (17 tests).

@@ -115,8 +115,8 @@ network but see no new activity.
   landing page, the block's label changes from "en vivo" (live) to "snapshot 4·oct·2026" seven
   days after the last execution (from Oct 11); the 8 links do not change.
 - **D3:** the test anchor's USDC is a different asset from the fund's USDC; the app labels it
-  separately and offers to convert it. Passkey wallets cannot deposit yet (the anchor lacks
-  SEP-45). The video was recorded by driving the phone from a computer over a cable (`adb`), not by
+  separately and offers to convert it. Passkey wallets cannot deposit yet: they need SEP-45, which
+  the test anchor already offers but the app does not implement yet. The video was recorded by driving the phone from a computer over a cable (`adb`), not by
   hand; the app, the anchor and the transactions are real.
 - **Maintenance:** on testnet, contract data expires unless someone renews it. It is renewed until
   early December 2026.

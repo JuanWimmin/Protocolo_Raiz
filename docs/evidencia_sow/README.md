@@ -112,8 +112,8 @@ red, pero sin actividad nueva.
   (archivo)". En la landing, la etiqueta del bloque pasa de "en vivo" a "snapshot 4·oct·2026" siete
   días después de la última ejecución (desde el 11-oct); los 8 enlaces no cambian.
 - **D3:** el USDC del anchor de prueba es un activo distinto del USDC del fondo; la app lo rotula
-  aparte y ofrece convertirlo. Las wallets passkey aún no pueden depositar (falta SEP-45 en el
-  anchor). El video se grabó operando el teléfono desde el computador por cable (`adb`), no con el
+  aparte y ofrece convertirlo. Las wallets passkey aún no pueden depositar: necesitan SEP-45, que el
+  anchor de prueba ya ofrece pero la app todavía no implementa. El video se grabó operando el teléfono desde el computador por cable (`adb`), no con el
   dedo; app, anchor y transacciones son reales.
 - **Mantenimiento:** en testnet los datos de los contratos caducan si nadie los renueva. Están
   renovados hasta comienzos de diciembre de 2026.
