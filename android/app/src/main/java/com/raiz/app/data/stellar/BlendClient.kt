@@ -29,7 +29,7 @@ import javax.inject.Singleton
  *     [getAdapterApyBps]. Este SÍ depende del re-deploy F1: si
  *     `deployments.yieldAdapter` es null (deploy pre-F1 todavía activo),
  *     devuelve `null` con gracia — mismo contrato "best-effort, nullable"
- *     que tenía el APY vía REST de DeFindex, sin API key ni llamada de red
+ *     que tenía el APY vía REST de DeFindex, sin clave de API ni llamada de red
  *     externa esta vez (todo on-chain).
  *
  * La posición POR BARRIO (shares, valor) sigue viniendo de `Pool` vía

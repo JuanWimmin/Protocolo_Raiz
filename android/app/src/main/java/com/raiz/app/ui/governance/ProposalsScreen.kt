@@ -514,7 +514,7 @@ private fun PendingRegistrationBox(
             // Relayer no configurado (local.properties incompleto) — bloquea el botón.
             if (!state.relayerConfigured) {
                 Text(
-                    text = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                    text = "Relayer no configurado (raiz.relayer.url en local.properties)",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFB00020),
                 )

@@ -69,7 +69,7 @@ data class YieldUiState(
     val action: TreasuryAction = TreasuryAction.Idle,
     /** Posición de cada barrio en la fuente de yield. Vacía durante la carga inicial. */
     val barriosYield: List<BarrioYieldItem> = emptyList(),
-    /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+    /** false si falta `raiz.relayer.url` en local.properties. */
     val relayerConfigured: Boolean = true,
     /**
      * true cuando `GET /v1/health` ya respondió (ok o error) al menos una vez
@@ -125,7 +125,7 @@ data class YieldUiState(
  * ViewModel de la pantalla "Tesorería que rinde".
  *
  * F1: la fuente de yield es Blend v2 directo tras el contrato propio
- * `yield_adapter` — ya no hay vault DeFindex ni API key REST para el APY.
+ * `yield_adapter` — ya no hay vault DeFindex ni clave de API REST para el APY.
  *
  * Fuentes de datos:
  *  - **Contexto del pool Blend** (TVL/utilización de TODO el pool, no solo
@@ -407,7 +407,7 @@ class YieldViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     action = TreasuryAction.Failed(
-                        "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                        "Relayer no configurado (raiz.relayer.url en local.properties)",
                     ),
                 )
             }

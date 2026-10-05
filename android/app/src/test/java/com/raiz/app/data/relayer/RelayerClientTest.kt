@@ -33,8 +33,9 @@ import org.junit.Test
  * Tests JVM puros de [RelayerClient] con Ktor MockEngine (sin red real).
  * Cubre el mapeo HTTP → [RaizResult] descrito en
  * `raiz-relayer/docs/SESION_B_APP.md` § 2, la forma exacta de los bodies
- * (tipos string/numérico que espera el zod del relayer) y la semántica de
- * `idempotency-key` por intento (H1).
+ * (tipos string/numérico que espera el zod del relayer), la semántica de
+ * `idempotency-key` por intento (H1) y que ninguna petición lleva credenciales
+ * (el relayer es público: la app no envía cabeceras de autenticación).
  */
 class RelayerClientTest {
 
@@ -43,12 +44,12 @@ class RelayerClientTest {
 
     private fun jsonHeaders() = headersOf(HttpHeaders.ContentType, listOf("application/json"))
 
-    private fun buildClient(engine: MockEngine): RelayerClient {
+    private fun buildClient(engine: MockEngine, baseUrl: String = BASE_URL): RelayerClient {
         val http = HttpClient(engine) {
             // Mismo Json que el HttpClient de producción (DataModule) — una sola definición.
             install(ContentNegotiation) { json(RelayerJson) }
         }
-        return RelayerClient(http, baseUrl = BASE_URL, appKey = APP_KEY)
+        return RelayerClient(http, baseUrl = baseUrl)
     }
 
     /** Body JSON tal como sale por el cable (lo que verá el zod del relayer). */
@@ -251,15 +252,36 @@ class RelayerClientTest {
     }
 
     @Test
-    fun unauthorizedAppMapeaAUnauthorizedConTextoPropio() = runTest {
+    fun cualquier401MapeaAUnauthorizedConTextoPropio() = runTest {
+        // Mapeo defensivo: el relayer es público y hoy no emite 401, pero si volviera a exigir
+        // sesión la app debe verlo como UNAUTHORIZED sea cual sea el `error.code` — uno que aún
+        // no conoce, o el `UNAUTHORIZED_APP` de un relayer desplegado sin actualizar.
+        for (code in listOf("CODIGO_NUEVO_QUE_LA_APP_NO_CONOCE", "UNAUTHORIZED_APP")) {
+            val relayerMessage = "mensaje técnico del relayer para $code"
+            val client = buildClient(errorEngine(HttpStatusCode.Unauthorized, code, relayerMessage))
+
+            val error = client.faucet("GABCDEF") as RaizResult.Error
+
+            assertEquals(code, RaizErrorCode.UNAUTHORIZED, error.code)
+            // Texto propio de la app, nunca el mensaje técnico del servidor.
+            assertEquals(code, RelayerClient.MSG_RELAYER_UNAUTHORIZED, error.message)
+            // No es "transacción en vuelo": reintentar con la misma key no lo arregla.
+            assertFalse(code, RelayerClient.isPendingTransactionError(error))
+        }
+    }
+
+    @Test
+    fun codigoDesconocidoQueNoEs401SigueSiendoUnknownConElMensajeDelRelayer() = runTest {
+        // El mapeo por status es SOLO para 401: el resto de códigos que la app no conoce
+        // conservan el tratamiento genérico (UNKNOWN + mensaje del relayer).
         val client = buildClient(
-            errorEngine(HttpStatusCode.Unauthorized, "UNAUTHORIZED_APP", "Falta o es incorrecta la cabecera x-raiz-app-key."),
+            errorEngine(HttpStatusCode.Forbidden, "CODIGO_NUEVO_QUE_LA_APP_NO_CONOCE", "mensaje del relayer"),
         )
 
         val error = client.faucet("GABCDEF") as RaizResult.Error
 
-        assertEquals(RaizErrorCode.UNAUTHORIZED, error.code)
-        assertEquals(RelayerClient.MSG_APP_UNAUTHORIZED, error.message)
+        assertEquals(RaizErrorCode.UNKNOWN, error.code)
+        assertEquals("mensaje del relayer", error.message)
     }
 
     @Test
@@ -369,11 +391,9 @@ class RelayerClientTest {
     // ── Headers e idempotencia ───────────────────────────────────────────
 
     @Test
-    fun enviaHeaderAppKeyEIdempotencyKeyDeMaximo64Chars() = runTest {
-        var capturedAppKey: String? = null
+    fun enviaIdempotencyKeyDeMaximo64Chars() = runTest {
         var capturedIdempotencyKey: String? = null
         val engine = MockEngine { request ->
-            capturedAppKey = request.headers[APP_KEY_HEADER]
             capturedIdempotencyKey = request.headers[IDEMPOTENCY_HEADER]
             respond(content = """{"ok":true,"txHash":"abc123","ledger":1}""", status = HttpStatusCode.OK, headers = jsonHeaders())
         }
@@ -381,7 +401,6 @@ class RelayerClientTest {
 
         client.registerMerchant("GABCDEF", "Cafe Don Aurelio", barrioId, 1, 2, "cafe")
 
-        assertEquals(APP_KEY, capturedAppKey)
         val key = requireNotNull(capturedIdempotencyKey)
         assertTrue("idempotency-key vacía", key.isNotBlank())
         assertTrue("idempotency-key de ${key.length} chars supera el límite de 64", key.length <= 64)
@@ -427,6 +446,55 @@ class RelayerClientTest {
         assertTrue(result is RaizResult.Error)
         assertEquals(RaizErrorCode.PARSE_ERROR, (result as RaizResult.Error).code)
         assertEquals("no debe salir ninguna request con key inválida", 0, requests)
+    }
+
+    // ── Sin credenciales (relayer público) ───────────────────────────────
+
+    @Test
+    fun ningunaPeticionLlevaCabecerasDeCredenciales() = runTest {
+        // El relayer es público (cupos del lado del servidor): la app no manda ninguna credencial
+        // propia en ningún endpoint. Vigila que no reaparezca la cabecera de clave de aplicación
+        // retirada (vivía bajo el prefijo propio `x-raiz-`) ni ninguna otra.
+        val headersPorRuta = linkedMapOf<String, Set<String>>()
+        val engine = MockEngine { request ->
+            headersPorRuta[request.url.encodedPath] = request.headers.names().map { it.lowercase() }.toSet()
+            // La respuesta da igual: aquí solo se mira lo que SALE hacia el relayer.
+            respond(content = """{"ok":true,"txHash":"abc123","ledger":1}""", status = HttpStatusCode.OK, headers = jsonHeaders())
+        }
+        val client = buildClient(engine)
+
+        client.registerMerchant("GABCDEF", "Cafe Don Aurelio", barrioId, 1, 2, "cafe")
+        client.mintResident("GABCDEF", barrioId)
+        client.faucet("GABCDEF")
+        client.vaultDeposit(barrioId, 1L)
+        client.vaultRedeem(barrioId, 1L)
+        client.health()
+
+        val rutasPost = setOf(
+            "/v1/register-merchant",
+            "/v1/mint-resident",
+            "/v1/faucet",
+            "/v1/vault/deposit",
+            "/v1/vault/redeem",
+        )
+        assertEquals(rutasPost + "/v1/health", headersPorRuta.keys)
+        for ((ruta, nombres) in headersPorRuta) {
+            assertTrue("$ruta lleva cabeceras propias x-raiz-*: $nombres", nombres.none { it.startsWith("x-raiz-") })
+            // Nada fuera de negociación de contenido e idempotencia: ni Authorization, ni cookies, ni claves.
+            assertEquals("$ruta lleva cabeceras inesperadas", emptySet<String>(), nombres - CABECERAS_PERMITIDAS)
+            // Control: las cabeceras que el cliente sí añade llegan al engine (la captura no es ciega).
+            if (ruta in rutasPost) {
+                assertTrue("$ruta debería llevar $IDEMPOTENCY_HEADER: $nombres", IDEMPOTENCY_HEADER in nombres)
+            }
+        }
+    }
+
+    @Test
+    fun isConfiguredDependeSoloDeLaUrl() {
+        // Sin credenciales que configurar: basta con que haya URL del relayer.
+        assertTrue(buildClient(okEngine()).isConfigured())
+        assertFalse(buildClient(okEngine(), baseUrl = "").isConfigured())
+        assertFalse(buildClient(okEngine(), baseUrl = "   ").isConfigured())
     }
 
     // ── GET /v1/health ───────────────────────────────────────────────────
@@ -477,8 +545,19 @@ class RelayerClientTest {
 
     companion object {
         private const val BASE_URL = "https://relayer.test"
-        private const val APP_KEY = "test-key-1234567890"
-        private const val APP_KEY_HEADER = "x-raiz-app-key"
         private const val IDEMPOTENCY_HEADER = "idempotency-key"
+
+        /**
+         * Únicas cabeceras que la app puede mandar al relayer (en minúsculas): negociación de
+         * contenido, las que Ktor añade por su cuenta y la de idempotencia. Ninguna lleva credenciales.
+         */
+        private val CABECERAS_PERMITIDAS = setOf(
+            "accept",
+            "accept-charset",
+            "content-type",
+            "content-length",
+            "user-agent",
+            IDEMPOTENCY_HEADER,
+        )
     }
 }

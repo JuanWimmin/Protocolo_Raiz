@@ -36,7 +36,18 @@ import kotlinx.serialization.json.longOrNull
  * Reemplaza a los métodos de [com.raiz.app.data.stellar.SorobanClient] que
  * firmaban con el KeyPair del admin (0.1.0): la clave admin del protocolo ya
  * NO vive en el APK, vive en la variable de entorno del servidor. La app llama a un
- * endpoint JSON con una API key estática y recibe el `txHash`.
+ * endpoint JSON y recibe el `txHash`.
+ *
+ * ## Sin credenciales en el APK
+ *
+ * El relayer es un servicio público de testnet: no exige ninguna cabecera de
+ * autenticación y contiene el abuso del lado del servidor con cupos (por IP,
+ * por address y diarios → `429 RATE_LIMITED`, ver [RaizErrorCode.RATE_LIMITED]).
+ * Por eso este cliente no lleva ni envía ninguna credencial propia: lo único
+ * configurable es la URL. La autenticación por wallet (SEP-10 para cuentas G…,
+ * SEP-45 para smart accounts C…) está planificada; mientras tanto, un `401` se
+ * mapea de forma defensiva a [RaizErrorCode.UNAUTHORIZED] por si el servidor
+ * volviera a exigir sesión (ver [MSG_RELAYER_UNAUTHORIZED]).
  *
  * Contrato completo: `raiz-relayer/README.md` (Endpoints, tabla HTTP↔code) y
  * `raiz-relayer/docs/SESION_B_APP.md` (mapeo a [RaizResult]/[RaizErrorCode]).
@@ -60,8 +71,6 @@ import kotlinx.serialization.json.longOrNull
  *   primario (en vez de leerlo directo de [BuildConfig] en el cuerpo de la
  *   clase) para poder inyectar una URL de prueba con `MockEngine` en tests JVM
  *   sin tocar `BuildConfig`.
- * @param appKey API key estática para el header `x-raiz-app-key`. Mismo
- *   motivo que `baseUrl`: parametrizable para tests.
  *
  * Hilt usa el constructor secundario `@Inject` (solo el HttpClient): Dagger no
  * entiende los valores por defecto de Kotlin y pediría un binding para
@@ -71,14 +80,12 @@ import kotlinx.serialization.json.longOrNull
 class RelayerClient(
     private val http: HttpClient,
     private val baseUrl: String,
-    private val appKey: String,
 ) {
 
     @Inject
     constructor(@Named("relayer") http: HttpClient) : this(
         http = http,
         baseUrl = BuildConfig.RELAYER_URL.trimEnd('/'),
-        appKey = BuildConfig.RELAYER_APP_KEY,
     )
 
     /** Resultado exitoso de `POST /v1/faucet`. */
@@ -92,8 +99,12 @@ class RelayerClient(
     private var cachedHealth: RelayerHealth? = null
     private var cachedHealthAtMs: Long = 0L
 
-    /** true si hay URL y API key configuradas (local.properties). Sin esto no tiene sentido llamar al relayer. */
-    fun isConfigured(): Boolean = baseUrl.isNotBlank() && appKey.isNotBlank()
+    /**
+     * true si hay URL del relayer (`raiz.relayer.url` en local.properties; el build trae un
+     * default, así que solo es false si se deja vacía a propósito). Sin ella no tiene sentido
+     * llamar al relayer. No depende de ninguna credencial: el relayer es público.
+     */
+    fun isConfigured(): Boolean = baseUrl.isNotBlank()
 
     /**
      * `GET /v1/health` (sin autenticación). Cachea 30 s en memoria — pensado
@@ -266,7 +277,8 @@ class RelayerClient(
     }
 
     /**
-     * POST genérico con headers `x-raiz-app-key` e `idempotency-key`.
+     * POST genérico con el header `idempotency-key` y ninguna cabecera de
+     * autenticación (el relayer es público, ver KDoc de la clase).
      *
      * La `idempotencyKey` la decide el llamador y es POR INTENTO DE USUARIO:
      * el ViewModel la genera una vez, la guarda en su estado y la reutiliza en
@@ -297,7 +309,6 @@ class RelayerClient(
         return try {
             val response = http.post("$baseUrl/v1/$path") {
                 contentType(ContentType.Application.Json)
-                header(HEADER_APP_KEY, appKey)
                 header(HEADER_IDEMPOTENCY_KEY, idempotencyKey)
                 setBody(requestBody)
             }
@@ -363,12 +374,20 @@ class RelayerClient(
      * `raiz-relayer/docs/SESION_B_APP.md` § 2. Única función de mapeo — todo
      * error HTTP del relayer que el endpoint no absorba como idempotente pasa
      * por aquí.
+     *
+     * Un `401` se mapea por status, sea cual sea su `error.code`: hoy el relayer
+     * es público y no debería emitirlo, pero si volviera a exigir sesión
+     * (autenticación por wallet planificada) la app tiene que verlo como
+     * [RaizErrorCode.UNAUTHORIZED] con texto propio — no como un error
+     * desconocido ni con el mensaje técnico del servidor.
      */
     private fun mapRelayerError(status: HttpStatusCode, envelope: RelayerEnvelope): RaizResult<RelayerEnvelope> {
+        if (status == HttpStatusCode.Unauthorized) {
+            return RaizResult.Error(RaizErrorCode.UNAUTHORIZED, MSG_RELAYER_UNAUTHORIZED)
+        }
         val body = envelope.error
         val message = body?.message ?: "Error del relayer (HTTP ${status.value})"
         return when (body?.code) {
-            "UNAUTHORIZED_APP" -> RaizResult.Error(RaizErrorCode.UNAUTHORIZED, MSG_APP_UNAUTHORIZED)
             // Relayer mal configurado (no es admin) / trustline desautorizada: no reintentar.
             "TRUSTLINE_DEAUTHORIZED", "UNAUTHORIZED_ADMIN" -> RaizResult.Error(RaizErrorCode.UNAUTHORIZED, message)
             "VALIDATION_ERROR", "PAYLOAD_TOO_LARGE" -> RaizResult.Error(RaizErrorCode.PARSE_ERROR, message)
@@ -422,14 +441,16 @@ class RelayerClient(
         private const val HEALTH_CACHE_MS = 30_000L
         private const val HEALTH_REQUEST_TIMEOUT_MS = 10_000L
         private const val HEALTH_CONNECT_TIMEOUT_MS = 5_000L
-        private const val HEADER_APP_KEY = "x-raiz-app-key"
         private const val HEADER_IDEMPOTENCY_KEY = "idempotency-key"
 
         /** Límite del relayer para `idempotency-key` (README § Idempotencia). */
         const val MAX_IDEMPOTENCY_KEY_LENGTH = 64
 
-        /** Mensaje de `401 UNAUTHORIZED_APP` (API key vacía/incorrecta). */
-        const val MSG_APP_UNAUTHORIZED = "La app no está autorizada en el relayer"
+        /**
+         * Texto propio para un `401` del relayer, sea cual sea su `error.code`.
+         * Mapeo defensivo: el relayer es público y hoy no debería emitirlo.
+         */
+        const val MSG_RELAYER_UNAUTHORIZED = "El relayer no autorizó la petición (HTTP 401)"
 
         /** Fallo de transporte que NO es timeout (DNS, conexión rechazada, sin red…). */
         const val MSG_RELAYER_UNREACHABLE = "No se pudo contactar con el relayer"

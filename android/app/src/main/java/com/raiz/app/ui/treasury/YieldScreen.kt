@@ -380,7 +380,7 @@ private fun ActionCard(state: YieldUiState, viewModel: YieldViewModel) {
     val pendingCooldown = state.retryLocked
     val readOnlyText: String? = when {
         !state.relayerConfigured ->
-            "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)"
+            "Relayer no configurado (raiz.relayer.url en local.properties)"
         !state.relayerChecked -> "Comprobando el relayer…"
         !state.vaultEndpoints -> YieldViewModel.readOnlyMessage(state.vaultUnavailableReason)
         else -> null

@@ -57,7 +57,7 @@ data class BecomeMerchantUiState(
     val geocodingLoading: Boolean = false,
     val pickedAddress: String? = null,
     // ── Relayer (D1) ──────────────────────────────────────────────────
-    /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+    /** false si falta `raiz.relayer.url` en local.properties. */
     val relayerConfigured: Boolean = true,
     /** Hash de la tx de registro devuelta por el relayer, solo tras éxito (null si ya estaba registrado). */
     val txHash: String? = null,
@@ -275,7 +275,7 @@ class BecomeMerchantViewModel @Inject constructor(
         if (!s.canSubmit) return
         if (!relayerClient.isConfigured()) {
             _state.update {
-                it.copy(error = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)")
+                it.copy(error = "Relayer no configurado (raiz.relayer.url en local.properties)")
             }
             return
         }

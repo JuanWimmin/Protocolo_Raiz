@@ -562,7 +562,7 @@ private fun DemoNote() {
     }
 }
 
-/** Aviso cuando `raiz.relayer.url` / `raiz.relayer.key` faltan en local.properties. */
+/** Aviso cuando `raiz.relayer.url` falta en local.properties. */
 @Composable
 private fun RelayerNotConfiguredNotice() {
     Row(
@@ -574,7 +574,7 @@ private fun RelayerNotConfiguredNotice() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+            "Relayer no configurado (raiz.relayer.url en local.properties)",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFFB00020),
         )

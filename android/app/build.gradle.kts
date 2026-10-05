@@ -52,11 +52,11 @@ android {
 
         // Relayer admin (D1 SOW): la app ya no lleva la clave privada del admin del
         // protocolo (antes un buildConfigField más aquí); llama por HTTP a
-        // raiz-relayer (ver data/relayer/RelayerClient.kt). La API key
-        // viaja en el APK (no es secreto real, ver README del relayer § modelo de
-        // amenazas) — se rota con `fly secrets set` + republish si hace falta.
+        // raiz-relayer (ver data/relayer/RelayerClient.kt). El relayer es un
+        // servicio público de testnet con cupos del lado del servidor: la app no
+        // lleva ninguna credencial propia para hablar con él, solo la URL (con
+        // default; `raiz.relayer.url` permite apuntar a otro despliegue).
         buildConfigField("String", "RELAYER_URL", "\"${localProp("raiz.relayer.url", "https://raiz-relayer.fly.dev")}\"")
-        buildConfigField("String", "RELAYER_APP_KEY", "\"${localProp("raiz.relayer.key")}\"")
     }
 
     buildTypes {

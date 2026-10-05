@@ -25,7 +25,10 @@ enum class RaizErrorCode {
     ALREADY_VOTED,
     PROPOSAL_CLOSED,
     QUORUM_NOT_REACHED,
-    /** Desde el relayer: `401 UNAUTHORIZED_APP`, `422 TRUSTLINE_DEAUTHORIZED`, `502 UNAUTHORIZED_ADMIN`. */
+    /**
+     * Desde el relayer: `422 TRUSTLINE_DEAUTHORIZED`, `502 UNAUTHORIZED_ADMIN` y cualquier `401`
+     * (mapeo defensivo: el relayer es público y hoy no lo emite; ver `RelayerClient`).
+     */
     UNAUTHORIZED,
     /**
      * Fallo de red o servicio no disponible. Desde el relayer: `RPC_UNREACHABLE`,

@@ -47,7 +47,7 @@ data class ProposalsUiState(
     val barrioName: String = "Mi barrio",
     val voteState: Map<Long, VoteStatus> = emptyMap(),
     val isDemoMode: Boolean = false,
-    /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+    /** false si falta `raiz.relayer.url` en local.properties. */
     val relayerConfigured: Boolean = true,
     // ── Verificación de residente (no registrado on-chain) ─────────────────
     /** Barrio (hex) al que el usuario puede verificarse, o null si no eligió. */
@@ -195,7 +195,7 @@ class ProposalsViewModel @Inject constructor(
             if (!relayerClient.isConfigured()) {
                 _state.update {
                     it.copy(
-                        verifyError = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                        verifyError = "Relayer no configurado (raiz.relayer.url en local.properties)",
                     )
                 }
                 return@launch
