@@ -7,9 +7,9 @@
 
 | | Deliverable (SOW §4.1) | Planned evidence (SOW §6.1) | Evidence delivered | Completed |
 |---|---|---|---|---|
-| **D1** | Admin Relayer Service | Repo + release APK + verification doc + screenshots | [Relayer repo](https://github.com/JuanWimmin/raiz-relayer) · [live service](https://raiz-relayer.fly.dev/v1/health) · [APK 0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) · [how to verify (1 page)](d1/verificacion_apk.md) · screenshots: [merchant registration](d1/capturas/d1_comercio_02.png), [resident](d1/capturas/d1_residente_04.png), [faucet](d1/capturas/d1_faucet_seed_03.png) · [test report](d1/regresion_dispositivo.md) | ✅ Sep 6 (APK published Sep 12; final APK and key rotation: Oct 4) |
+| **D1** | Admin Relayer Service | Repo + release APK + verification doc + screenshots | [Relayer repo](https://github.com/JuanWimmin/raiz-relayer) · [live service](https://raiz-relayer.fly.dev/v1/health) · [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · [how to verify (1 page)](d1/verificacion_apk.md) · screenshots: [merchant registration](d1/capturas/d1_comercio_02.png), [resident](d1/capturas/d1_residente_04.png), [faucet](d1/capturas/d1_faucet_seed_03.png) · [test report](d1/regresion_dispositivo.md) | ✅ Sep 6 (APK published Sep 12; key rotation and final APK with no credentials at all: Oct 4) |
 | **D2** | Real Transaction Linking | Live dashboard + 3 Stellar Expert links | [Live dashboard](https://raizapp.xyz/#demo) · tx [#5](https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc) · [#6](https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1) · [#4](https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3) · [app screenshot](d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png) | ✅ Sep 19 (8 linked executions: Oct 4) |
-| **D3** | SEP-10 + SEP-24 On-Ramp | Demo video + tx hash | [60-second video](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4) · [deposit tx hash](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562) · [app screenshot](d3/capturas/06_deposito_recibido_hash_y_cotizacion.png) | ✅ Oct 3 |
+| **D3** | SEP-10 + SEP-24 On-Ramp | Demo video + tx hash | [60-second video](https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4) · [deposit tx hash](https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357) · [app screenshot](d3/capturas/12_passkey_deposito_recibido_tres_transacciones.png) | ✅ Oct 3 (for every wallet, passkey included: Oct 4) |
 
 ## How to verify it in 10 minutes
 
@@ -17,7 +17,9 @@
 
 The APK used to carry the protocol admin's private key. The app now carries no private key: admin
 operations are signed by a service (the *relayer*) with a new key that has never been in an APK, and
-the app only asks it over HTTPS. The old key has been revoked (step 5).
+the app only asks it over HTTPS. The old key has been revoked (step 5). Since version 0.4.0 the APK
+no longer carries the API key it used to identify itself to the relayer either: there are no
+credentials inside it.
 
 1. **The service is live.** Open <https://raiz-relayer.fly.dev/v1/health>: it answers `"ok":true`
    and `"network":"testnet"`.
@@ -31,7 +33,8 @@ the app only asks it over HTTPS. The old key has been revoked (step 5).
 4. **It works on a real phone.** [Test on a Motorola G04](d1/regresion_dispositivo.md) on Sep 6,
    with version 0.2.0 (the first one without the key): the admin flows (merchant registration,
    resident minting, faucet) go through the relayer, with screenshots and transaction links. The
-   final version 0.3.0 passed a smoke test on the same phone on Oct 4.
+   final version 0.4.0 completed a real deposit on the same phone on Oct 4 (deposit 8 in the table of
+   [`d3/README.md`](d3/README.md#resultado-de-la-prueba-2026-10-04-app-040-motorola-g04--android-14-operado-por-adb)).
 5. **The old key has been revoked.** Open the
    [admin account on Stellar Expert](https://stellar.expert/explorer/testnet/account/GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P):
    under *Signers* there are two keys: `GB42NCO6…` with weight 1 (the new one, used by the relayer)
@@ -55,29 +58,34 @@ the app only asks it over HTTPS. The old key has been revoked (step 5).
 
 ### D3 — A complete SEP-24 deposit from the app (about 3 min)
 
-1. Watch the **[60-second video](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4)**: the app
-   authenticates with the SDF test anchor (SEP-10), opens the anchor's web page for the deposit
-   (SEP-24) and ends on "¡Depósito recibido!" (deposit received) with the transaction hash.
-2. Open that **[hash on Stellar Expert](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562)**
-   (`ae4d3e…df7562`, the same one shown on the green button at the end of the video): **Successful**,
-   a `transfer` of 4.5 USDC from the anchor's account to the phone's wallet. The deposit is 5; the
-   test anchor keeps a 0.5 fee.
+1. Watch the **[60-second video](https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4)**: from a passkey
+   wallet, the app authenticates with the SDF test anchor (SEP-10), opens the anchor's web page for
+   the deposit (SEP-24), receives the payment, converts it to the fund's USDC and leaves it in the
+   wallet. The balance on the home screen goes from 42.418 to 46.902 USDC. Real speed, no cuts.
+2. Open that **[hash on Stellar Expert](https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357)**
+   (`e4603f…fb9357`, the one on the first green button of "¡Depósito recibido!" — deposit received):
+   **Successful**, a `transfer` of 4.5 USDC from the anchor's account to the deposit account of the
+   phone's wallet. The deposit is 5; the test anchor keeps a 0.5 fee.
+3. (Optional) The other two transactions of the same deposit, also shown in the video:
+   [the conversion](https://stellar.expert/explorer/testnet/tx/aacce26a5bb0f2bf52cec6d8893f76ac7a0c48a789a32c74bcf37a28e103561f)
+   into the fund's USDC and [the transfer to the wallet](https://stellar.expert/explorer/testnet/tx/90df876cdb62d505470b24709598cd80f7fc50af247604866d286fd093ceb1d7)
+   (`transfer(…, CAU5…3LCZ, 44839715)`: 4.4839715 USDC to the smart account).
 
 ## Portal fields: what to paste in each
 
 | Deliverable | Field | Link |
 |---|---|---|
 | D1 | Relayer GitHub Repository | https://github.com/JuanWimmin/raiz-relayer |
-| D1 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk |
+| D1 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.4.0/raiz-0.4.0.apk |
 | D1 | APK Decompilation Verification Doc | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/verificacion_apk.md |
 | D1 | Relayer Live Endpoint Screenshot | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/capturas/d1_relayer_health_2026-10-04.png |
 | D1 | Admin Flow Test Screenshots | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/regresion_dispositivo.md |
 | D2 | Dashboard Live URL | https://raizapp.xyz/#demo |
 | D2 | Stellar Expert TX Links (x3) | https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc<br>https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1<br>https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3 |
 | D2 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png |
-| D3 | SEP-24 deposit video (60 s) | https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4 |
-| D3 | Tx hash of the anchor's payment | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 |
-| D3 | Screenshot with the completed deposit | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png |
+| D3 | SEP-24 deposit video (60 s) | https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4 |
+| D3 | Tx hash of the anchor's payment | https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357 |
+| D3 | Screenshot with the completed deposit | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/12_passkey_deposito_recibido_tres_transacciones.png |
 
 ## Redeploy note: the contracts in Annex A are no longer the current ones
 
@@ -103,8 +111,12 @@ network but see no new activity.
   [`d1/README.md`](d1/README.md#rotación-de-la-clave-del-admin-2026-10-04).
 - **Everything runs on testnet.** No real money is involved. If the test network were reset, the
   Stellar Expert links would stop resolving; that is why each deliverable also keeps screenshots.
-- **The APK does carry a relayer application API key.** It is not the admin key and it signs
-  nothing: it identifies the app so that requests can be rate-limited. Details in
+- **The APK carries no credentials at all.** Up to version 0.3.0 it carried a relayer application
+  API key (it signed nothing, but it could be extracted). Since 0.4.0 it does not exist: the relayer
+  is public and protected by server-side quotas. The next step — every request authenticated by the
+  user's own wallet — is planned in detail (WP7 in
+  [`PLAN_CLAUDE_CODE_SOW.md`](../PLAN_CLAUDE_CODE_SOW.md)) and is not part of the SOW. What the APK
+  does contain:
   [`d1/verificacion_apk.md`](d1/verificacion_apk.md#qué-sí-contiene-el-apk-y-por-qué-no-es-un-secreto).
 - **The APK is signed with the Android debug key**, not a store key. That signature only identifies
   the installer: it is not a Stellar key and gives no access to accounts or funds. It is
@@ -114,12 +126,16 @@ network but see no new activity.
   through a versioned file of hashes, and the app labels them "Verificada (archivo)". On the
   landing page, the block's label changes from "en vivo" (live) to "snapshot 4·oct·2026" seven
   days after the last execution (from Oct 11); the 8 links do not change.
-- **D3:** the test anchor's USDC is a different asset from the fund's USDC; the app labels it
-  separately and offers to convert it. Passkey wallets cannot deposit yet: they need SEP-45, which
-  the test anchor already offers but the app does not implement yet. The video was recorded by driving the phone from a computer over a cable (`adb`), not by
-  hand; the app, the anchor and the transactions are real.
+- **D3:** the test anchor's USDC is a different asset from the fund's USDC; the app converts it
+  automatically against a testnet liquidity pool that RAÍZ does not control, and only if the price
+  passes a guard (receiving at least 97 % of what is sent). Passkey wallets deposit through a
+  transit account whose key lives on the user's phone; the direct connection to the anchor (SEP-45)
+  is planned, not done. The videos were recorded by driving the phone from a computer over a cable
+  (`adb`), not by hand; the app, the anchor and the transactions are real. In the videos the
+  keyboard's suggestion strip is masked, because it showed personal data from the phone's autofill.
 - **Maintenance:** on testnet, contract data expires unless someone renews it. It is renewed until
-  early December 2026.
+  early December 2026. The same happens to each passkey wallet's contract 7 days after it is
+  created: the one used in the test was restored and renewed on Oct 4.
 
 ## Detail per deliverable (in Spanish)
 

@@ -69,11 +69,12 @@
 
 **+ Depósito SEP-24 (anchor de prueba).**
 > *"Y el USDC de prueba ya no me lo regala nadie: lo deposito con un anchor real, por los estándares de Stellar."*
-- Solo con wallet **semilla** (passkey muestra "Disponible pronto para passkey (SEP-45)") y red estable.
-- **Inicio → "Depositar · anchor de prueba"** → monto **5** → **"Depositar con el anchor"**. La app crea la trustline, se autentica (SEP-10, firma con tu wallet) y abre la web del anchor en una pestaña → confirma el depósito → vuelve a la app → **"¡Depósito recibido!"** con el hash y el chip **"Ver en Stellar Expert"**.
-- En **Inicio** aparece "● USDC · anchor de prueba: 5 USDC", aparte del USDC del fondo (es otro activo: no sirve para pagar comercios hasta convertirlo, y se dice).
-- **Tap "Convertir"** (extra): vuelve a **"Depositar · anchor de prueba"** → bajo el saldo, card **"Convertir a USDC del fondo"** con "Recibirás ≈ N USDC" → botón púrpura **"Convertir…"** → "Enviando la conversión…". De vuelta en **Inicio**, el saldo USDC subió ≈ N y la línea del anchor desapareció: con eso ya puedes **"Escanear y pagar"**.
-  > *"En testnet el anchor emite otro USDC, así que lo convierto con un path payment que firmo yo, de mi cuenta a mi cuenta. En mainnet este paso no existe: el USDC de Circle es uno solo."*
+- Con cualquier wallet (semilla o **passkey**, desde 0.4.0) y red estable. Dura ≈ 1 minuto.
+- **Inicio → "Depositar · anchor de prueba"** → monto **5** → **"Depositar con el anchor"**. La app se autentica (SEP-10) y abre la web del anchor en una pestaña → rellena el formulario de prueba y envía → vuelve a la app → **"¡Depósito recibido!"** con el hash y el chip **"Ver en Stellar Expert"**.
+- **Sin tocar nada más**, la app convierte el USDC del anchor al USDC del fondo ("✓ Convertido: recibiste N USDC del fondo") y, si la wallet es passkey, lo envía al smart account ("✓ Llegó a tu wallet: N USDC"): tres transacciones, cada una con su chip a Stellar Expert. Con passkey no se pide la huella.
+- **"Volver a la wallet"**: el saldo USDC de Inicio subió ≈ N; con eso ya puedes **"Escanear y pagar"**.
+  > *"En testnet el anchor emite otro USDC, así que la app lo convierte con un path payment contra un pool de liquidez. En mainnet ese paso no existe: el USDC de Circle es uno solo."*
+- Antes de la demo, comprueba el precio del pool: `node scripts/rebalance_anchor_pool.js` (si cotiza por debajo del 97 %, la app no convierte sola y pide un tap; `--apply` lo reequilibra).
   - N es la cotización en vivo de un pool de liquidez de testnet (para 5 USDC: 4,44 el 27-sep, 5,05 el 3-oct). Si conviertes desde la pantalla "¡Depósito recibido!" (la card está bajo el chip del hash), quedan a la vista "✓ Convertido: recibiste N USDC del fondo" y el chip a Stellar Expert.
 - Tarda 1–2 min con el anchor de prueba. Guion de 60 s y plan B detallado: `docs/evidencia_sow/d3/guion_video.md`.
 

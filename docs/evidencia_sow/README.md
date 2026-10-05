@@ -6,9 +6,9 @@
 
 | | Entregable (SOW §4.1) | Evidencia comprometida (SOW §6.1) | Evidencia entregada | Completado |
 |---|---|---|---|---|
-| **D1** | Admin Relayer Service | Repo + APK release + doc de verificación + capturas | [Repo del relayer](https://github.com/JuanWimmin/raiz-relayer) · [servicio en vivo](https://raiz-relayer.fly.dev/v1/health) · [APK 0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) · [cómo verificar (1 página)](d1/verificacion_apk.md) · capturas: [alta de comercio](d1/capturas/d1_comercio_02.png), [residente](d1/capturas/d1_residente_04.png), [faucet](d1/capturas/d1_faucet_seed_03.png) · [informe de la prueba](d1/regresion_dispositivo.md) | ✅ 6-sep (APK publicado el 12-sep; APK final y rotación de la clave: 4-oct) |
+| **D1** | Admin Relayer Service | Repo + APK release + doc de verificación + capturas | [Repo del relayer](https://github.com/JuanWimmin/raiz-relayer) · [servicio en vivo](https://raiz-relayer.fly.dev/v1/health) · [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · [cómo verificar (1 página)](d1/verificacion_apk.md) · capturas: [alta de comercio](d1/capturas/d1_comercio_02.png), [residente](d1/capturas/d1_residente_04.png), [faucet](d1/capturas/d1_faucet_seed_03.png) · [informe de la prueba](d1/regresion_dispositivo.md) | ✅ 6-sep (APK publicado el 12-sep; rotación de la clave y APK final sin ninguna credencial: 4-oct) |
 | **D2** | Real Transaction Linking | Dashboard en vivo + 3 enlaces de Stellar Expert | [Dashboard en vivo](https://raizapp.xyz/#demo) · tx [#5](https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc) · [#6](https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1) · [#4](https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3) · [captura de la app](d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png) | ✅ 19-sep (8 ejecuciones enlazadas: 4-oct) |
-| **D3** | SEP-10 + SEP-24 On-Ramp | Video demo + tx hash | [Video de 60 s](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4) · [tx hash del depósito](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562) · [captura de la app](d3/capturas/06_deposito_recibido_hash_y_cotizacion.png) | ✅ 3-oct |
+| **D3** | SEP-10 + SEP-24 On-Ramp | Video demo + tx hash | [Video de 60 s](https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4) · [tx hash del depósito](https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357) · [captura de la app](d3/capturas/12_passkey_deposito_recibido_tres_transacciones.png) | ✅ 3-oct (para todas las wallets, también passkey: 4-oct) |
 
 ## Cómo verificarlo en 10 minutos
 
@@ -17,6 +17,8 @@
 Antes, el APK llevaba dentro la clave privada del admin del protocolo. Ahora la app no lleva ninguna
 clave privada: las operaciones de admin las firma un servicio (el *relayer*) con una clave nueva que
 nunca estuvo en un APK, y la app solo se lo pide por internet. La clave vieja quedó revocada (paso 5).
+Desde la versión 0.4.0 el APK tampoco lleva la API key con la que se identificaba ante el relayer: no
+hay ninguna credencial dentro.
 
 1. **El servicio está vivo.** Abre <https://raiz-relayer.fly.dev/v1/health>: responde `"ok":true` y
    `"network":"testnet"`.
@@ -28,8 +30,9 @@ nunca estuvo en un APK, y la app solo se lo pide por internet. La clave vieja qu
    Para repetirlo a mano: [cómo verificar, 1 página](d1/verificacion_apk.md).
 4. **Funciona en un teléfono real.** [Prueba en un Motorola G04](d1/regresion_dispositivo.md) del
    6-sep, con la versión 0.2.0 (la primera sin la clave): los flujos de admin (alta de comercio,
-   residente, faucet) pasan por el relayer, con capturas y enlaces. La versión final 0.3.0 pasó una
-   prueba de humo en el mismo teléfono el 4-oct.
+   residente, faucet) pasan por el relayer, con capturas y enlaces. La versión final 0.4.0 completó
+   un depósito real en el mismo teléfono el 4-oct (es el depósito 8 de la tabla de
+   [`d3/README.md`](d3/README.md#resultado-de-la-prueba-2026-10-04-app-040-motorola-g04--android-14-operado-por-adb)).
 5. **La clave vieja quedó revocada.** Abre la
    [cuenta del admin en Stellar Expert](https://stellar.expert/explorer/testnet/account/GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P):
    en *Signers* hay dos claves: `GB42NCO6…` con peso 1 (la nueva, la que usa el relayer) y
@@ -53,29 +56,34 @@ nunca estuvo en un APK, y la app solo se lo pide por internet. La clave vieja qu
 
 ### D3 — Un depósito SEP-24 completo desde la app (≈ 3 min)
 
-1. Mira el **[video de 60 segundos](https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4)**: la app
-   se autentica con el anchor de prueba del SDF (SEP-10), abre su web para el depósito (SEP-24) y
-   termina en "¡Depósito recibido!" con el hash.
-2. Abre ese **[hash en Stellar Expert](https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562)**
-   (`ae4d3e…df7562`, el mismo del botón verde con que termina el video): **Successful**, un `transfer`
-   de 4,5 USDC de la cuenta del anchor a la wallet del teléfono. Se depositan 5; el anchor de prueba
-   descuenta 0,5 de comisión.
+1. Mira el **[video de 60 segundos](https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4)**: desde una
+   wallet passkey, la app se autentica con el anchor de prueba del SDF (SEP-10), abre su web para el
+   depósito (SEP-24), recibe el pago, lo convierte al USDC del fondo y lo deja en la wallet. El saldo
+   de Inicio pasa de 42,418 a 46,902 USDC. Velocidad real, sin cortes.
+2. Abre ese **[hash en Stellar Expert](https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357)**
+   (`e4603f…fb9357`, el del primer botón verde de "¡Depósito recibido!"): **Successful**, un
+   `transfer` de 4,5 USDC de la cuenta del anchor a la cuenta de depósito de la wallet del teléfono.
+   Se depositan 5; el anchor de prueba descuenta 0,5 de comisión.
+3. (Opcional) Las otras dos transacciones del mismo depósito, también en el video:
+   [la conversión](https://stellar.expert/explorer/testnet/tx/aacce26a5bb0f2bf52cec6d8893f76ac7a0c48a789a32c74bcf37a28e103561f)
+   al USDC del fondo y [el envío a la wallet](https://stellar.expert/explorer/testnet/tx/90df876cdb62d505470b24709598cd80f7fc50af247604866d286fd093ceb1d7)
+   (`transfer(…, CAU5…3LCZ, 44839715)`: 4,4839715 USDC al smart account).
 
 ## Campos del portal: qué pegar en cada uno
 
 | Entregable | Campo | Enlace |
 |---|---|---|
 | D1 | Relayer GitHub Repository | https://github.com/JuanWimmin/raiz-relayer |
-| D1 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.3.0/raiz-0.3.0.apk |
+| D1 | Release APK Download Link | https://github.com/JuanWimmin/Protocolo_Raiz/releases/download/v0.4.0/raiz-0.4.0.apk |
 | D1 | APK Decompilation Verification Doc | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/verificacion_apk.md |
 | D1 | Relayer Live Endpoint Screenshot | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/capturas/d1_relayer_health_2026-10-04.png |
 | D1 | Admin Flow Test Screenshots | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d1/regresion_dispositivo.md |
 | D2 | Dashboard Live URL | https://raizapp.xyz/#demo |
 | D2 | Stellar Expert TX Links (x3) | https://stellar.expert/explorer/testnet/tx/c891ec26b29d686912175b162e7f9acd0b462c21969e6f555fbdf02514e24ddc<br>https://stellar.expert/explorer/testnet/tx/76452c3a5262d3c16c196888b5186990d1dec703c451acdb0c9a8019ba3cf6e1<br>https://stellar.expert/explorer/testnet/tx/db0bcd5f7d2eab2cab0aa6dc60d0277161353c3392e497af3d8f2e67ee94eac3 |
 | D2 | Dashboard Screenshot with TX Links | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d2/capturas/10_norte_dashboard_3_ejecuciones_con_tx_links.png |
-| D3 | Video del depósito SEP-24 (60 s) | https://raizapp.xyz/evidencia/d3_deposito_sep24_60s.mp4 |
-| D3 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/ae4d3e434d894924dfef688a7202de436133b7085a413e060d01e07e0edf7562 |
-| D3 | Captura con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/06_deposito_recibido_hash_y_cotizacion.png |
+| D3 | Video del depósito SEP-24 (60 s) | https://raizapp.xyz/evidencia/d3_deposito_passkey_60s.mp4 |
+| D3 | Tx hash del pago del anchor | https://stellar.expert/explorer/testnet/tx/e4603f18ed5906a42672d19b8f78c942758fc8e61367a0ba5b062204d3fb9357 |
+| D3 | Captura con el depósito completado | https://github.com/JuanWimmin/Protocolo_Raiz/blob/main/docs/evidencia_sow/d3/capturas/12_passkey_deposito_recibido_tres_transacciones.png |
 
 ## Nota de redeploy: los contratos del Annex A ya no son los vigentes
 
@@ -100,8 +108,11 @@ red, pero sin actividad nueva.
   que nunca estuvo en un APK. Transacciones y pasos: [`d1/README.md`](d1/README.md#rotación-de-la-clave-del-admin-2026-10-04).
 - **Todo corre en testnet.** No hay dinero real. Si la red de pruebas se reiniciara, los enlaces a
   Stellar Expert dejarían de resolver; por eso cada entregable guarda también capturas.
-- **El APK sí lleva una API key de aplicación del relayer.** No es la clave del admin ni firma nada:
-  identifica a la app para limitar el número de peticiones. Detalle en
+- **El APK no lleva ninguna credencial.** Hasta la versión 0.3.0 llevaba una API key de aplicación
+  del relayer (no firmaba nada, pero se podía extraer). Desde 0.4.0 no existe: el relayer es público
+  y se protege con cupos del lado del servidor. El siguiente paso —que cada petición vaya
+  autenticada por la wallet del usuario— está planificado en detalle (WP7 de
+  [`PLAN_CLAUDE_CODE_SOW.md`](../PLAN_CLAUDE_CODE_SOW.md)) y no forma parte del SOW. Qué contiene el APK:
   [`d1/verificacion_apk.md`](d1/verificacion_apk.md#qué-sí-contiene-el-apk-y-por-qué-no-es-un-secreto).
 - **El APK va firmado con la clave de depuración de Android**, no con una de tienda. Esa firma solo
   identifica al instalador: no es una clave de Stellar ni da acceso a cuentas o fondos. Es
@@ -111,12 +122,17 @@ red, pero sin actividad nueva.
   antiguas enlazan gracias a un archivo versionado de hashes, y la app las rotula "Verificada
   (archivo)". En la landing, la etiqueta del bloque pasa de "en vivo" a "snapshot 4·oct·2026" siete
   días después de la última ejecución (desde el 11-oct); los 8 enlaces no cambian.
-- **D3:** el USDC del anchor de prueba es un activo distinto del USDC del fondo; la app lo rotula
-  aparte y ofrece convertirlo. Las wallets passkey aún no pueden depositar: necesitan SEP-45, que el
-  anchor de prueba ya ofrece pero la app todavía no implementa. El video se grabó operando el teléfono desde el computador por cable (`adb`), no con el
-  dedo; app, anchor y transacciones son reales.
+- **D3:** el USDC del anchor de prueba es un activo distinto del USDC del fondo; la app lo convierte
+  sola contra un pool de liquidez de testnet que RAÍZ no controla, y solo si el precio pasa una
+  guarda (recibir al menos el 97 % de lo enviado). Las wallets passkey depositan a través de una
+  cuenta de tránsito cuya clave vive en el teléfono del usuario; la conexión directa con el anchor
+  (SEP-45) está planificada, no hecha. Los videos se grabaron operando el teléfono desde el
+  computador por cable (`adb`), no con el dedo; app, anchor y transacciones son reales. En los
+  videos está tapada la franja de sugerencias del teclado, que mostraba datos personales del
+  autocompletar del teléfono.
 - **Mantenimiento:** en testnet los datos de los contratos caducan si nadie los renueva. Están
-  renovados hasta comienzos de diciembre de 2026.
+  renovados hasta comienzos de diciembre de 2026. Lo mismo le pasa al contrato de cada wallet
+  passkey a los 7 días de crearse: el de la wallet de la prueba se restauró y se renovó el 4-oct.
 
 ## Detalle por entregable
 

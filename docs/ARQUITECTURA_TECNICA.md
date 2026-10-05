@@ -54,8 +54,8 @@ de Soneso, no un backend de RAÍZ.
 | Token | USDC de **Blend** testnet vía **Stellar Asset Contract (SAC)** | `USDC:GATALTGT…`, SAC `CAQCFVLO…RCJU` — no es un asset propio; se fondea con el faucet de Blend |
 | Yield | **Blend v2 directo tras `YieldAdapter`** (desplegado 2026-07-31) | ver §12 |
 | Backend admin | **`raiz-relayer`** (TypeScript + Fastify + stellar-sdk 17, Fly.io; repo aparte) | firma server-side `register_merchant` / `mint_resident` / faucet / vault; la app lo consume vía `data/relayer/RelayerClient.kt` (D1) |
-| Anchor (on-ramp) | SEP-1 + SEP-10 + SEP-24 (depósito) contra `testanchor.stellar.org` | `data/anchor/AnchorClient.kt` + `ui/deposit/` (D3); solo wallets semilla `G…` |
-| App | Android nativo, Kotlin + Jetpack Compose | minSdk 26, target 35, Material 3 · versión 0.3.0 (`versionCode 3`) |
+| Anchor (on-ramp) | SEP-1 + SEP-10 + SEP-24 (depósito) contra `testanchor.stellar.org` | `data/anchor/AnchorClient.kt` + `ui/deposit/` (D3); todas las wallets (las passkey, a través de su cuenta de depósito: `data/stellar/DepositAccountManager.kt`) |
+| App | Android nativo, Kotlin + Jetpack Compose | minSdk 26, target 35, Material 3 · versión 0.4.0 (`versionCode 4`) |
 | DI | Hilt (Dagger) + KSP | módulo `DataModule` |
 | SDK Stellar | **kmp-stellar-sdk** (Soneso) | 1.6.0 — Horizon, Soroban RPC, `ContractClient`, SEP-05, SEP-01/10/24 |
 | Mapas | Mapbox Maps SDK + maps-compose | 11.x |
@@ -446,12 +446,18 @@ caminos:
 - **Depósito SEP-24 (primario, D3):** pantalla "Depositar" (`ui/deposit/`) →
   `AnchorClient` (SEP-1 `stellar.toml` → SEP-10 challenge firmado con la wallet →
   SEP-24 `deposit/interactive` en una Custom Tab + polling hasta `completed`)
-  contra `testanchor.stellar.org`. Solo wallets semilla `G…` (passkey espera
-  SEP-45). El USDC que llega es **el del anchor de prueba** (otro emisor que el
-  USDC de Blend del fondo): se muestra aparte y, para pagar en comercios, se
-  convierte con "Convertir a USDC del fondo" (`PathPaymentStrictSend` firmada por
-  el usuario, `HorizonStream.quoteStrictSend` / `pathPaymentStrictSend`).
-- **Faucet demo (secundario):** `RelayerClient.faucet` → `POST /v1/faucet` del
+  contra `testanchor.stellar.org`. Para todas las wallets desde 0.4.0: una wallet
+  passkey (`C…`) no puede firmar SEP-10 clásico, así que opera a través de su
+  *cuenta de depósito* — una cuenta clásica generada y guardada cifrada en el
+  teléfono (`DepositAccountManager`) — hasta que la app implemente SEP-45. El
+  USDC que llega es **el del anchor de prueba** (otro emisor que el USDC de Blend
+  del fondo): la app lo convierte sola con una `PathPaymentStrictSend`
+  (`HorizonStream.quoteStrictSend` / `pathPaymentStrictSend`) si la cotización
+  entrega al menos el 97 % de lo enviado (`SwapMath.quoteGuard`) y, en passkey,
+  lo envía al smart account con `transfer` del SAC (`SorobanClient.sacTransfer`).
+  El cierre es reanudable: mira los saldos on-chain y resuelve por hash la
+  transacción que hubiera quedado en vuelo (`DepositPlan`).
+- **Faucet demo (contingencia):** `RelayerClient.faucet` → `POST /v1/faucet` del
   relayer, que envía 20 USDC de Blend firmando server-side (`payment` clásico a
   cuentas `G…`, `transfer` del SAC a smart accounts `C…`). Ya no existe
   `sendUsdcFromAdmin` en la app.
@@ -531,11 +537,12 @@ montos como `Long` stroops; `BytesN<32>` como `ByteArray` de 32 (helper
 - **Implementado (D3) — anchors SEP-1 / SEP-10 / SEP-24 (depósito):** contra el
   anchor de prueba del SDF (`testanchor.stellar.org`), con `kmp-stellar-sdk`
   1.6.0 (`data/anchor/AnchorClient.kt`, `ui/deposit/`). SEP-10 firma el challenge
-  con la wallet semilla (JWT solo en memoria); SEP-24 abre la web interactiva en
-  una Custom Tab y sondea hasta `completed`. Solo wallets semilla `G…`: las
-  passkey (`C…`) esperan SEP-45. El USDC del anchor es otro activo que el USDC
-  de Blend del fondo; se convierte con una `PathPaymentStrictSend` firmada por el
-  usuario ("Convertir a USDC del fondo").
+  con la wallet semilla o, en passkey, con su cuenta de depósito (JWT solo en
+  memoria); SEP-24 abre la web interactiva en una Custom Tab y sondea hasta
+  `completed`. El USDC del anchor es otro activo que el USDC de Blend del fondo;
+  la app lo convierte sola con una `PathPaymentStrictSend` (guarda de precio del
+  97 %) y, en passkey, lo reenvía al smart account. La autenticación directa del
+  smart account (SEP-45) está planificada (WP7).
 - **Pendiente:** **SEP-38** (quotes), retiro (off-ramp), **SEP-12** (KYC),
   **SEP-45** (auth de smart accounts) y anchors de producción. El faucet demo
   (20 USDC de Blend) sigue disponible vía `raiz-relayer` como camino secundario.
@@ -608,8 +615,9 @@ próximo re-deploy (H2).
   flujos de admin pasan por `raiz-relayer` y el APK release no lleva claves
   privadas; **D2** 8 ejecuciones del Treasury enlazadas a su transacción real
   en Stellar Expert (app y landing); **D3** depósito SEP-10 + SEP-24 completo
-  desde la app contra el anchor de prueba, más la conversión al USDC del fondo.
-- **85 tests de contratos en verde** (CI en GitHub Actions) + 61 tests JVM de la app.
+  desde la app contra el anchor de prueba para todas las wallets, que termina
+  en USDC del fondo (conversión automática + envío al smart account en passkey).
+- **85 tests de contratos en verde** (CI en GitHub Actions) + 131 tests JVM de la app.
 
 **Limitaciones conocidas:**
 - **Clave admin única:** la autoridad admin del protocolo sigue siendo una sola

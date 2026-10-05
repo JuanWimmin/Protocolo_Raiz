@@ -1,7 +1,7 @@
 # 🌱 RAÍZ
 > **Tu paga, el barrio crece.**
 
-🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.3.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.3.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo](https://www.youtube.com/watch?v=y-9pglgVnnA)
+🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo](https://www.youtube.com/watch?v=y-9pglgVnnA)
 
 **RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo el estado **on-chain** y sin que nadie tenga la llave del fondo. El único servicio propio es el relayer [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer), que firma las operaciones de admin para que el APK no lleve ninguna clave privada.
 
@@ -101,6 +101,7 @@ graph TD
 | `HorizonStream` | Balances por asset (polling + `distinctUntilChanged`), trustlines, friendbot, cotización y envío de path payments (D3). |
 | `RelayerClient` (`data/relayer`) | Cliente HTTP del relayer admin (D1): alta de comercio, soulbound de residente, faucet de USDC y vault. La app no firma nada como admin. |
 | `AnchorClient` (`data/anchor`) | SEP-1 (`stellar.toml`), SEP-10 (JWT solo en memoria) y depósito SEP-24 contra el anchor de prueba (D3). |
+| `DepositAccountManager` + `DepositPlan` (`data/stellar`) | Quién firma un depósito y a dónde va el dinero: en wallets passkey, una *cuenta de depósito* generada y guardada cifrada en el teléfono recibe del anchor, convierte y reenvía al smart account. Decisiones puras y testeadas (tramos, guarda de precio, transacción en vuelo). |
 | `ExecutionHashStore` (`data/local`) | Hash real de cada ejecución del Treasury (D2): el capturado al firmar, el del evento `execution` y el archivo `assets/execution_hashes.json`. |
 | `BlendClient` | Lecturas puras del yield: `get_reserve` del pool de Blend + `apy_hint` del adapter. Alimenta la pantalla Yield ("Pool Blend v2 · USDC", APY estimado · variable), sin API key. |
 | `RoleResolver` | Deriva el rol on-chain (residente → comerciante → turista). |
@@ -190,7 +191,8 @@ Para wallets nuevas, un banner guía el alta on-chain en 3 pasos (re-chequea tra
 ¿cuenta existe?      ── no ─▶ FUND_XLM        → friendbot fondea XLM (testnet)
 ¿tiene trustline USDC? ─ no ─▶ ACTIVATE_TRUST  → ChangeTrust firmado por el usuario
 ¿balance USDC == 0?  ── sí ─▶ REQUEST_USDC    → "Consigue USDC": depósito SEP-24 con el anchor de prueba
-                                                 (SEP-10 + SEP-24, D3) o faucet "USDC demo (Blend)" vía relayer
+                                                 (SEP-10 + SEP-24, D3) para wallets semilla y passkey; el
+                                                 faucet "USDC demo" del relayer queda como contingencia
    └─ todo ok ─▶ DONE (banner oculto)
 ```
 
@@ -244,7 +246,7 @@ resolve(address):
 | **Blend v2** | ✅ Directo vía `YieldAdapter` | El fondo rinde como prestamista puro en el pool USDC de Blend v2 (TestnetV2), sin vault intermediario ni API key. Cuentas fondeadas con el faucet de Blend. (Pre-F1 se usaba el vault DeFindex — eliminado el 2026-07-31.) |
 | **Mapbox** | ✅ | Mapa de comercios del barrio sobre Maps SDK 11.x + maps-compose. |
 | **Passkey / WebAuthn (smart accounts)** | ✅ Implementado y demostrado | `OZSmartAccountKit` de Soneso (contrato OpenZeppelin). Infra pública testnet: **relayer** (patrocina fees de deploy), **indexer** y **verifier** WebAuthn. Requiere Android 9 (API 28). |
-| **Anchors SEP (on/off ramp)** | 🟢 **SEP-10 + SEP-24 implementados** (en `main` desde el 27-sep; **probado en Motorola G04 el 3-oct**, evidencia en `docs/evidencia_sow/d3/`) | Depósito interactivo contra el **anchor de prueba del SDF** (`testanchor.stellar.org`, D3 del SOW): SEP-1 (`stellar.toml`) → SEP-10 (challenge firmado con la wallet semilla, JWT solo en memoria) → SEP-24 (`deposit/interactive` en Custom Tab + polling hasta `completed`), con la trustline creada por la app. El USDC que llega es **el del anchor** (rotulado "USDC · anchor de prueba", no se mezcla con el USDC de Blend del fondo). **+ Conversión al USDC del fondo vía pool de liquidez de testnet** (en `main` desde el 3-oct, probada en dispositivo): "Convertir a USDC del fondo" cotiza en Horizon (`/paths/strict-send`) y envía una `PathPaymentStrictSend` firmada por el usuario, con destino su propia cuenta y tolerancia del 1 %, para que lo depositado sirva para pagar en comercios; en mainnet ese paso no existe (el USDC de Circle es uno solo). Pantalla "Depositar" desde Inicio; `data/anchor/AnchorClient.kt`, `ui/deposit/`, `data/stellar/SwapMath.kt`. Passkey (C…) queda para SEP-45. **Roadmap:** SEP-38 (quotes), retiro, y anchors de producción como **MoneyGram Access** (efectivo) o **Vibrant/Anclap** (LatAm). El faucet de Blend sigue como "USDC demo". |
+| **Anchors SEP (on/off ramp)** | 🟢 **SEP-10 + SEP-24 implementados** (en `main` desde el 27-sep; **probado en Motorola G04 el 3-oct y, para todas las wallets, el 4-oct**; evidencia en `docs/evidencia_sow/d3/`) | Depósito interactivo contra el **anchor de prueba del SDF** (`testanchor.stellar.org`, D3 del SOW): SEP-1 (`stellar.toml`) → SEP-10 (challenge firmado con la wallet semilla o, en una wallet passkey, con su *cuenta de depósito*; JWT solo en memoria) → SEP-24 (`deposit/interactive` en Custom Tab + polling hasta `completed`), con la trustline creada por la app. El USDC que llega es **el del anchor** (rotulado "USDC · anchor de prueba", no se mezcla con el USDC de Blend del fondo). **+ Conversión al USDC del fondo vía pool de liquidez de testnet** (en `main` desde el 3-oct; **automática desde 0.4.0**, con guarda de precio del 97 %): "Convertir a USDC del fondo" cotiza en Horizon (`/paths/strict-send`) y envía una `PathPaymentStrictSend` firmada por el usuario, con destino su propia cuenta y tolerancia del 1 %, para que lo depositado sirva para pagar en comercios; en mainnet ese paso no existe (el USDC de Circle es uno solo). Pantalla "Depositar" desde Inicio; `data/anchor/AnchorClient.kt`, `ui/deposit/`, `data/stellar/SwapMath.kt`. **Wallets passkey (C…), desde 0.4.0:** depositan a través de una cuenta de depósito del propio teléfono, que recibe del anchor, convierte y envía el USDC del fondo al smart account con un `transfer` del SAC (sin huella); la conexión directa con SEP-45 está planificada (WP7). **Roadmap:** SEP-38 (quotes), retiro, y anchors de producción como **MoneyGram Access** (efectivo) o **Vibrant/Anclap** (LatAm). El faucet del relayer queda como contingencia ("USDC demo") si el anchor no responde o el pool no tiene precio. |
 
 ---
 
@@ -254,13 +256,17 @@ resolve(address):
 - **Biometría al confirmar pago** — la autorización del usuario se exige antes de firmar.
 - **Soulbound NO transferible** — Governance jamás implementa `transfer()`; el voto no se puede comprar ni ceder (es la tesis del proyecto).
 - **Montos siempre en stroops** (`i128`/`Long`) — sin floats, sin pérdida de precisión.
-- **Secrets fuera del repo** — las 2 claves de las wallets demo (turista y residente, **solo en el build debug**), el token de Mapbox, la config de passkey y la API key del relayer (`raiz.relayer.key`) viven en `local.properties` (no versionado), inyectados como `BuildConfig`. **La autoridad admin del protocolo no está en la app**: vive en el servicio [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (D1 del SOW) y el APK release no lleva ninguna clave privada `S…`.
+- **Secrets fuera del repo** — las 2 claves de las wallets demo (turista y residente, **solo en el build debug**), el token de Mapbox y la config de passkey viven en `local.properties` (no versionado), inyectados como `BuildConfig`. **La autoridad admin del protocolo no está en la app**: vive en el servicio [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (D1 del SOW). Desde **0.4.0** el APK release no lleva **ninguna credencial**: ni claves privadas `S…` ni API key del relayer.
 - **Seed cifrada** en el dispositivo con `EncryptedSharedPreferences` + clave del Android Keystore.
 - **Validación de inputs** en cada escritura on-chain (`require_auth`, montos > 0, `tip_bps ≤ 10_000`, comercio `verified`, residencia del barrio correcto, sin doble voto, stock/puntos suficientes).
 
 ### ✅ Resuelto en 0.2.0 (D1 del SOW): la clave del admin ya no va en el APK
 
-Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_SECRET`) para demostrar el alta de comercios y el mint de residentes sin coordinación offline. Desde **0.2.0** esa autoridad vive en [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (TypeScript + Fastify, open source): la app hace HTTP con una API key de aplicación (`raiz.relayer.key`) y el relayer firma server-side el **registro de comercios**, el **soulbound de residente**, el **faucet** de USDC y el **vault** de yield. La app sigue firmando con la wallet del usuario todo lo demás (pagos, votos, propuestas, canjes). Verificación por descompilación (0 claves `S…` en el APK release): `docs/evidencia_sow/d1/verificacion_apk.md`. La clave que iba embebida hasta 0.1.0 se revocó on-chain el 2026-10-04 (rotación documentada en `docs/evidencia_sow/d1/README.md`).
+Hasta 0.1.0 la clave del admin iba embebida en el APK (`BuildConfig.DEMO_ADMIN_SECRET`) para demostrar el alta de comercios y el mint de residentes sin coordinación offline. Desde **0.2.0** esa autoridad vive en [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer) (TypeScript + Fastify, open source): la app hace HTTP al relayer y este firma server-side el **registro de comercios**, el **soulbound de residente**, el **faucet** de USDC y el **vault** de yield. La app sigue firmando con la wallet del usuario todo lo demás (pagos, votos, propuestas, canjes). Verificación por descompilación (0 claves `S…` en el APK release): `docs/evidencia_sow/d1/verificacion_apk.md`. La clave que iba embebida hasta 0.1.0 se revocó on-chain el 2026-10-04 (rotación documentada en `docs/evidencia_sow/d1/README.md`).
+
+### ✅ 0.4.0: el APK tampoco lleva la API key del relayer ("zero secrets")
+
+De 0.2.0 a 0.3.0 la app se identificaba ante el relayer con una API key de aplicación que viajaba en el APK (no firmaba nada, pero era una credencial extraíble). Desde **0.4.0** no existe: el relayer (0.3.0) es **público** y se protege con cupos del lado del servidor (por IP y minuto, por IP y día, por dirección destino y un tope global diario), y cada operación está acotada: el faucet entrega un monto fijo de prueba (20 USDC, como mucho una vez cada 10 minutos por dirección) y el alta de comercio, el soulbound de residente y el vault solo se firman si las reglas de los contratos lo permiten. El siguiente paso, ya planificado en detalle, es que cada petición vaya autenticada por la wallet del usuario (SEP-10 para cuentas clásicas y SEP-45 para wallets passkey): `docs/PLAN_CLAUDE_CODE_SOW.md` § WP7.
 
 ---
 
@@ -340,11 +346,10 @@ cd android
 Crea `android/local.properties` con tus claves (no se versiona). Solo **nombres**, sin valores:
 
 ```properties
-# Relayer admin (raiz-relayer, D1 del SOW). La KEY es OBLIGATORIA para los 4 flujos que
-# firma el relayer (alta de comercio, verificar residente, faucet USDC y vault de yield):
-# sin ella esos botones aparecen deshabilitados con aviso. La URL es opcional
-# (default https://raiz-relayer.fly.dev).
-raiz.relayer.key=
+# Relayer admin (raiz-relayer, D1 del SOW): firma el alta de comercio, verificar residente,
+# el faucet de contingencia y el vault de yield. Solo se configura la URL, y es opcional
+# (default https://raiz-relayer.fly.dev). Desde 0.4.0 la app NO lleva API key: el relayer
+# es público y se protege con cupos del lado del servidor.
 raiz.relayer.url=
 
 # Claves demo (secrets S...) de las wallets turista y residente, SOLO para el build debug
@@ -370,13 +375,13 @@ passkey.rp.name=RAIZ
 ### ✅ Hecho (código corriendo, no promesas)
 
 - **5 contratos** desplegados en testnet + **85 tests** pasando (CI en GitHub Actions).
-- **App Android 0.3.0** con **7 pantallas**: Wallet (+ RAÍZ Passport), Pagar, Premios, Mapa (Mapbox), Propuestas y Dashboard de transparencia, Tesorería/Yield y Perfil — más **Depositar** (SEP-24), onboarding (Welcome / crear / importar / passkey / elegir rol) y alta de comercio.
+- **App Android 0.4.0** con **7 pantallas**: Wallet (+ RAÍZ Passport), Pagar, Premios, Mapa (Mapbox), Propuestas y Dashboard de transparencia, Tesorería/Yield y Perfil — más **Depositar** (SEP-24), onboarding (Welcome / crear / importar / passkey / elegir rol) y alta de comercio.
 - **Flujos verificados end-to-end on-chain:** pago con Tip Barrio + puntos, votación, ejecución trustless de propuesta, alta de comercio, onboarding de wallet nueva con rampa de USDC.
 - **F1 — Independencia de DeFindex (2026-07-31):** el fondo rinde **directo en Blend v2** vía el contrato propio `yield_adapter` (verificado on-chain: 0.2 USDC del Centro Histórico en bTokens, APY calculado on-chain, colchón líquido 20%). La fuente de yield es intercambiable — primer paso del roadmap **F1–F6** hacia el protocolo de ahorro comunitario (`docs/NuevaPropuesta/` + `docs/ESTADO_PROYECTO_2026-07-31.md`).
 - **Sprint SOW Instaward (sep–oct 2026)**, evidencia en [`docs/evidencia_sow/`](docs/evidencia_sow/README.md):
-  - **D1 — Admin relayer:** la clave del admin salió del APK; la firma el servicio open source [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer). El APK release tiene 0 claves privadas, verificable por descompilación (`scripts/verify_apk_no_secrets.py`).
+  - **D1 — Admin relayer:** la clave del admin salió del APK; la firma el servicio open source [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer). El APK release tiene 0 claves privadas, verificable por descompilación (`scripts/verify_apk_no_secrets.py`), y desde 0.4.0 tampoco lleva API key del relayer.
   - **D2 — Transacción real por ejecución:** el Dashboard (app) y la landing enlazan cada `Execution` a su transacción en Stellar Expert (hash capturado al firmar + eventos `execution` vía `getEvents` + `assets/execution_hashes.json`); 8 ejecuciones verificadas. El campo on-chain `tx_hash` es un ID de auditoría (sha256), no un hash de transacción.
-  - **D3 — SEP-10 + SEP-24:** depósito interactivo desde la app contra el anchor de prueba del SDF, más la conversión al USDC del fondo.
+  - **D3 — SEP-10 + SEP-24:** depósito interactivo desde la app contra el anchor de prueba del SDF **para todas las wallets** (semilla y passkey); la app convierte sola al USDC del fondo y el depósito termina en saldo con el que sí se paga.
 - **RBAC dinámico** (`RoleResolver` on-chain) + **seguridad fase 1** (bloqueo biométrico/PIN, seed cifrada).
 - **Passkey smart-wallet** (`OZSmartAccountKit` de Soneso) **implementado y demostrado**.
 
@@ -387,7 +392,7 @@ El roadmap canónico es **F1–F6** de la propuesta de protocolo de ahorro (`doc
 Pendientes de mainnet (subordinados al roadmap F1–F6; F3 elimina el primero y el KYC de residencia):
 
 - **Admin → custodia sin clave única** (multisig 2-de-3 ya preparado en `scripts/setup_admin_multisig.sh`; smart account comunal en F3) — requisito de **mainnet**.
-- **Anchors SEP de producción**: SEP-10/24 ya funcionan contra el anchor de prueba del SDF (D3); faltan SEP-38 (quotes), retiro, SEP-45 para passkey y anchors reales fiat↔USDC (MoneyGram, Vibrant/Anclap).
+- **Anchors SEP de producción**: SEP-10/24 ya funcionan contra el anchor de prueba del SDF (D3); faltan SEP-38 (quotes), retiro, SEP-45 (autenticación directa de las wallets passkey, que hoy depositan a través de una cuenta de tránsito; plan en WP7) y anchors reales fiat↔USDC (MoneyGram, Vibrant/Anclap).
 - **Passkey con dominio propio** — hoy `github.io` choca con la Public Suffix List para el `rpId`; se resuelve con dominio propio + `assetlinks.json`.
 - **KYC de residencia (SEP-12)** en vez del mint manual del admin.
 - **IPFS** para las imágenes de premios (hoy URLs).

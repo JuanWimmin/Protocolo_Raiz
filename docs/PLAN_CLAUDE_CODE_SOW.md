@@ -240,6 +240,16 @@ Lee docs/REVISION_2026-08-27.md hallazgos H3, H7, H9, H10-1, H10-2 y docs/PLAN_C
 
 ---
 
+## Nota del 2026-10-04 — lo que se hizo fuera de los WP originales (app 0.4.0)
+
+- **"Zero secrets":** la app dejó de llevar la API key del relayer y el relayer 0.3.0 pasó a ser
+  público con cupos del lado del servidor. La autenticación por wallet queda como WP7 (abajo).
+- **D3 para todas las wallets:** las wallets passkey depositan a través de una cuenta de depósito
+  del teléfono, la conversión al USDC del fondo es automática con guarda de precio y el faucet del
+  relayer queda como contingencia. Decisiones, pruebas, revisión y límites:
+  `docs/evidencia_sow/d3/README.md`. Cuando la app implemente SEP-45 (WP7, fase 7b), esa cuenta de
+  depósito deja de hacer falta: el smart account se autenticará directamente con el anchor.
+
 ## WP7 — Autenticación por wallet en el relayer: SEP-10 + SEP-45 (después del SOW; 2–3 días)
 
 > Añadido el 2026-10-04. **Estado: planificado, sin empezar.** Es el sucesor de la API key estática que

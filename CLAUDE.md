@@ -299,6 +299,31 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   **si se pierde, se pierde el admin** (respaldarla). NUNCA volver a dar peso a la clave maestra:
   está filtrada. Detalle y transacciones: `docs/evidencia_sow/d1/README.md`.
 
+- **La instancia del smart account de una wallet passkey nace con TTL de 7 días (medido 2026-10-04).**
+  La wallet passkey del Motorola (`CAU5FLVT…W53LCZ`, creada el 27-sep) tenía el 4-oct su entrada de
+  instancia archivada (`getLedgerEntries` la devuelve con `liveUntilLedgerSeq = 0`). Recibir USDC no
+  la necesita (un `transfer` del SAC a un `C…` archivado entra igual), pero pagar sí: `__check_auth`
+  corre en ese contrato. Remedio aplicado: `RestoreFootprint` de la instancia +
+  `ExtendFootprintTtl` (+1 500 000 ledgers) de la instancia y de su código wasm `86b49fe0…`, pagados
+  por una cuenta desechable (txs `df2c460f…` y `15a95ea9…`; viven hasta el ledger 6 528 492 ≈ fin de
+  dic-2026). **Toda wallet passkey que pase más de 7 días sin usarse necesita lo mismo antes de
+  pagar** (no está probado que el flujo de pago de la app tolere el auto-restore). Deuda de H2.
+
+- **El pool de liquidez USDC-anchor ↔ USDC-fondo es poco profundo (≈ 2 000 por lado).** Cada depósito
+  SEP-24 de 5 USDC empeora su precio ≈ 0,45 puntos, y la app solo convierte SOLA si la cotización
+  entrega ≥ 97 % (`SwapMath.AUTO_CONVERT_MIN_RATIO_BPS`); entre 50 % y 97 % pide un tap y por debajo
+  del 50 % solo ofrece el faucet de contingencia. `node scripts/rebalance_anchor_pool.js` muestra
+  reservas y cotización; con `--apply` lo devuelve al 100,5 % usando una cuenta desechable y el faucet
+  de Blend (1 000 USDC por cuenta nueva; ninguna clave del proyecto). Correrlo antes de una demo y
+  después de una tanda de pruebas de depósito.
+
+- **Grabaciones de la web del anchor: el teclado enseña datos personales.** Al rellenar el formulario
+  de la Custom Tab, la barra de autocompletar de Chrome y la fila de predicciones del teclado muestran
+  por instantes el nombre y los correos guardados en el teléfono. Los videos del 3-oct se publicaron
+  así y se re-publicaron tapados el 4-oct. Antes de versionar o publicar cualquier grabación, pasarla
+  por `python scripts/mask_video_autofill.py ENTRADA SALIDA` (detecta los tramos con teclado sobre la
+  Custom Tab, tapa las dos franjas y verifica el resultado; geometría de una pantalla 720×1612).
+
 ## Estado actual (2026-10-04)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
@@ -308,8 +333,10 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
 - **D1 (WP1):** relayer público en https://github.com/JuanWimmin/raiz-relayer (TS + Fastify +
   stellar-sdk 17, 150 tests, integración real en testnet). La app (0.2.0) consume el relayer vía
   `data/relayer/RelayerClient` y el APK release **no lleva ninguna clave `S…`** (evidencia en
-  `docs/evidencia_sow/d1/`). Config de la app: `raiz.relayer.key` (obligatoria) y
-  `raiz.relayer.url` (default `https://raiz-relayer.fly.dev`) en `android/local.properties`.
+  `docs/evidencia_sow/d1/`). Config de la app: solo `raiz.relayer.url` (default
+  `https://raiz-relayer.fly.dev`) en `android/local.properties`. **Desde la app 0.4.0 no existe
+  `raiz.relayer.key`**: el relayer 0.3.0 (200 tests) es público y se protege con cupos por IP, por
+  dirección y globales; la autenticación por wallet (SEP-10 + SEP-45) es WP7.
   **Relayer desplegado en Fly** (https://raiz-relayer.fly.dev, región `iad`, una sola máquina) y
   **regresión en Motorola G04 aprobada** el 6-sep (`docs/evidencia_sow/d1/regresion_dispositivo.md`).
 - **D2 (WP2):** código hecho el 12-sep (rama `worktree-wp2-tx-hash-real`): `SorobanClient.executionEvents`
@@ -350,8 +377,8 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   aplicada (reanudación rastreada y cancelable, tope de una re-autenticación, 401 → sesión caducada, toml
   y URLs solo `https`, coma decimal, revalidación del monto) — detalle en `docs/evidencia_sow/d3/README.md`. **Alcance decidido:** el USDC del anchor (issuer `GBBD47IF…LFLA5`)
   es OTRO asset que el USDC de Blend del fondo — siempre rotulado "USDC · anchor de prueba", nunca
-  sumado al BalanceCard, no sirve para pagar comercios hasta convertirlo; wallets passkey (C…) ven "Disponible pronto
-  para passkey (SEP-45)". Sonda del 27-sep: JWT SEP-10 dura 24 h, el token de la URL interactiva 10 min,
+  sumado al BalanceCard, no sirve para pagar comercios hasta convertirlo; hasta 0.3.0 las wallets passkey (C…) veían
+  "Disponible pronto para passkey (SEP-45)" (desde 0.4.0 depositan: ver el punto siguiente). Sonda del 27-sep: JWT SEP-10 dura 24 h, el token de la URL interactiva 10 min,
   depósito USDC mín 1 / máx 10, sin trustline el anchor deja la tx en `pending_trust`. **3-oct — prueba en
   dispositivo hecha** con una wallet semilla nueva (`GABZUFA6…GTISJ3`): depósito SEP-24 real (5 → 4,5 USDC,
   el anchor cobra 0,5; tx `ae4d3e43…df7562`), video de 61 s y 9 capturas en
@@ -365,18 +392,36 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   `invoke_host_function` (transfer del SAC), no con `payment`; su web NO precarga el monto; pasa a
   `completed` en ≈ 5 s. Evidencia, flujo real, hallazgos, resultado de la prueba y hashes:
   `docs/evidencia_sow/d3/README.md`; guion y tiempos de la toma: `docs/evidencia_sow/d3/guion_video.md`.
+- **D3 para TODAS las wallets + "zero secrets" (app 0.4.0, 4-oct).** Una wallet passkey deposita a
+  través de una **cuenta de depósito**: cuenta clásica generada en el teléfono y guardada cifrada en
+  `raiz_deposit` (`SecureWalletStore`; el logout NO la borra; excluida de backups), ligada a su `C…`.
+  Ella firma SEP-10/SEP-24, recibe del anchor, convierte y reenvía TODO al smart account con
+  `transfer` del SAC (`SorobanClient.sacTransfer`); el smart account solo recibe (sin huella). La
+  conversión es automática en todas las wallets con guarda de precio (≥ 97 % sola; 50–97 % con tap;
+  < 50 % bloqueada + faucet de contingencia). Piezas: `data/stellar/DepositAccountManager.kt`
+  (ruta, diario de la tx en vuelo, candado único del cierre), `DepositPlan.kt` (decisiones puras),
+  `SwapMath.kt` (guardas, `autoDestMin`/`manualDestMin`), `DepositViewModel.settle` (tx en vuelo →
+  foto de la cuenta → tramo; reanudable por hash; vigencias con la hora de la red, no la del
+  teléfono). El faucet del relayer queda como contingencia (anchor caído o pool sin precio; en el
+  banner solo en debug). La app ya no lleva API key del relayer. 131 tests JVM. **Probado en el
+  Motorola G04 el 4-oct**: 8 depósitos reales (7 passkey, 1 semilla; dos con la app matada a mitad;
+  uno con el APK release), revisión adversarial aplicada (11 defectos), video de 60 s a velocidad
+  real y 11 capturas. La rama passkey NUNCA debe usar `WalletManager.currentKeyPair()` (cae a la
+  clave demo en debug). SEP-45 (autenticación directa del smart account) sigue pendiente: WP7.
+  Detalle, hashes y límites: `docs/evidencia_sow/d3/README.md`.
 - **WP4 — paquete de evidencia: CERRADO el 4-oct.** Página principal `docs/evidencia_sow/README.md`
   (+ `README.en.md`): tabla entregable → evidencia, verificación en 10 minutos, campos del portal y nota
-  de redeploy. APK final **0.3.0** (D1 + D2 + D3) en el Release `v0.3.0` (SHA-256 `50373942…d771f56c`,
-  0 claves privadas: `scripts/verify_apk_no_secrets.py` + workflow `verify-apk`; guía de 1 página en
-  `d1/verificacion_apk.md`). Los 19 hashes de la evidencia se verificaron en Horizon y en Stellar Expert
+  de redeploy. APK vigente **0.4.0** en el Release `v0.4.0` (SHA-256 `296f30d8…802569d0`; el 0.3.0,
+  `50373942…d771f56c`, aún llevaba la API key del relayer), 0 claves privadas y ninguna credencial:
+  `scripts/verify_apk_no_secrets.py` + workflow `verify-apk`; guía de 1 página en
+  `d1/verificacion_apk.md`. Los 19 hashes de la evidencia se verificaron en Horizon y en Stellar Expert
   en incógnito. Hallazgo del día: el APK 0.1.0, aún descargable y enlazado desde la landing, llevaba la
   clave maestra del admin vigente → **clave rotada on-chain** (ver gotcha), relayer 0.2.0 desplegado,
-  asset 0.1.0 retirado y landing enlazando al 0.3.0. Documentation sync: la spec se igualó a los
+  asset 0.1.0 retirado y landing enlazando al APK vigente. Documentation sync: la spec se igualó a los
   contratos desplegados (la auditoría no halló drift de código) y README, ARQUITECTURA, presentaciones,
-  landing y slash commands quedaron al día. El video de D3 se sirve también desde
+  landing y slash commands quedaron al día. Los videos de D3 se sirven también desde
   `raizapp.xyz/evidencia/` (GitHub no reproduce el .mp4 en línea): esa carpeta del repo Pages se copia
-  de `docs/evidencia_sow/d3/video/`. Pendiente menor (WP6): `.claude/agents/*` desactualizados, mapeos de
+  de `docs/evidencia_sow/d3/video/` (el vigente es `d3_deposito_passkey_60s.mp4`). Pendiente menor (WP6): `.claude/agents/*` desactualizados, mapeos de
   error del cliente y comentarios viejos en `SorobanClient.kt`.
 - F2 (`savings_circle`) queda EN PAUSA hasta entregar la evidencia del SOW; solo su spec
   puede avanzar (WP5).
@@ -392,9 +437,13 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
 
 ### Próximo paso
 
-- **Sprint SOW cerrado (WP0–WP4, 4-oct).** Queda del lado del usuario: pegar en el portal los campos
-  de `docs/evidencia_sow/README.md` (en D1, el APK 0.3.0 y la captura del health del 4-oct) y avisar a
-  la Ambassador Lead. Después: **WP5 — spec de F2 `savings_circle`** y **WP6**
-  (lote H3/H7/H9/H10 y TTL on-touch en el próximo redeploy). Recordatorio operativo: renovar el TTL de
-  las entradas de los contratos antes de diciembre de 2026 y respaldar la clave `raiz-admin-signer`.
+- **Sprint SOW cerrado (WP0–WP4, 4-oct), con la app 0.4.0 (D3 para todas las wallets, sin API
+  key).** Queda del lado del usuario: pegar en el portal los campos de `docs/evidencia_sow/README.md`
+  (en D1, el APK 0.4.0 y la captura del health del 4-oct; en D3, el video passkey y su tx) y avisar a
+  la Ambassador Lead. Después: **WP7 — autenticación por wallet en el relayer (SEP-10 + SEP-45)**,
+  planificado en detalle en `docs/PLAN_CLAUDE_CODE_SOW.md` (con SEP-45 en la app, la cuenta de
+  depósito sobra), **WP5 — spec de F2 `savings_circle`** y **WP6** (lote H3/H7/H9/H10 y TTL on-touch
+  en el próximo redeploy). Recordatorio operativo: renovar el TTL de las entradas de los contratos y
+  de la instancia de las wallets passkey antes de diciembre de 2026, reequilibrar el pool del anchor
+  antes de cada demo (`scripts/rebalance_anchor_pool.js`) y respaldar la clave `raiz-admin-signer`.
   Al cerrar cada WP, actualizar esta línea.
