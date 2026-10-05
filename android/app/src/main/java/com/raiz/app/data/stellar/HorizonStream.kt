@@ -12,6 +12,7 @@ import com.soneso.stellar.sdk.ChangeTrustOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.PathPaymentStrictSendOperation
+import com.soneso.stellar.sdk.TimeBounds
 import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.horizon.HorizonServer
 import com.soneso.stellar.sdk.horizon.exceptions.NetworkException
@@ -423,9 +424,22 @@ class HorizonStream @Inject constructor(
      * `UNKNOWN` con el fragmento `result_codes` acotado a 200 caracteres. No se loguea el XDR.
      *
      * Un path payment NO es idempotente: la transacción se construye y firma UNA vez (solo
-     * `loadAccount`, que es lectura, se reintenta) y el sobre se envía una sola vez. Si la
-     * conexión se corta sin respuesta de Horizon, se consulta la tx por su hash antes de
-     * declarar fallo — puede haber entrado igualmente.
+     * `loadAccount`, que es lectura, se reintenta) y siempre se envía ese MISMO sobre (el SDK
+     * puede reintentar el POST ante un 5xx: mismo hash, la red lo aplica a lo sumo una vez).
+     * Si Horizon no da un veredicto, se consulta la tx por su hash antes de declarar fallo —
+     * puede haber entrado igualmente.
+     *
+     * Qué cuenta como RECHAZO: solo un error cuyo body trae `result_codes`
+     * ([DepositPlan.isDefinitiveSubmitRejection]). Un `504 Timeout` de Horizon también trae
+     * body, pero la transacción puede entrar igual: se trata como ambiguo, igual que un corte
+     * de red (antes se reportaba como "Horizon rechazó la conversión").
+     *
+     * @param journal diario opcional de la transacción: recibe el hash ANTES del envío y el
+     *   veredicto definitivo después. Si esta función termina sin llamar a `settled`, la tx
+     *   sigue en vuelo y el llamador debe resolverla por hash antes de construir otra.
+     * @param maxTimeSec `maxTime` de la transacción (epoch s) medido con la hora de la RED
+     *   (`SorobanClient.networkTimeSec`). `null` = reloj del teléfono + 60 s: con el reloj
+     *   atrasado más de un minuto la tx nacería vencida (`tx_too_late`).
      */
     suspend fun pathPaymentStrictSend(
         signer: KeyPair,
@@ -436,6 +450,8 @@ class HorizonStream @Inject constructor(
         destIssuer: String,
         destMinStroops: Long,
         path: List<Asset>,
+        journal: TxJournal? = null,
+        maxTimeSec: Long? = null,
     ): RaizResult<String> = withContext(Dispatchers.IO) {
         val accountId = signer.getAccountId()
         // 1. Construir y firmar UNA sola vez. Reconstruir tras un corte de red (secuencia
@@ -450,13 +466,21 @@ class HorizonStream @Inject constructor(
                 destMin = SwapMath.stroopsToAmount(destMinStroops),
                 path = path,
             )
-            val tx = TransactionBuilder(source, Network.TESTNET)
+            val builder = TransactionBuilder(source, Network.TESTNET)
                 .setBaseFee(100L)
                 .addOperation(op)
-                .setTimeout(60L)
-                .build()
+            val tx = if (maxTimeSec != null) {
+                builder.addTimeBounds(TimeBounds(minTime = 0L, maxTime = maxTimeSec)).build()
+            } else {
+                builder.setTimeout(PATH_PAYMENT_TIMEOUT_SEC).build()
+            }
             tx.sign(signer)
-            tx.toEnvelopeXdrBase64() to tx.hashHex()
+            val hash = tx.hashHex()
+            // El diario se escribe ANTES de enviar: si falla, no se envía nada.
+            val validUntilSec = tx.getTimeBounds()?.maxTime?.takeIf { it > 0L }
+                ?: (System.currentTimeMillis() / 1000L + PATH_PAYMENT_TIMEOUT_SEC)
+            journal?.signed(hash, validUntilSec, tx.sequenceNumber)
+            tx.toEnvelopeXdrBase64() to hash
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -467,29 +491,57 @@ class HorizonStream @Inject constructor(
             )
         }
 
-        // 2. Enviar el MISMO sobre una vez.
+        // 2. Enviar el MISMO sobre. Sin la comprobación SEP-29 del SDK (memo requerido por el
+        //    destino): es una lectura previa de la cuenta destino — aquí la propia — y si
+        //    fallara no se habría enviado nada pero el resultado parecería ambiguo.
         try {
-            val response = horizonServer.submitTransaction(envelope)
+            val response = horizonServer.submitTransaction(envelope, skipMemoRequiredCheck = true)
             Log.i(TAG, "pathPaymentStrictSend: $sendCode→$destCode OK para $accountId, hash=${response.hash}")
+            journal?.settled(txHash)
             RaizResult.Success(response.hash)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val httpBody = (e as? NetworkException)?.body
-            if (httpBody.isNullOrBlank()) {
-                // Sin respuesta HTTP de Horizon (corte de red, timeout): resultado ambiguo.
-                if (transactionSucceeded(txHash) == true) {
-                    Log.i(TAG, "pathPaymentStrictSend: respuesta perdida pero la tx entró, hash=$txHash")
-                    RaizResult.Success(txHash)
-                } else {
-                    Log.e(TAG, "pathPaymentStrictSend: sin confirmación ($sendCode→$destCode): ${e.message}")
-                    RaizResult.Error(
-                        RaizErrorCode.NETWORK_ERROR,
-                        "No se pudo confirmar la conversión. Revisa tu saldo antes de reintentar.",
-                    )
-                }
-            } else {
+            val rejected = httpBody != null && DepositPlan.isDefinitiveSubmitRejection(httpBody)
+            // `tx_bad_seq` también es lo que responde Horizon al reintento interno del SDK cuando
+            // el primer envío SÍ entró: antes de darla por rechazada se mira si está en un ledger.
+            val appliedAnyway = rejected && "tx_bad_seq" in httpBody.orEmpty().lowercase() &&
+                transactionSucceeded(txHash) == true
+            if (appliedAnyway) {
+                Log.i(TAG, "pathPaymentStrictSend: tx_bad_seq en un reintento pero la tx entró, hash=$txHash")
+                journal?.settled(txHash)
+                RaizResult.Success(txHash)
+            } else if (httpBody != null && rejected) {
+                // La red evaluó la tx y la rechazó: definitivo.
+                journal?.settled(txHash)
                 mapPathPaymentError(httpBody, e)
+            } else {
+                // Sin veredicto de la red (corte, timeout, 504/503 con body…): resultado ambiguo.
+                when (transactionSucceeded(txHash)) {
+                    true -> {
+                        Log.i(TAG, "pathPaymentStrictSend: respuesta perdida pero la tx entró, hash=$txHash")
+                        journal?.settled(txHash)
+                        RaizResult.Success(txHash)
+                    }
+                    false -> {
+                        Log.e(TAG, "pathPaymentStrictSend: la tx entró y falló, hash=$txHash")
+                        journal?.settled(txHash)
+                        RaizResult.Error(RaizErrorCode.UNKNOWN, "La conversión falló en la red. Vuelve a cotizar.")
+                    }
+                    null -> {
+                        // NO se llama a journal.settled: la tx puede entrar todavía.
+                        Log.e(
+                            TAG,
+                            "pathPaymentStrictSend: sin confirmación ($sendCode→$destCode, " +
+                                "${e.javaClass.simpleName}), hash=$txHash",
+                        )
+                        RaizResult.Error(
+                            RaizErrorCode.NETWORK_ERROR,
+                            "No se pudo confirmar la conversión. Revisa tu saldo antes de reintentar.",
+                        )
+                    }
+                }
             }
         }
     }
@@ -508,6 +560,11 @@ class HorizonStream @Inject constructor(
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "La liquidez cambió: vuelve a cotizar.")
             "op_no_trust" in lower ->
                 RaizResult.Error(RaizErrorCode.NOT_FOUND, "Falta la trustline al USDC del fondo.")
+            "tx_too_late" in lower || "tx_too_early" in lower ->
+                RaizResult.Error(
+                    RaizErrorCode.UNKNOWN,
+                    "La red rechazó la conversión por la hora. Revisa la fecha y hora del teléfono y reintenta.",
+                )
             else -> {
                 val detail = (RESULT_CODES_REGEX.find(body)?.value ?: e.message ?: "horizon error").take(200)
                 Log.e(TAG, "pathPaymentStrictSend falló: $detail")
@@ -528,6 +585,60 @@ class HorizonStream @Inject constructor(
             if (attempt < TX_LOOKUP_ATTEMPTS - 1) delay(TX_LOOKUP_DELAY_MS)
         }
         return null
+    }
+
+    /**
+     * Estado de la transacción `hash` según Horizon, para resolver una transacción propia que
+     * quedó "en vuelo" (respuesta perdida o proceso muerto tras enviarla). Un solo intento, sin
+     * esperas: quien sondea decide cada cuánto volver ([DepositPlan.pendingVerdict]).
+     *
+     * `NOT_FOUND` = Horizon respondió 404 (aún no entró, o no entrará); `UNKNOWN` = no se pudo
+     * consultar (sin red, 5xx).
+     */
+    suspend fun transactionStatus(hash: String): DepositPlan.TxStatus = withContext(Dispatchers.IO) {
+        try {
+            val json = fetchJson("${RaizConstants.TESTNET_HORIZON_URL}/transactions/$hash")
+                ?: return@withContext DepositPlan.TxStatus.NOT_FOUND
+            when (json["successful"]?.jsonPrimitive?.contentOrNull) {
+                "true" -> DepositPlan.TxStatus.SUCCESS
+                "false" -> DepositPlan.TxStatus.FAILED
+                else -> DepositPlan.TxStatus.UNKNOWN
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "transactionStatus($hash): no se pudo consultar (${e.javaClass.simpleName})")
+            DepositPlan.TxStatus.UNKNOWN
+        }
+    }
+
+    /**
+     * "Foto" de una cuenta clásica en UNA llamada a Horizon (`GET /accounts/{id}`): secuencia,
+     * XLM y saldos de los dos USDC (el del anchor de prueba, `anchorIssuer`, y el del fondo).
+     * Es lo que decide el siguiente paso de un depósito ([DepositPlan.nextLeg],
+     * [DepositPlan.setupSteps]) y distingue tres casos que no deben confundirse:
+     *
+     *  - `Success(null)`  → la cuenta NO existe on-chain (Horizon 404);
+     *  - `Success(foto)`  → existe; un saldo `null` dentro de la foto = sin trustline;
+     *  - `Error`          → no se pudo leer (red, 5xx): nunca se convierte en un 0 falso.
+     */
+    suspend fun accountSnapshot(
+        accountId: String,
+        anchorIssuer: String,
+    ): RaizResult<ClassicAccountSnapshot?> = withContext(Dispatchers.IO) {
+        try {
+            val json = withRetryOnDns { fetchJson("${RaizConstants.TESTNET_HORIZON_URL}/accounts/$accountId") }
+            if (json == null) {
+                RaizResult.Success(null)
+            } else {
+                RaizResult.Success(DepositPlan.parseAccountSnapshot(json, anchorIssuer, usdcIssuer))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "accountSnapshot($accountId): no se pudo leer (${e.javaClass.simpleName})")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "No se pudo leer la cuenta. Revisa la red y reintenta.")
+        }
     }
 
     /**
@@ -758,6 +869,8 @@ class HorizonStream @Inject constructor(
         /** Intentos de consulta por hash tras un envío sin respuesta (≈ 2 cierres de ledger). */
         const val TX_LOOKUP_ATTEMPTS = 4
         const val TX_LOOKUP_DELAY_MS = 2_500L
+        /** Vigencia (`maxTime`) de la tx de conversión: pasado ese tiempo ya no puede entrar. */
+        const val PATH_PAYMENT_TIMEOUT_SEC = 60L
         /** Fragmento `"result_codes": {...}` del body de error de Horizon (sin el XDR). */
         val RESULT_CODES_REGEX = Regex("\"result_codes\"\\s*:\\s*\\{[^}]*\\}")
     }

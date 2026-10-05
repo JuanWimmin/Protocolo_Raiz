@@ -9,17 +9,20 @@ import com.raiz.app.data.model.RoleContext
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.security.AppLock
+import com.raiz.app.data.stellar.DepositAccountManager
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.RoleResolver
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -47,6 +50,12 @@ data class ProfileUiState(
     val appLockEnabled: Boolean = false,
     val appLockAvailable: Boolean = false,
     val isDemoMode: Boolean = false,
+    /**
+     * Wallet passkey con un depósito a medio camino en su cuenta de depósito. Se decide solo
+     * con datos locales (sirve sin red): antes de cerrar sesión se avisa, porque ese dinero se
+     * queda guardado en el teléfono hasta que se vuelva a entrar con la misma passkey.
+     */
+    val depositInTransit: Boolean = false,
 ) {
     val effectiveRole: UserRole get() = roleOverride ?: detectedRole?.role ?: UserRole.TOURIST
 
@@ -67,6 +76,7 @@ class ProfileViewModel @Inject constructor(
     private val sorobanClient: SorobanClient,   // Bug 1 & 2: saldo SAC + puntos
     private val roleResolver: RoleResolver,
     private val appLock: AppLock,
+    private val depositAccounts: DepositAccountManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -82,6 +92,7 @@ class ProfileViewModel @Inject constructor(
         loadPoints()           // Bug 2: cargar puntos del contrato Rewards
         loadHistory()
         resolveRole()
+        refreshDepositInTransit()
         _state.update {
             it.copy(appLockEnabled = appLock.enabled, appLockAvailable = appLock.canAuthenticate())
         }
@@ -233,6 +244,18 @@ class ProfileViewModel @Inject constructor(
         loadHistory()
         loadPoints()
         viewModelScope.launch { refreshBalanceOnce() }
+        refreshDepositInTransit()
+    }
+
+    /**
+     * ¿La wallet passkey activa tiene un depósito a medio camino? Lectura local (archivo
+     * cifrado, sin red) fuera del hilo principal. En wallets de semilla siempre es `false`.
+     */
+    private fun refreshDepositInTransit() {
+        viewModelScope.launch {
+            val inTransit = withContext(Dispatchers.IO) { depositAccounts.hasPendingDeposit() }
+            _state.update { if (it.depositInTransit == inTransit) it else it.copy(depositInTransit = inTransit) }
+        }
     }
 
     private fun resolveRole() {

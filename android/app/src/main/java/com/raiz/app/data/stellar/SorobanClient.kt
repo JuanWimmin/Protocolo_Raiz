@@ -14,15 +14,26 @@ import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.model.ResidentToken
 import com.raiz.app.data.model.Reward
+import com.ionspin.kotlin.bignum.integer.BigInteger
+import com.soneso.stellar.sdk.Address
 import com.soneso.stellar.sdk.Asset
+import com.soneso.stellar.sdk.InvokeHostFunctionOperation
 import com.soneso.stellar.sdk.KeyPair
 import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.TimeBounds
+import com.soneso.stellar.sdk.Transaction
+import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.contract.ContractClient
+import com.soneso.stellar.sdk.rpc.SorobanServer
+import com.soneso.stellar.sdk.rpc.exception.PrepareTransactionException
 import com.soneso.stellar.sdk.rpc.requests.GetEventsRequest
 import com.soneso.stellar.sdk.rpc.responses.GetEventsResponse
 import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
 import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
 import com.soneso.stellar.sdk.scval.Scv
+import com.soneso.stellar.sdk.xdr.HostFunctionXdr
+import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
+import com.soneso.stellar.sdk.xdr.SCSymbolXdr
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -98,6 +109,13 @@ class SorobanClient @Inject constructor(
     private var cachedGovClient: ContractClient? = null
     private var cachedRewardsClient: ContractClient? = null
     private var cachedTreasuryClient: ContractClient? = null
+
+    /**
+     * Servidor RPC propio para las operaciones que NO pasan por un `ContractClient` con spec
+     * (el `transfer` del SAC y las lecturas de ledger que lo acompañan). Así el envío del
+     * depósito a una wallet passkey no depende de que se pueda cargar el spec del Pool.
+     */
+    private val rpcServer: SorobanServer by lazy { SorobanServer(rpcUrl) }
 
     // ── Pool: get_pool_balance ────────────────────────────────────────────
 
@@ -916,6 +934,270 @@ class SorobanClient @Inject constructor(
         }
     }
 
+    // ── USDC SAC: transfer firmado por una cuenta clásica (depósito → wallet passkey) ──
+    //
+    // Último tramo del depósito SEP-24 de una wallet passkey: la "cuenta de depósito" (G…,
+    // ver DepositAccountManager) envía el USDC del fondo al smart account C… del usuario. Un
+    // pago clásico no admite un C… como destino, así que se invoca `transfer` del SAC. El SAC
+    // es un contrato nativo del host SIN spec descargable (`ContractClient.forContract` falla
+    // con "Contract spec not found"), por eso la operación se arma a mano — como hacía el
+    // antiguo faucet admin `fundContractUsdc` (hoy en el relayer). El `require_auth` de `from`
+    // se satisface con la firma del sobre: `from` es la cuenta origen de la transacción.
+
+    /**
+     * `transfer(from = signer, to, amount)` del SAC del USDC del fondo, firmado por [signer].
+     * Devuelve el **hash real** de la transacción cuando queda confirmada.
+     *
+     * Un transfer NO es idempotente, así que sigue la misma disciplina que
+     * [HorizonStream.pathPaymentStrictSend] y [executeProposal]:
+     *  1. se construye, simula y firma UNA vez (si la simulación falla no se envía nada →
+     *     [RaizErrorCode.SIMULATION_FAILED], reintentar es seguro);
+     *  2. el hash queda fijado y se entrega al [journal] ANTES de enviar;
+     *  3. se envía ese MISMO sobre (reenviarlo ante `TRY_AGAIN_LATER` es seguro; reconstruirlo no);
+     *  4. se confirma por hash. Solo hay tres veredictos definitivos — entró, entró y falló, o
+     *     venció sin entrar (pasó su `maxTime`) —; en los tres se llama a `journal.settled`.
+     *     La vigencia y el vencimiento se miden con la HORA DE LA RED (cierre del último ledger
+     *     que informa el RPC), nunca con el reloj del teléfono.
+     *     Si no se pudo consultar, la función devuelve error SIN cerrar el diario: la tx sigue
+     *     en vuelo y el llamador no debe construir otra hasta resolverla.
+     *
+     * Si la entrada `Balance(to)` del SAC está archivada, la simulación la incluye con
+     * auto-restore (Protocol 23+); al ir firmada, la transacción la restaura y solo cuesta más fee.
+     *
+     * No comprueba que `to` exista: quien llama debe validar el destino ([contractExists]) —
+     * el SAC acepta transferir a un `C…` sin desplegar.
+     *
+     * Logs: direcciones públicas, monto y hash completo. Nunca XDR ni material de firma.
+     */
+    suspend fun sacTransfer(
+        signer: KeyPair,
+        to: String,
+        amountStroops: Long,
+        journal: TxJournal? = null,
+    ): RaizResult<String> {
+        if (amountStroops <= 0L) {
+            return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "Monto inválido para el envío.")
+        }
+        val from = signer.getAccountId()
+        val server = rpcServer
+
+        // 1. Construir, simular y firmar UNA vez; fijar el hash y escribir el diario.
+        val built = try {
+            val source = server.getAccount(from)
+            val op = InvokeHostFunctionOperation(
+                hostFunction = HostFunctionXdr.InvokeContract(
+                    InvokeContractArgsXdr(
+                        contractAddress = Address(deployments.usdcSac).toSCAddress(),
+                        functionName = SCSymbolXdr("transfer"),
+                        args = listOf(
+                            Address(from).toSCVal(),
+                            Address(to).toSCVal(),
+                            Scv.toInt128(BigInteger.fromLong(amountStroops)),
+                        ),
+                    ),
+                ),
+                auth = emptyList(),
+            )
+            // `maxTime` desde la hora de la red: con el reloj del teléfono atrasado la tx nacería
+            // ya vencida (txTOO_LATE) y, adelantado, se la daría por vencida antes de tiempo.
+            val maxTime = (server.getLatestLedger().closeTime ?: (System.currentTimeMillis() / 1000L)) +
+                SAC_TRANSFER_TIMEOUT_SEC
+            val unsigned = TransactionBuilder(source, network)
+                .addOperation(op)
+                .setBaseFee(SAC_TRANSFER_BASE_FEE)
+                .addTimeBounds(TimeBounds(minTime = 0L, maxTime = maxTime))
+                .build()
+            val tx = server.prepareTransaction(unsigned)
+            tx.sign(signer)
+            val hash = tx.hashHex()
+            val validUntil = tx.getTimeBounds()?.maxTime?.takeIf { it > 0L } ?: maxTime
+            journal?.signed(hash, validUntil, tx.sequenceNumber)
+            PreparedSacTransfer(tx, hash, validUntil)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            val detail = hostErrorFragment(e.message)
+            Log.w(
+                TAG,
+                "sacTransfer: no se pudo preparar el envío $from → $to " +
+                    "(${e.javaClass.simpleName}${detail?.let { ": $it" }.orEmpty()})",
+            )
+            val code = if (e is PrepareTransactionException) {
+                RaizErrorCode.SIMULATION_FAILED
+            } else {
+                RaizErrorCode.NETWORK_ERROR
+            }
+            return RaizResult.Error(code, MSG_SAC_PREPARE_FAILED)
+        }
+        val prepared = built.tx
+        val txHash = built.hash
+        val validUntilSec = built.validUntilSec
+
+        // 2. Enviar el MISMO sobre. Una excepción aquí es ambigua (pudo llegar): se sigue al sondeo.
+        var rejected = false
+        try {
+            var attempt = 0
+            while (true) {
+                val sent = server.sendTransaction(prepared)
+                if (sent.status == SendTransactionStatus.ERROR) {
+                    rejected = true
+                    break
+                }
+                if (sent.status != SendTransactionStatus.TRY_AGAIN_LATER) break // PENDING / DUPLICATE
+                attempt++
+                if (attempt >= SAC_SEND_ATTEMPTS) break
+                delay(SAC_SEND_RETRY_MS)
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "sacTransfer: sin respuesta al enviar (${e.javaClass.simpleName}); se consulta por hash $txHash")
+        }
+        if (rejected) {
+            // La red no aceptó el sobre: no está en vuelo ni puede entrar.
+            journal?.settled(txHash)
+            Log.w(TAG, "sacTransfer: la red rechazó el envío $from → $to, hash=$txHash")
+            return RaizResult.Error(RaizErrorCode.UNKNOWN, MSG_SAC_REJECTED)
+        }
+
+        // 3. Confirmar por hash.
+        return when (awaitSacTransfer(server, txHash, validUntilSec)) {
+            GetTransactionStatus.SUCCESS -> {
+                journal?.settled(txHash)
+                Log.i(TAG, "sacTransfer: USDC del fondo OK $from → $to, $amountStroops stroops, hash=$txHash")
+                RaizResult.Success(txHash)
+            }
+            GetTransactionStatus.FAILED -> {
+                journal?.settled(txHash)
+                Log.w(TAG, "sacTransfer: la tx entró y falló, hash=$txHash")
+                RaizResult.Error(RaizErrorCode.UNKNOWN, MSG_SAC_REJECTED)
+            }
+            GetTransactionStatus.NOT_FOUND -> {
+                journal?.settled(txHash)
+                Log.w(TAG, "sacTransfer: la tx venció sin entrar, hash=$txHash")
+                RaizResult.Error(RaizErrorCode.NETWORK_ERROR, MSG_SAC_EXPIRED)
+            }
+            null -> {
+                // Sin veredicto: NO se cierra el diario, la tx puede entrar todavía.
+                Log.w(TAG, "sacTransfer: enviada sin confirmar, hash=$txHash")
+                RaizResult.Error(
+                    RaizErrorCode.NETWORK_ERROR,
+                    "El envío salió pero aún no se confirma (tx ${txHash.take(6)}…${txHash.takeLast(6)}). " +
+                        "No lo repitas: lo estamos comprobando.",
+                )
+            }
+        }
+    }
+
+    /**
+     * Sondea `getTransaction(hash)` hasta un veredicto definitivo:
+     *  - `SUCCESS` / `FAILED`: la tx está en un ledger;
+     *  - `NOT_FOUND`: el RPC no la conoce y YA cerró un ledger con hora posterior a su `maxTime`
+     *    → no entró ni puede entrar. Se decide con `latestLedgerCloseTime` de la propia
+     *    respuesta (hora de la red): ni el reloj del teléfono ni un RPC atrasado pueden darla
+     *    por vencida antes de tiempo;
+     *  - `null`: se agotó la espera sin veredicto (sin red, RPC parado) → sigue en vuelo.
+     */
+    private suspend fun awaitSacTransfer(
+        server: SorobanServer,
+        hash: String,
+        validUntilSec: Long,
+    ): GetTransactionStatus? {
+        repeat(SAC_AWAIT_POLLS) { poll ->
+            val response = try {
+                server.getTransaction(hash)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                Log.w(TAG, "sacTransfer: sondeo de $hash falló (${e.javaClass.simpleName})")
+                null
+            }
+            val status = response?.status
+            if (status == GetTransactionStatus.SUCCESS || status == GetTransactionStatus.FAILED) return status
+            val networkNowSec = response?.latestLedgerCloseTime
+            if (status == GetTransactionStatus.NOT_FOUND && networkNowSec != null && networkNowSec > validUntilSec) {
+                return GetTransactionStatus.NOT_FOUND
+            }
+            if (poll < SAC_AWAIT_POLLS - 1) delay(SAC_POLL_MS)
+        }
+        return null
+    }
+
+    /**
+     * Hora de la RED en segundos epoch: cierre del último ledger que conoce el RPC. Es el "ahora"
+     * con el que se miden la vigencia y el vencimiento de las transacciones propias del depósito
+     * (el reloj del teléfono puede estar mal). `null` si el RPC no responde o no la informa.
+     */
+    suspend fun networkTimeSec(): Long? = try {
+        rpcServer.getLatestLedger().closeTime
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        Log.w(TAG, "networkTimeSec: no se pudo leer el último ledger (${e.javaClass.simpleName})")
+        null
+    }
+
+    /**
+     * ¿Existe en la red el contrato `contractId` (p. ej. el smart account de una wallet
+     * passkey)? Preflight obligatorio antes de [sacTransfer]: un `C…` es una dirección válida
+     * aunque nadie lo haya desplegado, y el USDC enviado ahí sería irrecuperable. Mismo
+     * criterio que el faucet del relayer (`raiz-relayer/src/stellar/reads.ts`, `contractExists`).
+     *
+     * Lee la entrada de instancia del contrato (lectura de ledger, no simulación). Si no
+     * aparece, acepta como prueba de existencia que ese `C…` ya tenga saldo del USDC del fondo
+     * en el SAC. Ante un fallo de red devuelve `Error`: quien llama NO debe enviar.
+     */
+    suspend fun contractExists(contractId: String): RaizResult<Boolean> {
+        return try {
+            val instance = rpcServer.getContractData(
+                contractId,
+                Scv.toLedgerKeyContractInstance(),
+                SorobanServer.Durability.PERSISTENT,
+            )
+            if (instance != null) {
+                RaizResult.Success(true)
+            } else {
+                val issuer = deployments.usdcIssuer
+                val holdsUsdc = issuer != null && rpcServer.getSACBalance(
+                    contractId,
+                    Asset.createNonNativeAsset("USDC", issuer),
+                    network,
+                ).balanceEntry != null
+                if (!holdsUsdc) Log.w(TAG, "contractExists: $contractId no aparece en la red")
+                RaizResult.Success(holdsUsdc)
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "contractExists($contractId): no se pudo consultar (${e.javaClass.simpleName})")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "No se pudo comprobar tu wallet en la red.")
+        }
+    }
+
+    /**
+     * Estado de la transacción `hash` según el RPC, para resolver un [sacTransfer] que quedó
+     * en vuelo. Un solo intento; `UNKNOWN` = no se pudo consultar.
+     */
+    suspend fun transactionStatus(hash: String): DepositPlan.TxStatus = try {
+        when (rpcServer.getTransaction(hash).status) {
+            GetTransactionStatus.SUCCESS -> DepositPlan.TxStatus.SUCCESS
+            GetTransactionStatus.FAILED -> DepositPlan.TxStatus.FAILED
+            GetTransactionStatus.NOT_FOUND -> DepositPlan.TxStatus.NOT_FOUND
+        }
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        Log.w(TAG, "transactionStatus($hash): no se pudo consultar (${e.javaClass.simpleName})")
+        DepositPlan.TxStatus.UNKNOWN
+    }
+
+    /** Primer `Error(Tipo, Detalle)` del texto de una simulación fallida — nunca el texto completo ni XDR. */
+    private fun hostErrorFragment(message: String?): String? =
+        message?.let { HOST_ERROR_REGEX.find(it)?.value }
+
+    /** Sobre de un [sacTransfer] ya firmado: se envía tal cual, nunca se reconstruye. */
+    private class PreparedSacTransfer(val tx: Transaction, val hash: String, val validUntilSec: Long)
+
     // ── Pool: eventos de pago vía Soroban RPC getEvents ─────────────────
     //
     // Los pagos `pay_merchant` se realizan DENTRO del contrato Pool (no son
@@ -1405,6 +1687,29 @@ class SorobanClient @Inject constructor(
 
     private companion object {
         const val TAG = "RAIZ"
+
+        // ── sacTransfer (depósito → wallet passkey) ──────────────────────────
+
+        /** Tope de fee de inclusión del transfer (0,05 XLM); la fee de recursos la añade la simulación. */
+        const val SAC_TRANSFER_BASE_FEE = 500_000L
+
+        /** Vigencia (`maxTime`) del transfer desde la hora de la red: después ya no puede entrar en un ledger. */
+        const val SAC_TRANSFER_TIMEOUT_SEC = 45L
+
+        /** Reenvíos del MISMO sobre ante `TRY_AGAIN_LATER` (seguro: la red lo aplica a lo sumo una vez). */
+        const val SAC_SEND_ATTEMPTS = 3
+        const val SAC_SEND_RETRY_MS = 2_000L
+
+        /** Sondeos de confirmación: 28 × 2,5 s = 70 s, más que la vigencia de la tx (45 s). */
+        const val SAC_AWAIT_POLLS = 28
+        const val SAC_POLL_MS = 2_500L
+
+        /** `Error(Contract, #10)` y similares dentro del texto de una simulación fallida. */
+        val HOST_ERROR_REGEX = Regex("Error\\(\\w+, [^)]{1,60}\\)")
+
+        const val MSG_SAC_PREPARE_FAILED = "No se pudo preparar el envío a tu wallet. Revisa la red y reintenta."
+        const val MSG_SAC_REJECTED = "La red rechazó el envío a tu wallet."
+        const val MSG_SAC_EXPIRED = "El envío no llegó a entrar en la red. Reintenta."
 
         /**
          * Ventana principal de lookback para getEvents: ~11h en testnet (ledger ~5s).

@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Wallet/seed phrase nunca debe estar en backups en la nube. -->
-    <exclude domain="sharedpref" path="raiz_wallet"/>
+    <!--
+        Secretos que NUNCA deben salir del dispositivo (Android 11 o inferior; en 12+ manda
+        data_extraction_rules.xml). En el dominio "sharedpref" el path es el NOMBRE DEL ARCHIVO
+        dentro de shared_prefs/, con su extensión .xml: sin ella la regla no casa con nada.
+          - raiz_wallet.xml  → frase semilla / referencia passkey de la wallet.
+          - raiz_deposit.xml → cuentas de depósito de las wallets passkey (SecureWalletStore).
+        Ambos van cifrados con una clave del Android Keystore que no se exporta: copiados a otro
+        teléfono serían ilegibles (y romperían el arranque), así que se excluyen.
+    -->
+    <exclude domain="sharedpref" path="raiz_wallet.xml"/>
+    <exclude domain="sharedpref" path="raiz_deposit.xml"/>
 </full-backup-content>

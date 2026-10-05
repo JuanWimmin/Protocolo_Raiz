@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.raiz.app.ui.util.StellarExpert
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.raiz.app.BuildConfig
 import com.raiz.app.data.model.PassportData
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletState
@@ -307,6 +309,32 @@ private fun WalletReady(
             ) {
                 Text("Depositar · anchor de prueba", style = MaterialTheme.typography.labelLarge)
             }
+            // Wallet passkey con un depósito a medio camino en su cuenta de depósito: la fila
+            // lleva a Depositar, donde se termina solo. Sin monto — pueden ser dos activos
+            // distintos (USDC del anchor y USDC del fondo) y no se suman.
+            if (state.depositInTransit) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onNavigateDeposit)
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(RaizGreen),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Tienes un depósito en camino · Terminar",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = RaizGreen,
+                    )
+                }
+            }
             if (state.anchorUsdcBalanceStroops > 0L) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -402,9 +430,9 @@ private fun AccountSetupBanner(
     onRequestUsdc: () -> Unit,
     onNavigateDeposit: () -> Unit,
 ) {
-    // Paso 3 (D3): dos caminos de on-ramp — el anchor de prueba SEP-24 es el CTA
-    // principal, el faucet del relayer queda como acción secundaria. Necesita
-    // dos botones, así que se dibuja aparte en vez de reusar el layout genérico.
+    // Paso 3 (D3): el CTA es el depósito SEP-24 con el anchor de prueba para TODAS las
+    // wallets; el faucet del relayer es una contingencia que aquí solo se ve en builds
+    // debug. Se dibuja aparte en vez de reusar el layout genérico.
     if (step == AccountSetupStep.REQUEST_USDC) {
         AccountSetupStepRequestUsdc(
             inProgress = inProgress,
@@ -483,11 +511,14 @@ private fun AccountSetupBanner(
 }
 
 /**
- * Paso 3 del onboarding on-chain (D3): "Consigue USDC" ofrece dos caminos.
- *   - Principal: depositar vía el anchor de prueba del SDF (SEP-24, USDC del
- *     anchor — NUNCA el mismo USDC que usa el fondo del barrio).
- *   - Secundario: el faucet del relayer sigue funcionando (USDC de Blend, el
- *     que sí cuenta para pagar en RAÍZ) — mantiene su spinner/estado/idempotencia.
+ * Paso 3 del onboarding on-chain (D3): "Consigue USDC".
+ *
+ * Para TODAS las wallets (semilla y passkey) el camino es el depósito SEP-24 con el anchor
+ * de prueba del SDF, que termina en USDC del fondo listo para pagar.
+ *
+ * El faucet del relayer ("USDC demo (Blend) · relayer") queda como contingencia: aquí solo
+ * se ofrece en builds DEBUG. En release se llega a él únicamente desde la pantalla
+ * Depositar, y solo si el anchor no responde.
  */
 @Composable
 private fun AccountSetupStepRequestUsdc(
@@ -511,7 +542,7 @@ private fun AccountSetupStepRequestUsdc(
             color = RaizBlack,
         )
         Text(
-            text = "Deposita con el anchor de prueba del SDF (SEP-24) o pide USDC demo (Blend) al relayer del barrio.",
+            text = "Deposita con el anchor de prueba del SDF. El USDC llega a tu wallet listo para pagar.",
             style = MaterialTheme.typography.bodyMedium,
             color = RaizBlack.copy(alpha = 0.7f),
         )
@@ -523,37 +554,40 @@ private fun AccountSetupStepRequestUsdc(
         ) {
             Text("Depositar (anchor de prueba)", style = MaterialTheme.typography.labelLarge)
         }
-        if (error != null) {
-            Text(
-                text = error,
-                style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color(0xFFB00020),
-            )
-        }
-        if (!relayerConfigured) {
-            Text(
-                text = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
-                style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color(0xFFB00020),
-            )
-        }
-        TextButton(
-            onClick = onRequestUsdc,
-            enabled = !inProgress && relayerConfigured,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (inProgress) {
-                CircularProgressIndicator(color = RaizGreen, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-            } else {
-                Text("USDC demo (Blend) · relayer", color = RaizBlack.copy(alpha = 0.7f))
+        // Contingencia de desarrollo: el faucet del relayer solo se ofrece aquí en builds debug.
+        if (BuildConfig.DEBUG) {
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.ui.graphics.Color(0xFFB00020),
+                )
             }
-        }
-        if (inProgress) {
-            Text(
-                text = "Verificando con el barrio… puede tardar hasta 1 minuto",
-                style = MaterialTheme.typography.bodyMedium,
-                color = RaizBlack.copy(alpha = 0.6f),
-            )
+            if (!relayerConfigured) {
+                Text(
+                    text = "Relayer no configurado (raiz.relayer.url en local.properties)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.ui.graphics.Color(0xFFB00020),
+                )
+            }
+            TextButton(
+                onClick = onRequestUsdc,
+                enabled = !inProgress && relayerConfigured,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (inProgress) {
+                    CircularProgressIndicator(color = RaizGreen, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                } else {
+                    Text("USDC demo (Blend) · relayer", color = RaizBlack.copy(alpha = 0.7f))
+                }
+            }
+            if (inProgress) {
+                Text(
+                    text = "Verificando con el barrio… puede tardar hasta 1 minuto",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RaizBlack.copy(alpha = 0.6f),
+                )
+            }
         }
     }
 }

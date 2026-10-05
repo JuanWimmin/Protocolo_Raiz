@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!--
+        Android 12+. El manifest lleva allowBackup="false", pero en algunos fabricantes eso NO
+        impide la migración de teléfono a teléfono: por eso los secretos se excluyen también en
+        <device-transfer>. En el dominio "sharedpref" el path es el NOMBRE DEL ARCHIVO dentro de
+        shared_prefs/, con su extensión .xml: sin ella la regla no casa con nada.
+          - raiz_wallet.xml  → frase semilla / referencia passkey de la wallet.
+          - raiz_deposit.xml → cuentas de depósito de las wallets passkey (SecureWalletStore).
+    -->
     <cloud-backup>
-        <exclude domain="sharedpref" path="raiz_wallet"/>
+        <exclude domain="sharedpref" path="raiz_wallet.xml"/>
+        <exclude domain="sharedpref" path="raiz_deposit.xml"/>
     </cloud-backup>
     <device-transfer>
-        <exclude domain="sharedpref" path="raiz_wallet"/>
+        <exclude domain="sharedpref" path="raiz_wallet.xml"/>
+        <exclude domain="sharedpref" path="raiz_deposit.xml"/>
     </device-transfer>
 </data-extraction-rules>

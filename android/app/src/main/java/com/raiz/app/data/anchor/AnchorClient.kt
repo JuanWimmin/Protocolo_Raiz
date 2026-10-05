@@ -41,9 +41,10 @@ import kotlinx.coroutines.withContext
  * `stellar.toml` del anchor. La UI lo rotula siempre "USDC · anchor de prueba".
  *
  * Wallets passkey (`C...`) no pueden autenticar con SEP-10 clásico (firma de cuenta
- * `G...`, no de contrato) — [authenticate] espera un [KeyPair] con clave privada
- * (la wallet semilla). La pantalla de depósito debe filtrar ese caso antes de llamar
- * a este cliente (`DepositPhase.PASSKEY_UNSUPPORTED`).
+ * `G...`, no de contrato) — [authenticate] espera un [KeyPair] con clave privada. En
+ * semilla es la propia wallet; en passkey, su "cuenta de depósito" (cuenta clásica de
+ * tránsito, ver `data/stellar/DepositAccountManager.kt`). La autenticación directa del
+ * smart account (SEP-45) — que este anchor ya ofrece — queda en el roadmap de RAÍZ.
  *
  * Mismo patrón que [com.raiz.app.data.relayer.RelayerClient]: constructor primario
  * parametrizable (tests JVM con `MockEngine` sin tocar `BuildConfig`) + constructor

@@ -488,6 +488,8 @@ private fun RaizApp(
                 onNavigateProposals = { goTo(Routes.PROPOSALS) },
                 onNavigateCobros    = { goTo(Routes.COBROS) },
                 onBecomeMerchant    = { nav.navigate(Routes.BECOME_MERCHANT) },
+                // Aviso de "depósito en camino" antes de cerrar sesión → terminarlo en Depositar.
+                onNavigateDeposit   = { nav.navigate(Routes.DEPOSIT) },
                 onLogout = {
                     onLogout()
                     hasWallet = false

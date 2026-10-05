@@ -11,16 +11,19 @@ import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.DeploymentsLoader
+import com.raiz.app.data.stellar.DepositAccountManager
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import com.soneso.stellar.sdk.KeyPair
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -45,7 +48,7 @@ sealed interface WalletUiState {
         val setupStep: AccountSetupStep = AccountSetupStep.DONE,
         val setupInProgress: Boolean = false,
         val setupError: String? = null,
-        /** false si falta `raiz.relayer.url` / `raiz.relayer.key` en local.properties. */
+        /** false si falta `raiz.relayer.url` en local.properties. */
         val relayerConfigured: Boolean = true,
         /**
          * `idempotency-key` del intento de faucet en curso (H1): se conserva en
@@ -58,10 +61,18 @@ sealed interface WalletUiState {
         /**
          * Saldo del USDC del anchor de prueba (D3, SEP-24), NUNCA sumado al
          * BalanceCard: es un asset distinto al USDC (Blend) que usa el fondo
-         * del barrio. Solo se observa para wallets G… (las passkey C… no
-         * pueden autenticar SEP-10 clásico todavía).
+         * del barrio. Solo se observa para wallets G… (en passkey ese saldo
+         * vive en la cuenta de depósito: ver [depositInTransit]).
          */
         val anchorUsdcBalanceStroops: Long = 0L,
+        /**
+         * Wallet passkey: hay un depósito a medio camino en su cuenta de depósito
+         * (USDC del anchor sin convertir, USDC del fondo sin enviar al smart
+         * account, o una transacción sin confirmar). Inicio muestra una fila
+         * tocable que lleva a Depositar, donde se termina solo. Sin monto: son
+         * dos activos distintos y no se suman.
+         */
+        val depositInTransit: Boolean = false,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -73,6 +84,7 @@ class WalletViewModel @Inject constructor(
     private val horizonStream: HorizonStream,
     private val deploymentsLoader: DeploymentsLoader,
     private val relayerClient: RelayerClient,
+    private val depositAccounts: DepositAccountManager,
 ) : ViewModel() {
 
     private val deployments by lazy { deploymentsLoader.load() }
@@ -94,6 +106,7 @@ class WalletViewModel @Inject constructor(
         loadCentroPoolBalance()
         loadPassport()
         refreshSetupStep()
+        refreshDepositInTransit()
         // Auto-refresco periódico — un solo loop para no duplicar coroutines.
         viewModelScope.launch {
             while (true) {
@@ -178,7 +191,8 @@ class WalletViewModel @Inject constructor(
      * El relayer decide server-side el método de entrega según el prefijo de
      * la dirección: `payment` clásico para G… o `sac_transfer` para C… (smart
      * account passkey, solo si ya está desplegada). La app ya no firma nada
-     * como admin — solo pide el faucet con la API key estática.
+     * como admin — solo pide el faucet, sin credenciales (el relayer es público
+     * y limita con cupos del lado del servidor).
      */
     fun requestUsdcFaucet() {
         viewModelScope.launch {
@@ -187,7 +201,7 @@ class WalletViewModel @Inject constructor(
                 _state.update { current ->
                     if (current is WalletUiState.Ready) current.copy(
                         setupInProgress = false,
-                        setupError = "Relayer no configurado (raiz.relayer.url / raiz.relayer.key en local.properties)",
+                        setupError = "Relayer no configurado (raiz.relayer.url en local.properties)",
                     ) else current
                 }
                 return@launch
@@ -347,9 +361,47 @@ class WalletViewModel @Inject constructor(
     }
 
     /**
+     * Wallet passkey: ¿quedó un depósito a medio camino en su cuenta de depósito?
+     *
+     * Primero responde con lo que el teléfono ya sabe (sin red) y después lo contrasta con la
+     * cuenta on-chain — una sola lectura de Horizon, y solo si esa wallet ya creó su cuenta
+     * de depósito. Cubre los casos en que la pantalla Depositar no estaba delante cuando llegó
+     * el dinero: el usuario salió a mitad, el proceso murió en la web del anchor o el bloqueo
+     * biométrico devolvió la app a Inicio. No aplica a wallets de semilla (ahí el USDC del
+     * anchor está en su propia cuenta: ver [observeAnchorBalance]).
+     */
+    private fun refreshDepositInTransit() {
+        if (!walletManager.isPasskeyWallet()) return
+        viewModelScope.launch {
+            val local = withContext(Dispatchers.IO) { depositAccounts.hasPendingDeposit() }
+            publishDepositInTransit(local)
+            val depositAccount = withContext(Dispatchers.IO) { depositAccounts.depositAccountId() } ?: return@launch
+            val snapshot = horizonStream.accountSnapshot(depositAccount, RaizConstants.ANCHOR_USDC_ISSUER)
+            if (snapshot is RaizResult.Success) {
+                val data = snapshot.data
+                val onChain = data != null &&
+                    ((data.anchorUsdcStroops ?: 0L) > 0L || (data.fundUsdcStroops ?: 0L) > 0L)
+                withContext(Dispatchers.IO) {
+                    depositAccounts.setInTransit(onChain)
+                    publishDepositInTransit(depositAccounts.hasPendingDeposit())
+                }
+            }
+            // Si Horizon no responde se conserva lo que ya se sabía.
+        }
+    }
+
+    private fun publishDepositInTransit(inTransit: Boolean) {
+        _state.update { current ->
+            if (current is WalletUiState.Ready && current.depositInTransit != inTransit) {
+                current.copy(depositInTransit = inTransit)
+            } else current
+        }
+    }
+
+    /**
      * D3: observa el saldo del USDC del anchor de prueba (SEP-24), SOLO para
-     * wallets G… — las passkey (C…) no pueden autenticar SEP-10 clásico
-     * todavía (ver DepositViewModel.PASSKEY_UNSUPPORTED). Nunca se mezcla con
+     * wallets G…. En passkey (C…) ese saldo vive en la cuenta de depósito y lo
+     * cubre [refreshDepositInTransit]. Nunca se mezcla con
      * [observeUsdcBalance] (ese es el USDC de Blend que usa el fondo).
      */
     private fun observeAnchorBalance() {
@@ -507,6 +559,8 @@ class WalletViewModel @Inject constructor(
         if (walletManager.isPasskeyWallet()) {
             viewModelScope.launch { refreshPasskeyBalance() }
         }
+        // Passkey: ¿sigue habiendo un depósito a medio camino en la cuenta de depósito?
+        refreshDepositInTransit()
     }
 
     private companion object {

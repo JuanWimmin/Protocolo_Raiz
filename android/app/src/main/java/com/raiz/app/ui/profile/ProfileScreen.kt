@@ -110,6 +110,8 @@ fun ProfileScreen(
     onNavigateCobros: () -> Unit = {},
     onBecomeMerchant: () -> Unit = {},
     onLogout: () -> Unit = {},
+    /** Abre la pantalla Depositar (para terminar un depósito en camino antes de cerrar sesión). */
+    onNavigateDeposit: () -> Unit = {},
     currentRole: UserRole = UserRole.TOURIST,
     onDemoRoleChange: (UserRole) -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
@@ -185,6 +187,7 @@ fun ProfileScreen(
                     appLockAvailable = state.appLockAvailable,
                     onToggleLock = viewModel::setAppLockEnabled,
                     onLogout = onLogout,
+                    onFinishDeposit = onNavigateDeposit,
                     onBecomeMerchant = onBecomeMerchant,
                     onDemoRoleChange = { role: UserRole? ->
                         // Actualiza el chip del header en ProfileScreen
@@ -499,12 +502,24 @@ private fun ConfigTab(
     appLockAvailable: Boolean,
     onToggleLock: (Boolean) -> Unit,
     onLogout: () -> Unit,
+    /** Lleva a Depositar para terminar un depósito que quedó a medio camino. */
+    onFinishDeposit: () -> Unit,
     onBecomeMerchant: () -> Unit,
     /** null = restaurar rol real; UserRole = simular ese rol (solo demo). */
     onDemoRoleChange: (UserRole?) -> Unit,
 ) {
     // Estado local para el diálogo de confirmación de "Eliminar cuenta".
     var mostrarDialogoEliminar by remember { mutableStateOf(false) }
+    // Wallet passkey con un depósito en camino: se avisa antes de salir (el dinero queda en la
+    // cuenta de depósito de este teléfono hasta volver a entrar con la misma passkey).
+    var mostrarDialogoDeposito by remember { mutableStateOf(false) }
+    val salir: () -> Unit = {
+        if (state.depositInTransit) {
+            mostrarDialogoDeposito = true
+        } else {
+            onLogout()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -544,11 +559,11 @@ private fun ConfigTab(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Cerrar sesión — limpia el acceso local sin mostrar advertencias adicionales.
-        // La passkey queda sincronizada en Google Password Manager y la semilla BIP-39
-        // sigue siendo recuperable. El usuario puede volver a entrar cuando quiera.
+        // Cerrar sesión — limpia el acceso local. La passkey queda sincronizada en Google
+        // Password Manager y la semilla BIP-39 sigue siendo recuperable: el usuario puede
+        // volver a entrar cuando quiera. Única advertencia: un depósito passkey en camino.
         OutlinedButton(
-            onClick = onLogout,
+            onClick = salir,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Cerrar sesión y salir", style = MaterialTheme.typography.labelLarge)
@@ -592,7 +607,7 @@ private fun ConfigTab(
                 TextButton(
                     onClick = {
                         mostrarDialogoEliminar = false
-                        onLogout()
+                        salir()
                     },
                 ) {
                     Text(
@@ -606,6 +621,55 @@ private fun ConfigTab(
                 TextButton(onClick = { mostrarDialogoEliminar = false }) {
                     Text(
                         text = "Cancelar",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            },
+        )
+    }
+
+    // Aviso antes de salir con un depósito passkey a medio camino. No bloquea: se puede salir
+    // igual, y la cuenta de depósito (ligada a su smart account) no se borra al cerrar sesión.
+    if (mostrarDialogoDeposito) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoDeposito = false },
+            title = {
+                Text(
+                    text = "Tienes un depósito en camino",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            },
+            text = {
+                Text(
+                    text = "Hay USDC que aún no llegó a tu wallet. Si sales ahora se queda guardado " +
+                        "en este teléfono hasta que vuelvas a entrar con la misma passkey.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogoDeposito = false
+                        onFinishDeposit()
+                    },
+                ) {
+                    Text(
+                        text = "Terminar depósito",
+                        color = RaizGreen,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogoDeposito = false
+                        onLogout()
+                    },
+                ) {
+                    Text(
+                        text = "Salir de todos modos",
+                        color = RaizError,
                         style = MaterialTheme.typography.labelLarge,
                     )
                 }
