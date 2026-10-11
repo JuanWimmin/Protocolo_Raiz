@@ -1,7 +1,7 @@
 # 🌱 RAÍZ
 > **Tu paga, el barrio crece.**
 
-🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo](https://www.youtube.com/watch?v=y-9pglgVnnA)
+🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo (oct-2026, app 0.4.0)](https://www.youtube.com/watch?v=9nmfjS9q7GQ)
 
 **RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo el estado **on-chain** y sin que nadie tenga la llave del fondo. El único servicio propio es el relayer [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer), que firma las operaciones de admin para que el APK no lleve ninguna clave privada.
 
