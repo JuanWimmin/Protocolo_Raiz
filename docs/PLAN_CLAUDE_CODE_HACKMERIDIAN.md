@@ -193,6 +193,14 @@ Lee CLAUDE.md, docs/pago_diferido_v0.md completo y docs/PLAN_CLAUDE_CODE_HACKMER
 
 **Objetivo:** `landing/pasarela.html`: cualquier teléfono con señal (el iPhone en Safari) liquida un sobre.
 
+**Contrato del sobre (decidido 25-oct, noche; manda sobre el prompt de abajo):** el QR y el texto pegado son
+`raiz:sobre:1:` + base64url del XDR de la `SorobanAuthorizationEntry` firmada (sin JSON). La pasarela quita el
+prefijo, decodifica el XDR, deriva comercio/monto/aporte de `rootInvocation` (raíz `pay_merchant` del Pool de
+`DEPLOYMENTS`, 4 argumentos) y reconstruye el árbol con `fee_bps` 50 para comprobar que es idéntico; la firma
+se verifica sobre el preimage tipo 9. Sobre de prueba: campo `sobre_qr` de
+`android/app/src/test/resources/deferred_auth_fixture.json` (1 229 caracteres). "Cobrado" solo con el hash
+cuya auth sea ese sobre; `Error(Auth, ExistingValue)` = "nonce usado", nunca "cobrado".
+
 **Alcance:**
 1. Página estática con `@stellar/stellar-sdk` desde CDN (misma versión mayor que la landing) y un lector
    QR por cámara (`jsQR` o `html5-qrcode` desde CDN) + área para pegar el sobre.

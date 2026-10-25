@@ -468,7 +468,13 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   y OTRA cuenta la envía como fuente (`DeferredAuthTestnetIT`, apagado por defecto; tx `ebee152c…`). Hechos
   medidos: credenciales legacy aceptadas en P29 (V2/CAP-71 cuando el SDK Kotlin las tenga); tope de
   expiración `E − L ≤ max_entry_ttl − 1 = 3 110 399`; cierre de ledger 5,000 s; replay →
-  `Error(Auth, ExistingValue)`. Siguen B2 (pagador en la app), B3 (pasarela web, sesión aparte) y B4 (cobrador).
+  `Error(Auth, ExistingValue)`. **B2 cerrado el 25-oct (noche):** modo "Firmar sin señal" en Pagar (decisión por
+  conectividad ANTES de confirmar, nunca tras un pago fallido), pantalla del sobre con QR, "Mis sobres" y fila en
+  Inicio; **el sobre que viaja es `raiz:sobre:1:` + base64url del XDR firmado** (`data/deferred/SobreCodec`, 1 229
+  chars, QR v29; ya no el JSON de la spec §5), W = 11 520 ledgers, sobres por wallet (no por app), y el cierre lo
+  decide la red: nonce consumido (`SorobanClient.nonceConsumed`, entrada temporal bajo la cuenta del pagador) o
+  hash cuya auth sea el sobre; sin señal, cualquier comercio sale de `data/local/MerchantCache` (nada de mocks).
+  Siguen B3 (pasarela web, sesión aparte: debe leer prefijo + XDR), B4 (cobrador), B5 video, B6 docs, B7 deck.
 
 ### Próximo paso
 

@@ -62,6 +62,11 @@ turista. Divisiones enteras exactamente como el contrato (i128, trunca hacia cer
 `Pool`, `USDC` (SAC de Blend) y `admin` salen de `deployments.json`; `fee_bps` se lee y cachea cuando hay
 red (si cambia, la firma deja de coincidir y la pasarela recibe `Auth, InvalidAction`: fallo seguro).
 
+**Deuda registrada (25-oct):** el Pool descuenta el fee del protocolo del monto del comercio
+(`to_m = amount − fee`), lo que choca con el principio de que el comercio recibe íntegra su venta. No se toca
+en la hack (cero contratos nuevos); se resuelve en los contratos v2 (ajuste 5 de
+`docs/Pago diferido por enjambre.md`). La pantalla del sobre lo muestra tal cual.
+
 ### 2.2 Nonce y expiración
 
 - `nonce`: 64 bits aleatorios del CSPRNG del teléfono. La red guarda el nonce consumido como entrada
@@ -112,6 +117,12 @@ Parámetro honesto en la UI: "válido hasta ~hh:mm (estimado)".
   demo se fondea con friendbot (10 000 XLM ≈ 250 liquidaciones) y el pitch no promete "con unos pocos XLM"
   hasta medirlo en mainnet. El modelo de quién paga ese fee (pasarela voluntaria, comercio, relayer) es parte
   del modelo de sostenibilidad en evaluación.
+- **Ventana revisada (25-oct, noche): W = 11 520 ledgers, no 9 600.** La fórmula de arriba cubría la deriva
+  durante la ventana pero no la acumulada entre la última sincronización y la firma: con hasta Δ_max = 24 h
+  sin señal, `W = T_des/τ_min + Δ_max·(1/τ_min − 1/τ) = 9 600 + 1 920 = 11 520` (A2, paso 8 de
+  `docs/Pago diferido por enjambre.md`). Peor caso (red a 4,5 s tras 24 h de deriva): 12 h exactas; con el
+  cierre medido hoy, 16 h. La UI muestra la ventana garantizada: "Válido ~12 h (hasta ~hh:mm, estimado)".
+  Implementado en `LedgerMath.window` con sus tests.
 
 ### 3.2 Exposición y doble gasto
 
@@ -165,6 +176,14 @@ de v1 se pasa, se fragmenta en 2 QR con índice `i/n`.
 | Privacidad en territorios de conflicto | El sobre expone pagador, comercio y monto a quien lo transporte: v1 cifrado al destino; coordenadas ~100 m ya previstas | v1 |
 
 ## 5. Formato del sobre (v0)
+
+> **Revisado el 25-oct (noche), decisión del equipo:** lo que viaja en el QR y en "Copiar sobre" es **solo la
+> entrada firmada**: `raiz:sobre:1:` + base64url (sin relleno) del XDR de la `SorobanAuthorizationEntry`
+> (1 229 caracteres, QR versión 29 con corrección M; 912 bytes). Comercio, monto, aporte y reparto se derivan
+> de la invocación firmada (`PayArgs`/`SobreValidator` en la app), así que no existe la clase de error
+> "JSON y XDR no coinciden" y hay una sola fuente de verdad. El JSON de abajo queda como descripción de los
+> campos que el XDR contiene, no como formato de transporte (ajuste 1 de `docs/Pago diferido por enjambre.md`;
+> fixture: campo `sobre_qr`). La pasarela web y el cobrador deben parsear el prefijo + XDR.
 
 JSON compacto → base64url → QR.
 
