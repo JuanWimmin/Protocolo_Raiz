@@ -221,6 +221,11 @@ Liquidación por hash: la pasarela devuelve el hash; cobrador y pagador lo consu
 (mismo patrón de `DepositViewModel.settle`). Motivos de RECHAZADO: `nonce usado`, `expirada`, `fondos
 insuficientes`, `firma inválida`, `comercio no verificado`, `fee_bps cambió`.
 
+**Pasarelas construidas (25-oct):** de terminal, `scripts/pasarela_cli.mjs`; web, `landing/pasarela.html`
+(https://raizapp.xyz/pasarela.html, sin servidor propio). Las dos aplican las mismas reglas: prefijo + XDR,
+raíz `pay_merchant` del Pool, árbol reconstruido con `fee_bps` idéntico byte a byte, firma sobre el preimage
+tipo 9, ledger y nonce consultados ANTES de gastar, y "cobrado" solo con un hash cuya auth sea el sobre.
+
 ## 7. Alcance v0 (24 h) y criterios de aceptación
 
 1. **Pagador (app Android, wallet semilla):** modo "sin señal" en Pagar → construye el árbol §2.1, firma,
@@ -279,6 +284,14 @@ la invocación desde el XDR, simuló en modo enforce, pagó el fee y envió:
 [`ebee152c…6d47`](https://stellar.expert/explorer/testnet/tx/ebee152cc8bc39af0c3ab1060e515cfdf3a5a6cc76d7ba35f3ab2f2aab506d47)
 (ledger 5 384 473; fuente = pasarela, auth = pagador). El mismo sobre reenviado → `Error(Auth, ExistingValue)`;
 expirado → `Error(Auth, InvalidInput)`; tope de expiración medido en la §3.1.
+
+**Hecha el 25-oct desde la pasarela web** (`landing/pasarela.html` en Chrome headless, sin extensión): sobre real
+de `scripts/deferred_envelope_demo.mjs` firmado por `raiz-tourist` (`GDLGYDO4…IZM7`), 0,5 USDC + 2 % a Cafe Don
+Aurelio, E = L + 11 520; la página verificó sin red, leyó ledger y nonce, creó su cuenta pasarela con friendbot
+(`GADSC7Z5…T43MO`) y liquidó:
+[`27c61461…9f47`](https://stellar.expert/explorer/testnet/tx/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47)
+(ledger 5 388 486; fee de recursos 0,0052 XLM: el turista ya había pagado antes en el barrio). Tras liquidar,
+la página marca el nonce como consumido y bloquea el reenvío sin gastar.
 
 ## 9. Lo que el deck dice de esto (una slide)
 

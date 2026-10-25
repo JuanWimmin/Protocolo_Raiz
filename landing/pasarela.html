@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pasarela RAÍZ · pago diferido</title>
+  <meta name="description" content="Cualquier teléfono con señal liquida un sobre de pago diferido de RAÍZ: verifica la firma sin red, paga el fee y devuelve el hash. Testnet de Stellar." />
+  <meta name="theme-color" content="#0F6E56" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='24' r='15' fill='%230F6E56'/%3E%3Ccircle cx='19' cy='29' r='9' fill='%230F6E56'/%3E%3Ccircle cx='45' cy='29' r='9' fill='%230F6E56'/%3E%3Ccircle cx='32' cy='19' r='3' fill='%23FBBF24'/%3E%3Ccircle cx='24' cy='27' r='2.6' fill='%23FBBF24'/%3E%3Ccircle cx='40' cy='26' r='2.6' fill='%23FBBF24'/%3E%3Crect x='29' y='36' width='6' height='13' rx='3' fill='%230B5644'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" /></noscript>
+  <style>
+    /* Misma paleta y lenguaje brutalista de la landing (index.html). */
+    :root { --negro:#1a1a1a; --amarillo:#FBBF24; --purpura:#534AB7; --verde:#0F6E56; --verde-claro:#1D9E75; --crema:#FAFAF7; --blanco:#fff; --rojo:#B00020; --gris:#6b6b66; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--crema); color:var(--negro); font-family:'Instrument Sans', system-ui, sans-serif; font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+    .display { font-family:'Bricolage Grotesque', system-ui, sans-serif; }
+    .mono { font-family:'Space Mono', ui-monospace, monospace; }
+    .wrap { max-width: 720px; margin-inline:auto; padding: 20px 16px 64px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 18px; }
+    header .logo { display:flex; align-items:center; gap:10px; text-decoration:none; color:inherit; }
+    header .logo b { font-family:'Bricolage Grotesque', sans-serif; font-size:1.25rem; letter-spacing:.02em; }
+    .lang button { font-family:'Space Mono', monospace; font-weight:700; font-size:.72rem; text-transform:uppercase; border:2px solid var(--negro); background:transparent; padding:6px 10px; cursor:pointer; }
+    .lang button.on { background:var(--negro); color:var(--amarillo); }
+    h1 { font-size: clamp(1.7rem, 6vw, 2.4rem); line-height:1.1; margin-bottom: 8px; }
+    .sub { color:var(--gris); margin-bottom: 20px; }
+    .card { background:var(--blanco); border:2px solid var(--negro); box-shadow:4px 4px 0 var(--negro); padding:16px; margin-bottom:16px; }
+    .card h2 { font-family:'Bricolage Grotesque', sans-serif; font-size:1.05rem; text-transform:uppercase; letter-spacing:.02em; margin-bottom:10px; display:flex; align-items:center; gap:10px; }
+    .card h2 .n { width:26px; height:26px; border-radius:50%; background:var(--amarillo); border:2px solid var(--negro); display:inline-flex; align-items:center; justify-content:center; font-family:'Space Mono', monospace; font-size:.8rem; }
+    textarea { width:100%; min-height:110px; font-family:'Space Mono', monospace; font-size:.78rem; border:2px solid var(--negro); padding:10px; background:var(--crema); resize:vertical; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:'Bricolage Grotesque', sans-serif; font-weight:700; font-size:.95rem; text-transform:uppercase; letter-spacing:.02em; padding:12px 18px; border:2px solid var(--negro); background:var(--blanco); color:var(--negro); cursor:pointer; box-shadow:3px 3px 0 var(--negro); transition: transform .1s; }
+    .btn:hover { transform: translate(-1px,-1px); }
+    .btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+    .btn--amarillo { background:var(--amarillo); }
+    .btn--verde { background:var(--verde); color:var(--blanco); }
+    .btn--purpura { background:var(--purpura); color:var(--blanco); }
+    .kv { display:grid; grid-template-columns: 9.5em 1fr; gap:4px 12px; font-size:.92rem; margin-top:8px; }
+    .kv dt { color:var(--gris); }
+    .kv dd { word-break:break-all; }
+    .ok { color:var(--verde); font-weight:600; }
+    .bad { color:var(--rojo); font-weight:600; }
+    .warn { background:#FEF3C7; border:2px solid var(--negro); padding:10px 12px; font-size:.9rem; margin-top:10px; }
+    .note { color:var(--gris); font-size:.85rem; margin-top:10px; }
+    .pill { display:inline-block; font-family:'Space Mono', monospace; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:4px 10px; border:2px solid var(--negro); background:var(--crema); }
+    .pill.ok { background:#D1FAE5; color:var(--negro); }
+    .pill.bad { background:#FEE2E2; color:var(--negro); }
+    .pill.wait { background:#FEF3C7; color:var(--negro); }
+    #reader { width:100%; max-width:420px; margin-top:10px; border:2px solid var(--negro); display:none; }
+    .hash { font-family:'Space Mono', monospace; font-size:.8rem; word-break:break-all; background:var(--crema); border:2px solid var(--negro); padding:10px; }
+    #qrhash img { border:2px solid var(--negro); margin-top:10px; }
+    .log { font-family:'Space Mono', monospace; font-size:.74rem; color:var(--gris); white-space:pre-wrap; word-break:break-all; margin-top:10px; max-height:180px; overflow:auto; }
+    footer { color:var(--gris); font-size:.82rem; margin-top:24px; }
+    footer a { color:inherit; }
+    .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--negro); color:var(--amarillo); font-family:'Space Mono', monospace; font-size:.8rem; padding:10px 14px; border:2px solid var(--amarillo); box-shadow:4px 4px 0 var(--purpura); z-index:50; max-width:90vw; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="https://raizapp.xyz" title="RAÍZ">
+      <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="24" r="15" fill="#0F6E56"/><circle cx="19" cy="29" r="9" fill="#0F6E56"/><circle cx="45" cy="29" r="9" fill="#0F6E56"/><circle cx="32" cy="19" r="3" fill="#FBBF24"/><circle cx="24" cy="27" r="2.6" fill="#FBBF24"/><circle cx="40" cy="26" r="2.6" fill="#FBBF24"/><rect x="29" y="36" width="6" height="13" rx="3" fill="#0B5644"/></svg>
+      <b>RAÍZ</b>
+    </a>
+    <div class="lang"><button id="lang-es" class="on" type="button">ES</button><button id="lang-en" type="button">EN</button></div>
+  </header>
+
+  <h1 class="display" data-t="titulo">Pasarela de pago diferido</h1>
+  <p class="sub" data-t="sub">Cualquier teléfono con señal liquida un sobre firmado sin señal. Esta página verifica la firma localmente, paga el fee y devuelve el hash. Testnet de Stellar · ningún servidor propio.</p>
+
+  <!-- 1. Recibir el sobre -->
+  <section class="card">
+    <h2><span class="n">1</span><span data-t="s1">Recibe el sobre</span></h2>
+    <div class="row">
+      <button class="btn btn--amarillo" id="btn-scan" type="button" data-t="escanear">Escanear QR</button>
+      <button class="btn" id="btn-stop" type="button" hidden data-t="parar">Parar cámara</button>
+    </div>
+    <div id="reader"></div>
+    <p class="note" data-t="pegar_nota">O pega aquí el texto de "Copiar sobre" (empieza por <span class="mono">raiz:sobre:1:</span>).</p>
+    <textarea id="sobre" spellcheck="false" placeholder="raiz:sobre:1:…"></textarea>
+    <div class="row">
+      <button class="btn btn--verde" id="btn-verificar" type="button" data-t="verificar">Verificar sin red</button>
+      <button class="btn" id="btn-limpiar" type="button" data-t="limpiar">Limpiar</button>
+    </div>
+  </section>
+
+  <!-- 2. Verificación -->
+  <section class="card" id="card-verif" hidden>
+    <h2><span class="n">2</span><span data-t="s2">Verificación</span> <span id="verif-pill" class="pill wait">…</span></h2>
+    <div id="verif-error" class="bad" hidden></div>
+    <dl class="kv" id="verif-kv" hidden>
+      <dt data-t="pagador">Pagador</dt><dd id="v-payer" class="mono"></dd>
+      <dt data-t="comercio">Comercio</dt><dd><span id="v-merchant-name"></span> <span id="v-merchant" class="mono"></span></dd>
+      <dt data-t="al_comercio">Al comercio</dt><dd id="v-tom"></dd>
+      <dt data-t="aporte">Aporte al barrio</dt><dd id="v-tip"></dd>
+      <dt data-t="fee">Fee del protocolo</dt><dd id="v-fee"></dd>
+      <dt data-t="debito">Débito del pagador</dt><dd id="v-debit"></dd>
+      <dt data-t="expira">Expira</dt><dd id="v-exp"></dd>
+      <dt data-t="nonce">Nonce</dt><dd id="v-nonce" class="mono"></dd>
+      <dt data-t="estado_red">Estado en la red</dt><dd id="v-red"></dd>
+    </dl>
+    <div class="warn" data-t="honesto">Es una promesa firmada, no dinero: el comercio cobra cuando este sobre llega a la red. Nadie puede cambiar monto, comercio ni reparto; cada sobre se cobra una sola vez.</div>
+  </section>
+
+  <!-- 3. Cuenta pasarela -->
+  <section class="card" id="card-pasarela" hidden>
+    <h2><span class="n">3</span><span data-t="s3">Cuenta pasarela</span></h2>
+    <p class="note" data-t="pasarela_nota">La pasarela solo pone conectividad y XLM para el fee: no puede alterar el sobre. Se crea en este navegador y se fondea con friendbot (testnet). Guardada en este dispositivo.</p>
+    <dl class="kv">
+      <dt data-t="cuenta">Cuenta</dt><dd id="p-g" class="mono">—</dd>
+      <dt data-t="saldo">Saldo XLM</dt><dd id="p-xlm">—</dd>
+    </dl>
+    <div class="row">
+      <button class="btn btn--amarillo" id="btn-crear" type="button" data-t="crear">Crear y fondear (friendbot)</button>
+      <button class="btn" id="btn-secret" type="button" data-t="usar_otra">Usar otra cuenta</button>
+      <button class="btn" id="btn-olvidar" type="button" hidden data-t="olvidar">Olvidar</button>
+    </div>
+    <div id="secret-box" class="row" hidden>
+      <input id="secret-in" class="mono" type="password" placeholder="S… (testnet)" style="flex:1; min-width:220px; border:2px solid var(--negro); padding:10px; font-size:.85rem;" />
+      <button class="btn" id="btn-secret-ok" type="button">OK</button>
+    </div>
+  </section>
+
+  <!-- 4. Liquidar -->
+  <section class="card" id="card-liq" hidden>
+    <h2><span class="n">4</span><span data-t="s4">Liquidar</span> <span id="liq-pill" class="pill wait" hidden>…</span></h2>
+    <div class="row">
+      <button class="btn btn--purpura" id="btn-liquidar" type="button" data-t="liquidar">Liquidar en la red</button>
+    </div>
+    <div id="liq-error" class="bad" hidden style="margin-top:10px"></div>
+    <div id="liq-ok" hidden style="margin-top:12px">
+      <p class="ok" data-t="liquidado">Liquidado. La red consumió el nonce: el pagador lo verá confirmado en su app al tener señal.</p>
+      <div class="hash" id="liq-hash"></div>
+      <div class="row">
+        <a class="btn" id="liq-link" href="#" target="_blank" rel="noopener" data-t="ver_expert">Ver en Stellar Expert</a>
+        <button class="btn" id="btn-copiar-hash" type="button" data-t="copiar_hash">Copiar hash</button>
+      </div>
+      <div id="qrhash"></div>
+      <p class="note" data-t="qr_hash_nota">QR del hash: el pagador puede escanearlo o pegar el hash en "Mis sobres" si su app no lo detecta sola.</p>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <footer>
+    <span data-t="pie">Protocolo RAÍZ · HackMeridian 2026 · pago diferido por enjambre. Código:</span>
+    <a href="https://github.com/JuanWimmin/Protocolo_Raiz/tree/feat/pago-diferido" target="_blank" rel="noopener">github.com/JuanWimmin/Protocolo_Raiz</a>
+    · <span class="mono" id="ledger-pie"></span>
+  </footer>
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@17.0.1/dist/stellar-sdk.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Fuente: deployments.json del repo. Actualizar en cada redeploy
+     (mismo objeto que index.html y verificar-residente.html).
+     ============================================================ */
+  var DEPLOYMENTS = {
+    pool:          'CD775D33SPEO3BTAZIEQTQGN6HERTR5YNEQOZWWKXLDKLJ2B34LCKBE2',
+    usdc_sac:      'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU',
+    admin:         'GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P',
+    protocol_fee_bps: 50
+  };
+  var RPC_URL   = 'https://soroban-testnet.stellar.org';
+  var HORIZON   = 'https://horizon-testnet.stellar.org';
+  var FRIENDBOT = 'https://friendbot.stellar.org';
+  var EXPERT_TX = 'https://stellar.expert/explorer/testnet/tx/';
+  var PREFIX    = 'raiz:sobre:1:';
+  var MAX_CHARS = 4096;
+  var BASE_FEE  = '500000';
+  var LS_SECRET = 'raiz_pasarela_secret';
+  var LS_LANG   = 'raiz_pasarela_lang';
+
+  /* ---------------- i18n ---------------- */
+  var T = {
+    es: {
+      titulo: 'Pasarela de pago diferido',
+      sub: 'Cualquier teléfono con señal liquida un sobre firmado sin señal. Esta página verifica la firma localmente, paga el fee y devuelve el hash. Testnet de Stellar · ningún servidor propio.',
+      s1: 'Recibe el sobre', escanear: 'Escanear QR', parar: 'Parar cámara',
+      pegar_nota: 'O pega aquí el texto de "Copiar sobre" (empieza por raiz:sobre:1:).',
+      verificar: 'Verificar sin red', limpiar: 'Limpiar',
+      s2: 'Verificación', pagador: 'Pagador', comercio: 'Comercio', al_comercio: 'Al comercio', aporte: 'Aporte al barrio',
+      fee: 'Fee del protocolo', debito: 'Débito del pagador', expira: 'Expira', nonce: 'Nonce', estado_red: 'Estado en la red',
+      honesto: 'Es una promesa firmada, no dinero: el comercio cobra cuando este sobre llega a la red. Nadie puede cambiar monto, comercio ni reparto; cada sobre se cobra una sola vez.',
+      s3: 'Cuenta pasarela',
+      pasarela_nota: 'La pasarela solo pone conectividad y XLM para el fee: no puede alterar el sobre. Se crea en este navegador y se fondea con friendbot (testnet). Guardada en este dispositivo.',
+      cuenta: 'Cuenta', saldo: 'Saldo XLM', crear: 'Crear y fondear (friendbot)', usar_otra: 'Usar otra cuenta', olvidar: 'Olvidar',
+      s4: 'Liquidar', liquidar: 'Liquidar en la red',
+      liquidado: 'Liquidado. La red consumió el nonce: el pagador lo verá confirmado en su app al tener señal.',
+      ver_expert: 'Ver en Stellar Expert', copiar_hash: 'Copiar hash',
+      qr_hash_nota: 'QR del hash: el pagador puede escanearlo o pegar el hash en "Mis sobres" si su app no lo detecta sola.',
+      pie: 'Protocolo RAÍZ · HackMeridian 2026 · pago diferido por enjambre. Código:',
+      // dinámicos
+      verif_ok: 'firma válida', verif_bad: 'rechazado', sin_sobre: 'Pega o escanea un sobre primero.',
+      no_sobre: 'No es un sobre RAÍZ (falta el prefijo raiz:sobre:1:).', largo: 'Sobre demasiado largo.', xdr: 'El XDR del sobre no se puede decodificar.',
+      cred: 'v0 solo acepta sobres firmados por una cuenta G con credenciales legacy.', no_pool: 'No es un pago a este Pool.',
+      no_fn: 'La raíz no es pay_merchant.', pagador_ne: 'El pagador del árbol no es quien firma.',
+      reparto: 'El reparto no coincide (¿cambió fee_bps o el admin del Pool?).', firma: 'Firma inválida.', una_firma: 'La credencial debe llevar exactamente una firma.',
+      ledger: 'ledger', quedan: 'quedan', horas: 'h', expirado: 'EXPIRADO: la red ya pasó la expiración. No se envía.',
+      nonce_usado: 'Nonce ya consumido en la red: este sobre ya se liquidó (o uno con el mismo nonce). No se envía.',
+      red_ok: 'nonce libre, vigente', red_err: 'no se pudo consultar la red', verificado_sin: 'Verificado sin red; consultando la red…',
+      sin_pasarela: 'Crea o indica una cuenta pasarela.', fondeando: 'Creando la cuenta y pidiendo XLM a friendbot…', friendbot_err: 'Friendbot no respondió.',
+      sim: 'Simulando (modo enforce)…', env: 'Enviando…', esp: 'Esperando a la red…', fallo_red: 'La transacción entró y falló.', sin_resp: 'Sin respuesta final; consulta el hash:',
+      e_existing: 'NONCE YA USADO: la red ya ejecutó un sobre con este nonce (este u otro con el mismo nonce). No se da por cobrado sin un hash cuya auth sea este sobre.',
+      e_invalidinput: 'EXPIRADO (o expiración fuera del tope de la red).', e_auth: 'La firma no corresponde al árbol: sobre alterado o cambió fee_bps/admin. El pagador debe firmar de nuevo.',
+      e_4: 'Comercio no registrado en el Pool.', e_5: 'Comercio no verificado.', e_10: 'Fondos insuficientes del pagador en USDC del fondo.', e_13: 'El pagador no tiene trustline al USDC del fondo.',
+      e_otro: 'Error de la red:', copiado: 'Hash copiado', camara_err: 'No se pudo abrir la cámara (necesita HTTPS o localhost y permiso).',
+      secret_mal: 'Secret inválida.', verificado_true: 'verificado', verificado_false: 'NO verificado',
+      sin_cuenta: 'cuenta no encontrada en testnet', cuenta_lista: 'cuenta creada y fondeada'
+    },
+    en: {
+      titulo: 'Deferred payment gateway',
+      sub: 'Any phone with signal settles an envelope that was signed offline. This page verifies the signature locally, pays the fee and returns the hash. Stellar testnet · no server of our own.',
+      s1: 'Receive the envelope', escanear: 'Scan QR', parar: 'Stop camera',
+      pegar_nota: 'Or paste the text from "Copy envelope" (starts with raiz:sobre:1:).',
+      verificar: 'Verify offline', limpiar: 'Clear',
+      s2: 'Verification', pagador: 'Payer', comercio: 'Merchant', al_comercio: 'To merchant', aporte: 'Neighborhood tip',
+      fee: 'Protocol fee', debito: 'Payer debit', expira: 'Expires', nonce: 'Nonce', estado_red: 'Network status',
+      honesto: 'It is a signed promise, not money: the merchant gets paid when this envelope reaches the network. Nobody can change amount, merchant or split; each envelope is charged once.',
+      s3: 'Gateway account',
+      pasarela_nota: 'The gateway only provides connectivity and XLM for the fee: it cannot alter the envelope. Created in this browser and funded by friendbot (testnet). Stored on this device.',
+      cuenta: 'Account', saldo: 'XLM balance', crear: 'Create and fund (friendbot)', usar_otra: 'Use another account', olvidar: 'Forget',
+      s4: 'Settle', liquidar: 'Settle on the network',
+      liquidado: 'Settled. The network consumed the nonce: the payer will see it confirmed in the app once online.',
+      ver_expert: 'View on Stellar Expert', copiar_hash: 'Copy hash',
+      qr_hash_nota: 'Hash QR: the payer can scan it or paste the hash in "My envelopes" if the app does not detect it by itself.',
+      pie: 'RAÍZ Protocol · HackMeridian 2026 · swarm deferred payment. Code:',
+      verif_ok: 'valid signature', verif_bad: 'rejected', sin_sobre: 'Paste or scan an envelope first.',
+      no_sobre: 'Not a RAÍZ envelope (missing raiz:sobre:1: prefix).', largo: 'Envelope too long.', xdr: 'The envelope XDR cannot be decoded.',
+      cred: 'v0 only accepts envelopes signed by a G account with legacy credentials.', no_pool: 'Not a payment to this Pool.',
+      no_fn: 'Root is not pay_merchant.', pagador_ne: 'The tree payer is not the signer.',
+      reparto: 'Split mismatch (did fee_bps or the Pool admin change?).', firma: 'Invalid signature.', una_firma: 'The credential must carry exactly one signature.',
+      ledger: 'ledger', quedan: 'left', horas: 'h', expirado: 'EXPIRED: the network is already past the expiration. Not sent.',
+      nonce_usado: 'Nonce already consumed on the network: this envelope was settled (or one with the same nonce). Not sent.',
+      red_ok: 'nonce free, valid', red_err: 'could not query the network', verificado_sin: 'Verified offline; querying the network…',
+      sin_pasarela: 'Create or set a gateway account.', fondeando: 'Creating the account and asking friendbot for XLM…', friendbot_err: 'Friendbot did not respond.',
+      sim: 'Simulating (enforce mode)…', env: 'Sending…', esp: 'Waiting for the network…', fallo_red: 'The transaction was included and failed.', sin_resp: 'No final response; check the hash:',
+      e_existing: 'NONCE ALREADY USED: the network already executed an envelope with this nonce (this one or another with the same nonce). Not considered paid without a hash whose auth is this envelope.',
+      e_invalidinput: 'EXPIRED (or expiration beyond the network cap).', e_auth: 'The signature does not match the tree: altered envelope or fee_bps/admin changed. The payer must sign again.',
+      e_4: 'Merchant not registered in the Pool.', e_5: 'Merchant not verified.', e_10: 'Payer has insufficient fund USDC.', e_13: 'Payer has no trustline to the fund USDC.',
+      e_otro: 'Network error:', copiado: 'Hash copied', camara_err: 'Could not open the camera (needs HTTPS or localhost and permission).',
+      secret_mal: 'Invalid secret.', verificado_true: 'verified', verificado_false: 'NOT verified',
+      sin_cuenta: 'account not found on testnet', cuenta_lista: 'account created and funded'
+    }
+  };
+  var lang = (function () { try { return localStorage.getItem(LS_LANG) || 'es'; } catch (_) { return 'es'; } })();
+  function t(k) { return (T[lang] && T[lang][k]) || T.es[k] || k; }
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = t(el.getAttribute('data-t')); });
+    document.getElementById('lang-es').classList.toggle('on', lang === 'es');
+    document.getElementById('lang-en').classList.toggle('on', lang === 'en');
+  }
+  document.getElementById('lang-es').onclick = function () { lang = 'es'; try { localStorage.setItem(LS_LANG, lang); } catch (_) {} applyLang(); };
+  document.getElementById('lang-en').onclick = function () { lang = 'en'; try { localStorage.setItem(LS_LANG, lang); } catch (_) {} applyLang(); };
+  applyLang();
+
+  /* ---------------- helpers ---------------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var SDK = window.StellarSdk;
+  var RpcNS = SDK && (SDK.rpc || SDK.SorobanRpc);
+  var xdr = SDK && SDK.xdr;
+  var server = SDK ? new RpcNS.Server(RPC_URL, { allowHttp: false }) : null;
+  var state = { entry: null, v: null, kp: null, busy: false };
+
+  function aviso(msg) { var el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(aviso._t); aviso._t = setTimeout(function () { el.hidden = true; }, 3500); }
+  function log(msg) { var el = $('log'); el.textContent += (el.textContent ? '\n' : '') + msg; el.scrollTop = el.scrollHeight; }
+  function fmtUsdc(n) { return (Number(n) / 1e7).toLocaleString(lang === 'es' ? 'es' : 'en', { minimumFractionDigits: 2, maximumFractionDigits: 7 }) + ' USDC'; }
+  function shortG(g) { return g.slice(0, 6) + '…' + g.slice(-6); }
+  function bytesEq(a, b) { if (!a || !b || a.length !== b.length) return false; for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
+  function toU8(x) { return x instanceof Uint8Array ? x : new Uint8Array(x); }
+  function b64url2std(s) { var std = s.replace(/-/g, '+').replace(/_/g, '/'); while (std.length % 4) std += '='; return std; }
+
+  /* ---------------- árbol de pay_merchant (idéntico a AuthTreeBuilder / gen-auth-fixture.mjs) ---------------- */
+  function addr(a) { return new SDK.Address(a).toScVal(); }
+  function i128(n) { return SDK.nativeToScVal(n, { type: 'i128' }); }
+  function inv(contract, name, args, subs) {
+    return new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+        new xdr.InvokeContractArgs({ contractAddress: new SDK.Address(contract).toScAddress(), functionName: name, args: args })),
+      subInvocations: subs || []
+    });
+  }
+  function arbol(payer, merchant, amount, tipBps, feeBps) {
+    var tip = amount * BigInt(tipBps) / 10000n, fee = amount * BigInt(feeBps) / 10000n, toM = amount - fee;
+    var subs = [inv(DEPLOYMENTS.usdc_sac, 'transfer', [addr(payer), addr(merchant), i128(toM)])];
+    if (tip > 0n) subs.push(inv(DEPLOYMENTS.usdc_sac, 'transfer', [addr(payer), addr(DEPLOYMENTS.pool), i128(tip)]));
+    if (fee > 0n) subs.push(inv(DEPLOYMENTS.usdc_sac, 'transfer', [addr(payer), addr(DEPLOYMENTS.admin), i128(fee)]));
+    return inv(DEPLOYMENTS.pool, 'pay_merchant', [addr(payer), addr(merchant), i128(amount), SDK.nativeToScVal(tipBps, { type: 'u32' })], subs);
+  }
+
+  /* ---------------- 1–2. decodificar y verificar sin red ---------------- */
+  function decodeSobre(text) {
+    var s = String(text || '').trim();
+    if (!s) throw new Error(t('sin_sobre'));
+    if (s.length > MAX_CHARS) throw new Error(t('largo'));
+    if (s.indexOf(PREFIX) !== 0) throw new Error(t('no_sobre'));
+    var b64 = s.slice(PREFIX.length).replace(/\s+/g, '').replace(/=+$/, '');
+    try { return xdr.SorobanAuthorizationEntry.fromXdr(b64url2std(b64), 'base64'); } catch (e) { throw new Error(t('xdr')); }
+  }
+  function verificar(entry) {
+    if (entry.credentials.type !== 'sorobanCredentialsAddress') throw new Error(t('cred'));
+    var creds = entry.credentials.address;
+    var payer = SDK.Address.fromScAddress(creds.address).toString();
+    if (!SDK.StrKey.isValidEd25519PublicKey(payer)) throw new Error(t('cred'));
+    var fn = entry.rootInvocation.function.contractFn;
+    if (!fn) throw new Error(t('no_pool'));
+    if (SDK.Address.fromScAddress(fn.contractAddress).toString() !== DEPLOYMENTS.pool) throw new Error(t('no_pool'));
+    if (String(fn.functionName) !== 'pay_merchant') throw new Error(t('no_fn'));
+    if (fn.args.length !== 4) throw new Error(t('no_fn'));
+    var nat = fn.args.map(function (a) { return SDK.scValToNative(a); });
+    var args = { payer: String(nat[0]), merchant: String(nat[1]), amount: BigInt(nat[2]), tipBps: Number(nat[3]) };
+    if (args.payer !== payer) throw new Error(t('pagador_ne'));
+    var esperado = arbol(payer, args.merchant, args.amount, args.tipBps, DEPLOYMENTS.protocol_fee_bps);
+    if (esperado.toXdr('base64') !== entry.rootInvocation.toXdr('base64')) throw new Error(t('reparto'));
+    var preimage = xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(new xdr.HashIdPreimageSorobanAuthorization({
+      networkId: SDK.hash(SDK.Networks.TESTNET), nonce: creds.nonce,
+      signatureExpirationLedger: creds.signatureExpirationLedger, invocation: entry.rootInvocation
+    }));
+    var payload = SDK.hash(preimage.toXdr());
+    var sigs = SDK.scValToNative(creds.signature);
+    if (!Array.isArray(sigs) || sigs.length !== 1) throw new Error(t('una_firma'));
+    var pub = toU8(sigs[0].public_key), sig = toU8(sigs[0].signature);
+    if (!bytesEq(pub, toU8(SDK.StrKey.decodeEd25519PublicKey(payer)))) throw new Error(t('firma'));
+    if (!SDK.Keypair.fromPublicKey(payer).verify(payload, sig)) throw new Error(t('firma'));
+    var tip = args.amount * BigInt(args.tipBps) / 10000n, fee = args.amount * BigInt(DEPLOYMENTS.protocol_fee_bps) / 10000n;
+    return { payer: payer, args: args, tip: tip, fee: fee, toM: args.amount - fee, debit: args.amount + tip,
+             nonce: creds.nonce, exp: Number(creds.signatureExpirationLedger), contractFn: fn };
+  }
+
+  function nonceKey(payer, nonce) {
+    return xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+      contract: new SDK.Address(payer).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyNonce(new xdr.ScNonceKey({ nonce: nonce })),
+      durability: xdr.ContractDataDurability.temporary
+    }));
+  }
+  function nonceConsumido(payer, nonce) {
+    return server.getLedgerEntries(nonceKey(payer, nonce)).then(function (r) { return (r.entries || []).length > 0; });
+  }
+  function nombreComercio(g) {
+    // Mejor esfuerzo: get_merchant simulado desde la cuenta del admin (lectura pura; no firma nada).
+    return server.getAccount(DEPLOYMENTS.admin).then(function (acc) {
+      var tx = new SDK.TransactionBuilder(acc, { fee: SDK.BASE_FEE, networkPassphrase: SDK.Networks.TESTNET })
+        .addOperation(new SDK.Contract(DEPLOYMENTS.pool).call('get_merchant', addr(g))).setTimeout(30).build();
+      return server.simulateTransaction(tx, undefined, undefined, false);
+    }).then(function (sim) {
+      if (RpcNS.Api.isSimulationError(sim)) return null;
+      var m = SDK.scValToNative(sim.result.retval);
+      return m && m.name ? { name: String(m.name), verified: !!m.verified } : null;
+    }).catch(function () { return null; });
+  }
+
+  function traducir(txt) {
+    var s = String(txt || '');
+    if (/Auth, ExistingValue/.test(s)) return t('e_existing');
+    if (/Auth, InvalidInput/.test(s)) return t('e_invalidinput');
+    if (/Error\(Auth,/.test(s)) return t('e_auth');
+    if (/Contract, #4\)/.test(s)) return t('e_4');
+    if (/Contract, #5\)/.test(s)) return t('e_5');
+    if (/Contract, #10\)/.test(s)) return t('e_10');
+    if (/Contract, #13\)/.test(s)) return t('e_13');
+    return t('e_otro') + ' ' + s.slice(0, 240);
+  }
+
+  function setPill(id, cls, text) { var el = $(id); el.className = 'pill ' + cls; el.textContent = text; el.hidden = false; }
+
+  function onVerificar() {
+    var text = $('sobre').value;
+    $('card-verif').hidden = false; $('verif-error').hidden = true; $('verif-kv').hidden = true;
+    $('card-pasarela').hidden = true; $('card-liq').hidden = true; $('liq-ok').hidden = true; $('liq-error').hidden = true; $('log').textContent = '';
+    state.entry = null; state.v = null;
+    try {
+      var entry = decodeSobre(text);
+      var v = verificar(entry);
+      state.entry = entry; state.v = v;
+    } catch (e) {
+      setPill('verif-pill', 'bad', t('verif_bad'));
+      $('verif-error').textContent = e.message; $('verif-error').hidden = false;
+      return;
+    }
+    setPill('verif-pill', 'ok', t('verif_ok'));
+    $('v-payer').textContent = state.v.payer;
+    $('v-merchant').textContent = state.v.args.merchant; $('v-merchant-name').textContent = '';
+    $('v-tom').textContent = fmtUsdc(state.v.toM);
+    $('v-tip').textContent = fmtUsdc(state.v.tip) + ' (' + state.v.args.tipBps + ' bps)';
+    $('v-fee').textContent = fmtUsdc(state.v.fee) + ' (' + DEPLOYMENTS.protocol_fee_bps + ' bps)';
+    $('v-debit').textContent = fmtUsdc(state.v.debit);
+    $('v-exp').textContent = t('ledger') + ' ' + state.v.exp;
+    $('v-nonce').textContent = state.v.nonce.toString();
+    $('v-red').textContent = t('verificado_sin');
+    $('verif-kv').hidden = false;
+    $('card-pasarela').hidden = false; $('card-liq').hidden = false;
+    refrescarPasarela();
+    // Estado en la red: ledger actual, nonce y nombre del comercio (mejor esfuerzo).
+    Promise.all([server.getLatestLedger(), nonceConsumido(state.v.payer, state.v.nonce), nombreComercio(state.v.args.merchant)])
+      .then(function (r) {
+        var ledger = r[0].sequence, usado = r[1], m = r[2];
+        $('ledger-pie').textContent = 'ledger #' + ledger;
+        if (m) $('v-merchant-name').textContent = m.name + ' (' + (m.verified ? t('verificado_true') : t('verificado_false')) + ') ';
+        var restantes = state.v.exp - ledger;
+        $('v-exp').textContent = t('ledger') + ' ' + state.v.exp + ' · ' + (restantes >= 0 ? (t('quedan') + ' ' + restantes + ' ledgers ≈ ' + (restantes * 5 / 3600).toFixed(1) + ' ' + t('horas')) : t('expirado'));
+        if (usado) { $('v-red').innerHTML = '<span class="bad">' + t('nonce_usado') + '</span>'; $('btn-liquidar').disabled = true; }
+        else if (restantes < 0) { $('v-red').innerHTML = '<span class="bad">' + t('expirado') + '</span>'; $('btn-liquidar').disabled = true; }
+        else { $('v-red').innerHTML = '<span class="ok">' + t('red_ok') + '</span>'; $('btn-liquidar').disabled = false; }
+      })
+      .catch(function () { $('v-red').textContent = t('red_err'); $('btn-liquidar').disabled = false; });
+  }
+
+  /* ---------------- 3. cuenta pasarela ---------------- */
+  function leerSecret() { try { return localStorage.getItem(LS_SECRET); } catch (_) { return null; } }
+  function guardarSecret(s) { try { if (s) localStorage.setItem(LS_SECRET, s); else localStorage.removeItem(LS_SECRET); } catch (_) {} }
+  function refrescarPasarela() {
+    var s = leerSecret();
+    state.kp = null;
+    if (!s) { $('p-g').textContent = '—'; $('p-xlm').textContent = '—'; $('btn-olvidar').hidden = true; return; }
+    try { state.kp = SDK.Keypair.fromSecret(s); } catch (_) { guardarSecret(null); return refrescarPasarela(); }
+    var g = state.kp.publicKey();
+    $('p-g').textContent = g; $('p-xlm').textContent = '…'; $('btn-olvidar').hidden = false;
+    fetch(HORIZON + '/accounts/' + g).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) {
+      if (!a) { $('p-xlm').textContent = '0 · ' + t('sin_cuenta'); return; }
+      var nat = (a.balances || []).filter(function (b) { return b.asset_type === 'native'; })[0];
+      $('p-xlm').textContent = nat ? Number(nat.balance).toLocaleString(lang === 'es' ? 'es' : 'en', { maximumFractionDigits: 2 }) : '0';
+    }).catch(function () { $('p-xlm').textContent = '?'; });
+  }
+  function esperarCuenta(g, intentos) {
+    return fetch(HORIZON + '/accounts/' + g).then(function (r) {
+      if (r.ok) return true;
+      if (intentos <= 1) throw new Error(t('friendbot_err'));
+      return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return esperarCuenta(g, intentos - 1); });
+    });
+  }
+  function crearPasarela() {
+    var kp = SDK.Keypair.random();
+    $('btn-crear').disabled = true; $('p-g').textContent = kp.publicKey(); $('p-xlm').textContent = t('fondeando');
+    fetch(FRIENDBOT + '/?addr=' + kp.publicKey()).then(function (r) {
+      if (!r.ok) throw new Error(t('friendbot_err'));
+      guardarSecret(kp.secret());
+      return esperarCuenta(kp.publicKey(), 10);
+    }).then(function () { aviso(t('cuenta_lista')); refrescarPasarela(); }).catch(function (e) { $('p-xlm').textContent = e.message; }).finally(function () { $('btn-crear').disabled = false; });
+  }
+  $('btn-crear').onclick = crearPasarela;
+  $('btn-secret').onclick = function () { $('secret-box').hidden = !$('secret-box').hidden; };
+  $('btn-secret-ok').onclick = function () {
+    var s = $('secret-in').value.trim();
+    try { SDK.Keypair.fromSecret(s); } catch (_) { aviso(t('secret_mal')); return; }
+    guardarSecret(s); $('secret-in').value = ''; $('secret-box').hidden = true; refrescarPasarela();
+  };
+  $('btn-olvidar').onclick = function () { guardarSecret(null); refrescarPasarela(); };
+
+  /* ---------------- 4. liquidar ---------------- */
+  function esperarTx(hash) {
+    var intentos = 0;
+    return new Promise(function (resolve, reject) {
+      (function tick() {
+        server.getTransaction(hash).then(function (r) {
+          if (r.status !== 'NOT_FOUND') return resolve(r);
+          if (++intentos >= 30) return reject(new Error(t('sin_resp') + ' ' + hash));
+          setTimeout(tick, 3000);
+        }).catch(function () { if (++intentos >= 30) reject(new Error(t('sin_resp') + ' ' + hash)); else setTimeout(tick, 3000); });
+      })();
+    });
+  }
+  function liquidar() {
+    if (!state.entry || !state.v) { aviso(t('sin_sobre')); return; }
+    if (!state.kp) { aviso(t('sin_pasarela')); return; }
+    if (state.busy) return;
+    state.busy = true; $('btn-liquidar').disabled = true; $('liq-error').hidden = true; $('liq-ok').hidden = true; $('log').textContent = '';
+    setPill('liq-pill', 'wait', t('sim')); log(t('sim'));
+    var entry = state.entry, v = state.v, kp = state.kp, tx;
+    server.getAccount(kp.publicKey()).then(function (acc) {
+      var op = SDK.Operation.invokeHostFunction({
+        func: xdr.HostFunction.hostFunctionTypeInvokeContract(v.contractFn), // los argumentos firmados, tal cual
+        auth: [entry]                                                        // la auth del pagador, intacta
+      });
+      tx = new SDK.TransactionBuilder(acc, { fee: BASE_FEE, networkPassphrase: SDK.Networks.TESTNET }).addOperation(op).setTimeout(120).build();
+      return server.simulateTransaction(tx, undefined, 'enforce');           // con auth presente: modo enforce
+    }).then(function (sim) {
+      if (RpcNS.Api.isSimulationError(sim)) throw new Error(traducir(sim.error));
+      log('minResourceFee ' + (Number(sim.minResourceFee) / 1e7).toFixed(4) + ' XLM');
+      var prepared = RpcNS.assembleTransaction(tx, sim).build();              // conserva la auth adjunta
+      prepared.sign(kp);
+      setPill('liq-pill', 'wait', t('env')); log(t('env'));
+      return server.sendTransaction(prepared);
+    }).then(function (sent) {
+      if (sent.status === 'ERROR') throw new Error(traducir(sent.errorResult ? JSON.stringify(sent.errorResult) : sent.errorResultXdr));
+      log('hash ' + sent.hash + ' (' + sent.status + ')');
+      setPill('liq-pill', 'wait', t('esp'));
+      return esperarTx(sent.hash).then(function (r) { return { hash: sent.hash, r: r }; });
+    }).then(function (res) {
+      if (res.r.status !== 'SUCCESS') throw new Error(t('fallo_red') + ' ' + res.hash);
+      setPill('liq-pill', 'ok', 'SUCCESS · ledger ' + res.r.ledger);
+      $('liq-hash').textContent = res.hash;
+      $('liq-link').href = EXPERT_TX + res.hash;
+      $('liq-ok').hidden = false;
+      try { var q = qrcode(0, 'M'); q.addData(res.hash); q.make(); $('qrhash').innerHTML = q.createImgTag(5, 8); } catch (_) {}
+      $('btn-copiar-hash').onclick = function () { navigator.clipboard && navigator.clipboard.writeText(res.hash).then(function () { aviso(t('copiado')); }); };
+      $('v-red').innerHTML = '<span class="bad">' + t('nonce_usado') + '</span>';
+      log('OK');
+    }).catch(function (e) {
+      setPill('liq-pill', 'bad', t('verif_bad'));
+      $('liq-error').textContent = e.message; $('liq-error').hidden = false; log('ERROR ' + e.message);
+      $('btn-liquidar').disabled = false;
+    }).finally(function () { state.busy = false; });
+  }
+  $('btn-liquidar').onclick = liquidar;
+  $('btn-verificar').onclick = onVerificar;
+  $('btn-limpiar').onclick = function () { $('sobre').value = ''; $('card-verif').hidden = true; $('card-pasarela').hidden = true; $('card-liq').hidden = true; };
+
+  /* ---------------- cámara ---------------- */
+  var scanner = null;
+  $('btn-scan').onclick = function () {
+    if (!window.Html5Qrcode) { aviso(t('camara_err')); return; }
+    $('reader').style.display = 'block'; $('btn-stop').hidden = false; $('btn-scan').disabled = true;
+    scanner = new Html5Qrcode('reader');
+    scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 280 } }, function (texto) {
+      if (texto && texto.indexOf(PREFIX) === 0) { $('sobre').value = texto; pararCamara(); onVerificar(); }
+    }, function () { /* sin lectura todavía */ }).catch(function () { aviso(t('camara_err')); pararCamara(); });
+  };
+  function pararCamara() {
+    $('btn-stop').hidden = true; $('btn-scan').disabled = false; $('reader').style.display = 'none';
+    if (scanner) { scanner.stop().catch(function () {}).finally(function () { scanner = null; }); }
+  }
+  $('btn-stop').onclick = pararCamara;
+
+  /* ---------------- arranque: ?sobre= o #sobre= pre-rellena y verifica ---------------- */
+  (function () {
+    var p = new URLSearchParams(location.search);
+    var s = p.get('sobre');
+    if (!s && location.hash.indexOf('#sobre=') === 0) s = decodeURIComponent(location.hash.slice(7));
+    if (s) { $('sobre').value = s.trim(); onVerificar(); }
+    refrescarPasarela();
+    if (!SDK) { $('verif-error').textContent = 'No se pudo cargar @stellar/stellar-sdk desde el CDN.'; $('verif-error').hidden = false; $('card-verif').hidden = false; }
+  })();
+})();
+</script>
+</body>
+</html>

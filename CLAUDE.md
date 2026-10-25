@@ -476,7 +476,13 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   chars, QR v29; ya no el JSON de la spec §5), W = 11 520 ledgers, sobres por wallet (no por app), y el cierre lo
   decide la red: nonce consumido (`SorobanClient.nonceConsumed`, entrada temporal bajo la cuenta del pagador) o
   hash cuya auth sea el sobre; sin señal, cualquier comercio sale de `data/local/MerchantCache` (nada de mocks).
-  Siguen B3 (pasarela web, sesión aparte: debe leer prefijo + XDR), B4 (cobrador), B5 video, B6 docs, B7 deck.
+  **B3 cerrado el 25-oct (22:10):** pasarela web `landing/pasarela.html`, publicada en
+  https://raizapp.xyz/pasarela.html (SDK 17.0.1, html5-qrcode y qrcode-generator por CDN, sin build): escanear o
+  pegar el sobre → verificación sin red (mismas reglas que `scripts/pasarela_cli.mjs`) → ledger y nonce → cuenta
+  pasarela en `localStorage` fondeada por friendbot → liquidar (enforce → assemble → sign → send) → hash, Stellar
+  Expert y QR del hash; errores traducidos; ES/EN; `?sobre=` precarga. Probada headless por CDP con el fixture y
+  con un sobre real de `scripts/deferred_envelope_demo.mjs` (tx `27c61461…`). Siguen B4 (cobrador), B5 (video),
+  B6 (docs), B7 (deck).
 
 ### Próximo paso
 

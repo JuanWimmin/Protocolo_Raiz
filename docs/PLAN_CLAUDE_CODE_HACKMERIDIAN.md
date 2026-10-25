@@ -227,6 +227,27 @@ La cámara en Safari exige HTTPS: probar sobre `raizapp.xyz/pasarela.html` (copi
 **Aceptación:** desde Safari en el iPhone, escaneando el QR del emulador, aparece el hash y Stellar Expert
 muestra la tx con fuente = pasarela y auth del pagador. Reenviar el mismo sobre falla por nonce.
 
+**Resultado (25-oct, 22:10; hecho en la sesión principal, no hubo sesión aparte):** `landing/pasarela.html`
+publicada en https://raizapp.xyz/pasarela.html. Sin build: `@stellar/stellar-sdk@17.0.1`, `html5-qrcode@2.3.8`
+y `qrcode-generator@1.4.4` desde jsDelivr; estilo y `DEPLOYMENTS` de la landing; textos ES/EN en un objeto.
+Flujo: escanear (cámara en la página) o pegar → **verificar sin red** con las mismas reglas que
+`scripts/pasarela_cli.mjs` (prefijo `raiz:sobre:1:`, XDR, credenciales legacy de una cuenta G, raíz
+`pay_merchant` del Pool, árbol reconstruido con `fee_bps` 50 idéntico byte a byte, firma ed25519 sobre el
+preimage tipo 9) → estado en la red (ledger actual, `nonce` consumido vía `getLedgerEntries`, nombre del
+comercio con `get_merchant` simulado) → cuenta pasarela en `localStorage` (friendbot o secret pegada; saldo
+por Horizon) → **liquidar**: `invokeHostFunction` con los argumentos firmados y `auth = [sobre]`, simulación
+`enforce`, `assembleTransaction`, firma, envío, polling → hash + Stellar Expert + QR del hash; errores
+traducidos (nonce usado, expirado, firma/árbol, #4, #5, #10, #13). `?sobre=` o `#sobre=` precargan y
+verifican (para pruebas y enlaces). Sobres de prueba: `sobre_qr` del fixture y
+`scripts/deferred_envelope_demo.mjs` (sobre real desde `DEFERRED_PAYER_SECRET`, nonce aleatorio, E = L + W).
+**Probada** en Chrome headless por CDP (sin extensión, `scratchpad/cdp_pasarela_test.mjs`): el fixture verifica
+("firma válida", nonce libre, Cafe Don Aurelio verificado) y un sobre real de `raiz-tourist` (0,5 USDC + 2 %)
+se liquidó con una pasarela creada por la página (`GADSC7Z5…T43MO`, friendbot): tx
+[`27c61461…9f47`](https://stellar.expert/explorer/testnet/tx/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47)
+(ledger 5 388 486, fee de recursos 0,0052 XLM); después la página marca el nonce como consumido y no deja
+reenviar. Queda la aceptación manual del usuario: Safari en el iPhone escaneando el QR del emulador
+(la cámara exige HTTPS: ya está en raizapp.xyz).
+
 **Prompt listo:**
 ```text
 Lee CLAUDE.md, docs/pago_diferido_v0.md (§2, §5, §6) y docs/PLAN_CLAUDE_CODE_HACKMERIDIAN.md B3. Rama feat/pago-diferido. Crea landing/pasarela.html: página estática (estilo y DEPLOYMENTS de landing/index.html) que escanea por cámara o recibe pegado un sobre de pago diferido, verifica localmente JSON↔XDR y la firma ed25519 del pagador sobre el preimage ENVELOPE_TYPE_SOROBAN_AUTHORIZATION (testnet), consulta el ledger actual para marcar expiración, y lo liquida: cuenta de pasarela en localStorage fondeada por friendbot (o secret pegada), tx con la pasarela como fuente e invokeHostFunction de Pool.pay_merchant con auth=[entry], simulate → assemble → sign → send → getTransaction, hash + enlace a Stellar Expert + QR del hash, y errores legibles (nonce usado, expirada, fondos, comercio no verificado, fee cambió). Usa @stellar/stellar-sdk y un lector QR desde CDN, sin build. Textos ES/EN en un objeto. Para el patrón "fuente distinta + auth ajena" fíjate en cómo lo hace el relayer (https://github.com/JuanWimmin/raiz-relayer). Entrégame también un sobre de prueba generado con un script node (scripts/deferred_envelope_demo.js) para probar la página antes de que la app lo produzca. No toques contracts/.
