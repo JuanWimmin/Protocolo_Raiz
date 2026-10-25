@@ -342,12 +342,14 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   por `python scripts/mask_video_autofill.py ENTRADA SALIDA` (detecta los tramos con teclado sobre la
   Custom Tab, tapa las dos franjas y verifica el resultado; geometría de una pantalla 720×1612).
 
-- **Fee de recursos de Soroban en testnet (medido 2026-10-25): un `pay_merchant` cuesta ≈ 30–40 XLM**
-  (`fee_charged` 28,65 XLM en `ebee152c…`; simulación 41,7 XLM con 1,2 KB escritos, 2,6 M instrucciones y
-  ninguna entrada archivada). En mayo la misma llamada costaba 0,0009 XLM: es el precio de escritura de
-  testnet por el tamaño de su estado, no el contrato. Toda cuenta que envíe txs de Soroban (pasarela del
-  pago diferido, wallets de demo) debe ir fondeada por friendbot (10 000 XLM); no prometer "con unos pocos
-  XLM" hasta medirlo en mainnet.
+- **Fee de recursos de Soroban en testnet (medido 2026-10-25): el PRIMER `pay_merchant` de un turista en un
+  barrio cuesta ≈ 30 XLM; los siguientes, céntimos.** `ebee152c…` (primer pago de `GC4VHSZY…` en Centro) cobró
+  28,65 XLM: crea dos entradas persistentes (`TouristSeen` y `Points`) y paga su renta inicial al precio de
+  escritura de testnet; `cec2388a…` (segundo pago del mismo turista, mismo barrio, vía la pasarela de terminal)
+  cobró 0,0023 XLM. Es el modelo de renta de testnet, no el contrato (en mayo todo costaba 0,0009 XLM). Toda
+  cuenta que envíe txs de Soroban (pasarela del pago diferido, wallets de demo) debe ir fondeada por friendbot
+  (10 000 XLM); no prometer costos hasta medirlo en mainnet. En la demo, pagar una vez con red antes de grabar
+  deja al turista "estrenado" en el barrio y la liquidación del sobre sale barata.
 
 ## Estado actual (2026-10-04)
 

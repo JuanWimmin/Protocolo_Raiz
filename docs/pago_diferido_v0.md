@@ -110,7 +110,9 @@ Parámetro honesto en la UI: "válido hasta ~hh:mm (estimado)".
 - E = L (ledger actual) sigue siendo válido; E < L falla con `Error(Auth, InvalidInput)`; reenviar un sobre ya
   liquidado falla con `Error(Auth, ExistingValue)` (nonce consumido). Son los tres mensajes que la pasarela
   traduce a `expirada` y `nonce usado`.
-- **Fee que paga la pasarela (testnet, hoy): 28,65 XLM** (`fee_charged` de `ebee152c…`; la simulación pedía
+- **Fee que paga la pasarela (testnet, hoy): 28,65 XLM en el PRIMER pago del turista en el barrio y 0,0023 XLM en
+  los siguientes** (`cec2388a…`, segundo sobre del mismo turista liquidado por la pasarela de terminal): el
+  primero crea `TouristSeen` y `Points` y paga su renta inicial. Detalle del primero: (`fee_charged` de `ebee152c…`; la simulación pedía
   32,95 XLM de recursos y hoy pide 41,7). No es el sobre ni una restauración: la simulación lista 1 224 bytes
   escritos, 2,6 M de instrucciones y ninguna entrada archivada; es el precio de escritura de testnet por el
   tamaño de su estado (la misma `pay_merchant` costaba 0,0009 XLM en mayo). Consecuencias: la pasarela de la

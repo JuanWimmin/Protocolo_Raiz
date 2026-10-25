@@ -191,9 +191,13 @@ class DeferredPaymentManager @Inject constructor(
                 if (events == null) {
                     events = (sorobanClient.tourPaymentEvents(r.payer) as? RaizResult.Success)?.data ?: emptyList()
                 }
+                // El hash se toma solo de una tx cuya auth sea ESTE sobre (regla 3): se prueban los últimos
+                // pagos a ese comercio y se comprueba la auth de cada candidato.
                 val hash = events
-                    .filter { it.to == r.merchantAddress && it.amountStroops == r.amountStroops }
-                    .maxByOrNull { it.createdAt }
+                    .filter { it.to == r.merchantAddress }
+                    .sortedByDescending { it.createdAt }
+                    .take(MAX_HASH_CANDIDATES)
+                    .firstOrNull { ev -> sorobanClient.transactionAuthEntries(ev.txHash).authEntriesXdr.contains(r.authXdr) }
                     ?.txHash
                 store.update(DeferredPolicy.markConfirmed(r, hash))
                 Log.i(TAG, "sobre ${r.id} CONFIRMADO por nonce consumido; hash=${hash ?: "pendiente"}")
@@ -244,6 +248,7 @@ class DeferredPaymentManager @Inject constructor(
     companion object {
         private const val TAG = "RAIZ"
         private val HASH_RE = Regex("[0-9a-f]{64}")
+        private const val MAX_HASH_CANDIDATES = 5
         const val MOTIVO_PASSKEY = "Firmar sin señal llega en v1 para wallets passkey."
         const val MOTIVO_SIN_WALLET = "En modo demo no se firma sin señal: crea tu wallet con frase semilla."
         const val MOTIVO_WALLET_DISTINTA = "La wallet activa no coincide con la clave guardada."
