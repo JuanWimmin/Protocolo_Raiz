@@ -9,6 +9,16 @@ App Android nativa + 5 contratos Soroban (Rust) desplegados y poblados en **Stel
 
 ---
 
+## HackMeridian 2026 (Lisbon, Oct 25–26) — what we are building here · [EN]
+
+**Builder track: Scale · Thematic track: Stellar Unlocked.** RAÍZ arrives as a live testnet product (Android app 0.4.0, 5 Soroban contracts, open-source relayer, SEP-10/24 deposits for seed and passkey wallets, 8 community-fund executions with real transaction hashes — see the [evidence index](docs/evidencia_sow/README.en.md)).
+
+**New work at the hackathon: deferred payments over a device swarm, for territories without signal.** The visitor signs the Soroban authorization entry for `Pool.pay_merchant` while offline and hands it to the merchant by QR; the merchant verifies the signature locally and shows "in transit"; any device with connectivity — the merchant, a resident, a public web page, even a phone without the app — rebuilds the transaction as fee payer and submits it. Nonce and ledger expiration bound replay; no new contract is deployed. Design, math and threat model: [`docs/pago_diferido_v0.md`](docs/pago_diferido_v0.md).
+
+**Prior work vs. hackathon work.** Everything up to the tag `hackmeridian-start` existed before the event; what we built during the hackathon is the diff `hackmeridian-start...main`. Known limits are stated as such: there is no offline finality, the merchant holds a signed promise until the hash lands, and double-spend is bounded by expiration, per-merchant caps and (v1) a prefunded territory pocket.
+
+---
+
 ## 1. El problema y la solución 🧭
 
 ### El problema: turismo extractivo
