@@ -1,16 +1,18 @@
 package com.raiz.app.data.deferred
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Transiciones de la máquina de estados del sobre (spec §6) y codec del almacén. */
 class DeferredPolicyTest {
 
-    private fun record(id: String, status: DeferredStatus, exp: Long) = DeferredRecord(
+    private fun record(id: String, status: DeferredStatus, exp: Long, payer: String = "GPAYER") = DeferredRecord(
         id = id,
-        envelopeB64url = "e30",
-        payer = "GPAYER",
+        sobreQr = "raiz:sobre:1:e30",
+        authXdr = "AAAA",
+        payer = payer,
         merchantAddress = "GMERCHANT",
         merchantName = "Cafe Don Aurelio",
         merchantVerified = true,
@@ -45,7 +47,7 @@ class DeferredPolicyTest {
     }
 
     @Test
-    fun `transiciones entregado, confirmado y rechazado`() {
+    fun `transiciones entregado, confirmado, expirado por la red y rechazado`() {
         val r = record("a", DeferredStatus.FIRMADO, exp = 100)
         val delivered = DeferredPolicy.markDelivered(r)
         assertEquals(DeferredStatus.ENTREGADO, delivered.status)
@@ -54,8 +56,18 @@ class DeferredPolicyTest {
         val confirmed = DeferredPolicy.markConfirmed(delivered, "ab".repeat(32))
         assertEquals(DeferredStatus.CONFIRMADO, confirmed.status)
         assertEquals("ab".repeat(32), confirmed.txHash)
+        // Prueba por nonce sin hash todavía: CONFIRMADO con hash nulo; un hash posterior lo completa.
+        val sinHash = DeferredPolicy.markConfirmed(delivered, null)
+        assertEquals(DeferredStatus.CONFIRMADO, sinHash.status)
+        assertNull(sinHash.txHash)
+        assertEquals("cd".repeat(32), DeferredPolicy.markConfirmed(sinHash, "cd".repeat(32)).txHash)
         // Un hash confirmado manda sobre un EXPIRADO local.
         assertEquals(DeferredStatus.CONFIRMADO, DeferredPolicy.markConfirmed(r.copy(status = DeferredStatus.EXPIRADO), "cd".repeat(32)).status)
+        // Expirado según la red.
+        val expiradoRed = DeferredPolicy.markExpiredByNetwork(delivered)
+        assertEquals(DeferredStatus.EXPIRADO, expiradoRed.status)
+        assertEquals(DeferredPolicy.MOTIVO_EXPIRADO_RED, expiradoRed.motivo)
+        assertEquals(confirmed, DeferredPolicy.markExpiredByNetwork(confirmed))
         // RECHAZADO es terminal.
         val rejected = DeferredPolicy.markRejected(delivered, "nonce usado")
         assertEquals(DeferredStatus.RECHAZADO, rejected.status)

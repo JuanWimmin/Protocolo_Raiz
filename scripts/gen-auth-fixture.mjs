@@ -65,6 +65,7 @@ const EXP = 6398412;                  // ejemplo de la spec §5
 const NEGATIVE_NONCE = -4611686018427387905n; // la mitad de los nonces aleatorios de 64 bits son negativos
 const OUT = path.resolve(__dirname, '../android/app/src/test/resources/deferred_auth_fixture.json');
 const DEMO_TOURIST = 'GC4VHSZYLB7B3SGYYOV4JAWEG2TT6OJAMT6QTC7HLMP53O5DB3XCQQEH'; // wallet semilla del emulador (demo)
+const SOBRE_PREFIX = 'raiz:sobre:1:'; // formato del QR: prefijo + base64url del XDR firmado (SobreCodec en la app)
 
 // ── Árbol de autorización (spec §2.1 = contracts/pool/src/lib.rs pay_merchant) ──────────────────
 export function split(amount, tipBps, feeBps) {
@@ -193,21 +194,9 @@ async function buildFixture() {
     };
   };
 
-  const envelope = {
-    v: 1,
-    net: NETWORK,
-    payer: payerPub,
-    merchant: MERCHANT,
-    amount: String(AMOUNT),
-    tip_bps: TIP_BPS,
-    fee_bps: FEE_BPS,
-    nonce: String(NONCE),
-    exp: EXP,
-    l0: 6389772,
-    t0: 1761393600,
-    auth: b64(manual.entry),
-  };
-  const envelopeB64url = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64url');
+  // El sobre que viaja (QR y "Copiar sobre"): prefijo + base64url del XDR firmado, sin JSON (ajuste 1 de
+  // docs/Pago diferido por enjambre.md). Todo lo demás se deriva de la invocación firmada.
+  const sobreQr = SOBRE_PREFIX + Buffer.from(manual.entry.toXdr()).toString('base64url');
 
   return {
     generated_by: 'scripts/gen-auth-fixture.mjs',
@@ -253,9 +242,8 @@ async function buildFixture() {
         entry_signed_xdr: b64(negative.entry),
       },
     },
-    envelope,
-    envelope_b64url: envelopeB64url,
-    envelope_b64url_chars: envelopeB64url.length,
+    sobre_qr: sobreQr,
+    sobre_qr_chars: sobreQr.length,
   };
 }
 
@@ -330,7 +318,7 @@ async function main() {
   console.log(`  montos: amount=${fixture.amount} tip=${fixture.tip} fee=${fixture.fee} to_merchant=${fixture.to_merchant}`);
   console.log(`  payload hash ${fixture.payload_hash_hex}`);
   console.log(`  entrada firmada: ${fixture.entry_signed_bytes} bytes XDR · ${fixture.entry_signed_xdr.length} chars base64 · ` +
-    `sobre §5: ${fixture.envelope_b64url_chars} chars base64url`);
+    `sobre QR (prefijo + XDR): ${fixture.sobre_qr_chars} chars`);
   if (args.has('--verify-tree')) {
     console.log('Verificando el árbol contra la simulación de testnet (sin firma):');
     const ok = await verifyTree();

@@ -7,8 +7,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Estimador §3.1 con los números de la spec: τ = 5 s, τ_min = 4,5 s, W(12 h) = 9 600; cierres reales de
- * 4,5 / 5 / 6 s a 1 h y 12 h; y la disposición del estimador (ancla, reinicio, antigüedad, salto de reloj).
+ * Estimador §3.1 con la ventana del documento "Pago diferido por enjambre" (A2, paso 8):
+ * W = T_des/τ_min + Δ_max·(1/τ_min − 1/τ) = 9 600 + 1 920 = 11 520 ledgers para 12 h, τ = 5 s, τ_min = 4,5 s y
+ * hasta 24 h sin señal antes de firmar; cierres reales de 4,5 / 5 / 6 s a 1 h y 12 h; y la disposición del
+ * estimador (ancla, reinicio, antigüedad, salto de reloj).
  */
 class LedgerMathTest {
 
@@ -18,10 +20,20 @@ class LedgerMathTest {
     private fun realLedger(dtMs: Long, tauRealMs: Long) = l0 + dtMs / tauRealMs
 
     @Test
-    fun `ventana para 12 h con tau_min 4,5 s es 9600`() {
-        assertEquals(9_600L, LedgerMath.window(8_640L))
-        assertEquals(9_600L, LedgerMath.WINDOW_12H)
-        assertEquals(8_640L, LedgerMath.window(8_640L, 5_000L, 5_000L))
+    fun `ventana para 12 h es 11520 ledgers (9600 de ventana + 1920 de deriva en 24 h)`() {
+        assertEquals(11_520L, LedgerMath.WINDOW_12H)
+        assertEquals(9_600L, LedgerMath.window(12 * h, deltaMaxMs = 0L))
+        assertEquals(8_640L, LedgerMath.window(12 * h, tauMs = 5_000L, tauMinMs = 5_000L, deltaMaxMs = 0L))
+        assertEquals(1_920L, LedgerMath.window(0L))
+    }
+
+    @Test
+    fun `peor caso del documento - red a 4,5 s tras 24 h sin senal deja exactamente 12 h de ventana`() {
+        // e_max = 24 h · (1/4,5 − 1/5) = 1 920 ledgers; T_ef = (W − e_max) · 4,5 s = 43 200 s.
+        val dt = 24 * h
+        val eMax = realLedger(dt, 4_500L) - LedgerMath.estimate(l0, 0L, dt)
+        assertEquals(1_920L, eMax)
+        assertEquals(43_200_000L, (LedgerMath.WINDOW_12H - eMax) * 4_500L)
     }
 
     @Test
@@ -29,19 +41,17 @@ class LedgerMathTest {
         for (dt in listOf(h, 12 * h)) {
             val est = LedgerMath.estimate(l0, 0L, dt)
             assertEquals(realLedger(dt, 5_000L), est)
-            assertEquals(9_600L, LedgerMath.expiration(l0, 0L, dt) - realLedger(dt, 5_000L))
+            assertEquals(11_520L, LedgerMath.expiration(l0, 0L, dt) - realLedger(dt, 5_000L))
         }
     }
 
     @Test
     fun `cierre real de 4,5 s subestima 80 y 960 ledgers y el sobre sigue vigente`() {
-        val e1 = LedgerMath.estimate(l0, 0L, h)
-        assertEquals(80L, realLedger(h, 4_500L) - e1)
-        val e12 = LedgerMath.estimate(l0, 0L, 12 * h)
-        assertEquals(960L, realLedger(12 * h, 4_500L) - e12)
-        // Ventana efectiva: E − real = 9 600 − 960 = 8 640 ledgers ≈ 10,8 h a 4,5 s: sigue vigente.
+        assertEquals(80L, realLedger(h, 4_500L) - LedgerMath.estimate(l0, 0L, h))
+        assertEquals(960L, realLedger(12 * h, 4_500L) - LedgerMath.estimate(l0, 0L, 12 * h))
+        // Ventana efectiva: E − real = 11 520 − 960 = 10 560 ledgers ≈ 13,2 h a 4,5 s: sigue vigente.
         val exp = LedgerMath.expiration(l0, 0L, 12 * h)
-        assertEquals(8_640L, exp - realLedger(12 * h, 4_500L))
+        assertEquals(10_560L, exp - realLedger(12 * h, 4_500L))
         assertTrue(exp > realLedger(12 * h, 4_500L))
     }
 
@@ -49,11 +59,11 @@ class LedgerMathTest {
     fun `cierre real de 6 s sobreestima 120 y 1440 ledgers sin acortar la ventana`() {
         assertEquals(120L, LedgerMath.estimate(l0, 0L, h) - realLedger(h, 6_000L))
         assertEquals(1_440L, LedgerMath.estimate(l0, 0L, 12 * h) - realLedger(12 * h, 6_000L))
-        assertEquals(11_040L, LedgerMath.expiration(l0, 0L, 12 * h) - realLedger(12 * h, 6_000L))
+        assertEquals(12_960L, LedgerMath.expiration(l0, 0L, 12 * h) - realLedger(12 * h, 6_000L))
     }
 
     @Test
-    fun `valido hasta en hora de pared es ahora mas 12 h usando tau_min`() {
+    fun `valido hasta en hora de pared es ahora mas 12 h (la ventana garantizada)`() {
         assertEquals(1_000L + 43_200_000L, LedgerMath.validUntilWallMs(1_000L))
     }
 
@@ -111,7 +121,7 @@ class LedgerMathTest {
         c.wall -= LedgerMath.MAX_CLOCK_DRIFT_MS + 1
         val ready = est.readiness() as Readiness.Lista
         assertEquals(l0 + 720L, ready.estimate)
-        assertEquals(l0 + 720L + 9_600L, est.expiration())
+        assertEquals(l0 + 720L + 11_520L, est.expiration())
     }
 
     @Test
@@ -137,7 +147,7 @@ class LedgerMathTest {
         val st = FakeStorage()
         val c = Clocks()
         val est = estimator(st, c)
-        assertFalse(DeferredPolicy.canSign(est.readiness(), l0 + 9_600L))
+        assertFalse(DeferredPolicy.canSign(est.readiness(), l0 + 11_520L))
         est.record(l0, null)
         val r = est.readiness()
         assertTrue(DeferredPolicy.canSign(r, l0 + 1))
