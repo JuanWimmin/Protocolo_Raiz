@@ -48,7 +48,7 @@
     .pill.ok { background:#D1FAE5; color:var(--negro); }
     .pill.bad { background:#FEE2E2; color:var(--negro); }
     .pill.wait { background:#FEF3C7; color:var(--negro); }
-    #reader { width:100%; max-width:420px; margin-top:10px; border:2px solid var(--negro); display:none; }
+    #reader { width:100%; max-width:520px; margin-top:10px; border:2px solid var(--negro); display:none; }
     .hash { font-family:'Space Mono', monospace; font-size:.8rem; word-break:break-all; background:var(--crema); border:2px solid var(--negro); padding:10px; }
     #qrhash img { border:2px solid var(--negro); margin-top:10px; }
     .log { font-family:'Space Mono', monospace; font-size:.74rem; color:var(--gris); white-space:pre-wrap; word-break:break-all; margin-top:10px; max-height:180px; overflow:auto; }
@@ -521,7 +521,13 @@
     if (!window.Html5Qrcode) { aviso(t('camara_err')); return; }
     $('reader').style.display = 'block'; $('btn-stop').hidden = false; $('btn-scan').disabled = true;
     scanner = new Html5Qrcode('reader');
-    scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 280 } }, function (texto) {
+    scanner.start({ facingMode: 'environment' }, {
+      fps: 10, aspectRatio: 1.0, disableFlip: true,
+      // QR denso (v29): área de lectura casi completa y cámara en alta resolución.
+      qrbox: function (vw, vh) { var s = Math.floor(Math.min(vw, vh) * 0.9); return { width: s, height: s }; },
+      videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    }, function (texto) {
       if (texto && texto.indexOf(PREFIX) === 0) { $('sobre').value = texto; pararCamara(); onVerificar(); }
     }, function () { /* sin lectura todavía */ }).catch(function () { aviso(t('camara_err')); pararCamara(); });
   };
