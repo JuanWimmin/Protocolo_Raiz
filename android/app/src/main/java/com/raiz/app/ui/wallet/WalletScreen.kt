@@ -103,6 +103,7 @@ fun WalletScreen(
     onNavigateProposals: () -> Unit = {},
     onNavigateCobros: () -> Unit = {},
     onNavigateDeposit: () -> Unit = {},
+    onNavigateSobres: () -> Unit = {},
     currentRole: UserRole = UserRole.TOURIST,
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
@@ -182,6 +183,7 @@ fun WalletScreen(
                 onActivateUsdc = viewModel::activateUsdcTrustline,
                 onRequestUsdc = viewModel::requestUsdcFaucet,
                 onNavigateDeposit = onNavigateDeposit,
+                onNavigateSobres = onNavigateSobres,
                 contentPadding = padding,
             )
         }
@@ -234,6 +236,7 @@ private fun WalletReady(
     onActivateUsdc: () -> Unit,
     onRequestUsdc: () -> Unit,
     onNavigateDeposit: () -> Unit,
+    onNavigateSobres: () -> Unit = {},
     contentPadding: PaddingValues,
 ) {
     val context = LocalContext.current
@@ -332,6 +335,31 @@ private fun WalletReady(
                         text = "Tienes un depósito en camino · Terminar",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                         color = RaizGreen,
+                    )
+                }
+            }
+            // Pago diferido: sobres firmados sin señal pendientes de confirmar → "Mis sobres".
+            if (state.sobresEnTransito > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onNavigateSobres)
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(RaizYellow),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (state.sobresEnTransito == 1) "Tienes 1 sobre en tránsito · Ver"
+                        else "Tienes ${state.sobresEnTransito} sobres en tránsito · Ver",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = RaizBlack,
                     )
                 }
             }

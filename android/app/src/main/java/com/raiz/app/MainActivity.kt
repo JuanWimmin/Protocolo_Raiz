@@ -54,6 +54,8 @@ import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
+import com.raiz.app.ui.deferred.DeferredDetailRoute
+import com.raiz.app.ui.deferred.DeferredListScreen
 import com.raiz.app.ui.become_resident.BecomeResidentScreen
 import com.raiz.app.ui.cobros.CobrosScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
@@ -459,6 +461,7 @@ private fun RaizApp(
                 onNavigateProposals = { goTo(Routes.PROPOSALS) },
                 onNavigateCobros    = { goTo(Routes.COBROS) },
                 onNavigateDeposit   = { nav.navigate(Routes.DEPOSIT) },
+                onNavigateSobres    = { nav.navigate(Routes.DEFERRED) },
                 currentRole = currentRole,
             )
         }
@@ -478,7 +481,26 @@ private fun RaizApp(
                 },
             ),
         ) {
-            PayScreen(onDone = { nav.popBackStack() })
+            PayScreen(
+                onDone = { nav.popBackStack() },
+                onVerSobres = { nav.navigate(Routes.DEFERRED) },
+            )
+        }
+        // Pago diferido: historial "Mis sobres" y detalle de un sobre (re-mostrar QR, cerrar por hash).
+        composable(Routes.DEFERRED) {
+            DeferredListScreen(
+                onBack = { nav.popBackStack() },
+                onOpen = { id -> nav.navigate("${Routes.DEFERRED}/$id") },
+            )
+        }
+        composable(
+            route = "${Routes.DEFERRED}/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+        ) { entry ->
+            DeferredDetailRoute(
+                id = entry.arguments?.getString("id").orEmpty(),
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(Routes.PROFILE) {
             ProfileScreen(
@@ -717,6 +739,8 @@ private object Routes {
     const val DASHBOARD                  = "dashboard"
     const val YIELD                      = "yield"
     const val DEPOSIT                    = "deposit"
+    /** Pago diferido: historial "Mis sobres"; el detalle es `sobres/{id}` (id = nonce en decimal). */
+    const val DEFERRED                   = "sobres"
 
     // Registrar comerciante — dos rutas por contexto de origen
     const val BECOME_MERCHANT            = "become_merchant"

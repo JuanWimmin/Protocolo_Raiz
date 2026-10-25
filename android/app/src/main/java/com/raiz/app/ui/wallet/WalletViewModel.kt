@@ -11,6 +11,7 @@ import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.DeploymentsLoader
+import com.raiz.app.data.deferred.DeferredStore
 import com.raiz.app.data.stellar.DepositAccountManager
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
@@ -73,6 +74,8 @@ sealed interface WalletUiState {
          * dos activos distintos y no se suman.
          */
         val depositInTransit: Boolean = false,
+        /** Pago diferido: sobres firmados sin señal que aún no se confirmaron (FIRMADO/ENTREGADO). */
+        val sobresEnTransito: Int = 0,
     ) : WalletUiState
     data class Error(val message: String) : WalletUiState
 }
@@ -85,6 +88,7 @@ class WalletViewModel @Inject constructor(
     private val deploymentsLoader: DeploymentsLoader,
     private val relayerClient: RelayerClient,
     private val depositAccounts: DepositAccountManager,
+    private val deferredStore: DeferredStore,
 ) : ViewModel() {
 
     private val deployments by lazy { deploymentsLoader.load() }
@@ -561,6 +565,16 @@ class WalletViewModel @Inject constructor(
         }
         // Passkey: ¿sigue habiendo un depósito a medio camino en la cuenta de depósito?
         refreshDepositInTransit()
+        publishSobresEnTransito()
+    }
+
+    /** Pago diferido: fila "sobres en tránsito" de Inicio. */
+    private fun publishSobresEnTransito() {
+        val n = runCatching { deferredStore.pendingCount() }.getOrDefault(0)
+        val current = _state.value
+        if (current is WalletUiState.Ready && current.sobresEnTransito != n) {
+            _state.value = current.copy(sobresEnTransito = n)
+        }
     }
 
     private companion object {
