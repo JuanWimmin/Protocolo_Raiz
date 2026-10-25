@@ -480,12 +480,17 @@ private fun PriceGuardNotice(
     onRetry: () -> Unit,
     onDemoUsdc: () -> Unit,
 ) {
-    val percent = SwapMath.ratioBps(swap.sendStroops, swap.destStroops) / 100
+    // Un decimal y TRUNCADO (como ratioBps): con el pool de testnet entregando el 0,9 % el entero
+    // decía "(0 %)", y redondear un 96,99 % diría "97.0 %", justo por encima de la guarda del 97 %.
+    val tenthsOfPercent = SwapMath.ratioBps(swap.sendStroops, swap.destStroops) / 10
+    val percent = "${tenthsOfPercent / 10}.${tenthsOfPercent % 10}"
     val belowHardFloor = swap.guard == SwapMath.QuoteGuard.BELOW_HARD_FLOOR
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = "El cambio está lejos de 1 a 1: por ${swap.sendStroops.formatUsdc()} del anchor " +
-                "recibirías ≈ ${swap.destStroops.formatUsdc()} del fondo ($percent %). " +
+            // formatUsdc() ya incluye la unidad ("4.5 USDC"): no se añade otra.
+            text = "Tu depósito llegó: ${swap.sendStroops.formatUsdc()} · anchor de prueba. " +
+                "Pero el cambio a USDC del fondo está lejos de 1 a 1: por esa cantidad recibirías " +
+                "≈ ${swap.destStroops.formatUsdc()} ($percent %). " +
                 if (belowHardFloor) {
                     "Es menos de la mitad: por seguridad no se puede convertir ahora."
                 } else {
