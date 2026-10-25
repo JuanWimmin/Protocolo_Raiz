@@ -97,6 +97,18 @@ class WalletManager @Inject constructor(
         return demoKeyPair()
     }
 
+    /** true solo si hay una wallet con frase semilla guardada (ni passkey ni demo). */
+    fun isSeedWallet(): Boolean = store.hasStoredWallet()
+
+    /**
+     * KeyPair de la wallet semilla guardada, o null. A diferencia de [currentKeyPair] NUNCA cae a la clave
+     * demo: lo usa el pago diferido, donde firmar con otra clave sería cobrarle a otra cuenta.
+     */
+    suspend fun seedKeyPairOrNull(): KeyPair? =
+        store.storedSeedPhrase()?.let { phrase ->
+            runCatching { Mnemonic.from(phrase).use { it.getKeyPair(0) } }.getOrNull()
+        }
+
     /**
      * Compat: lo usaban WalletViewModel/ProfileViewModel/RewardsViewModel
      * para obtener el publicKey rápidamente. Ahora delega a currentWallet().

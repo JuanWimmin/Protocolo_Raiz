@@ -1,5 +1,7 @@
 package com.raiz.app.data.stellar
 
+import com.raiz.app.data.deferred.LedgerEstimator
+import com.raiz.app.data.local.MerchantCache
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
 import com.raiz.app.data.model.Execution
@@ -55,6 +57,10 @@ import kotlinx.coroutines.delay
 @Singleton
 class SorobanClient @Inject constructor(
     private val deploymentsLoader: DeploymentsLoader,
+    /** Pago diferido: cada lectura del último ledger con red alimenta el estimador (ancla L0/t0). */
+    private val ledgerEstimator: LedgerEstimator,
+    /** Pago diferido: los comercios que la red devolvió se guardan para consultarlos sin señal. */
+    private val merchantCache: MerchantCache,
 ) {
 
     private val deployments: Deployments by lazy { deploymentsLoader.load() }
@@ -358,7 +364,10 @@ class SorobanClient @Inject constructor(
                 }
             }
         }.fold(
-            onSuccess = { RaizResult.Success(it) },
+            onSuccess = { merchants ->
+                runCatching { merchantCache.putBarrio(barrioId, merchants) }
+                RaizResult.Success(merchants)
+            },
             onFailure = { e ->
                 RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "listMerchants: ${e.message}")
             },
@@ -398,7 +407,10 @@ class SorobanClient @Inject constructor(
                 )
             }
         }.fold(
-            onSuccess = { RaizResult.Success(it) },
+            onSuccess = { merchant ->
+                runCatching { merchantCache.putMerchant(merchant) }
+                RaizResult.Success(merchant)
+            },
             onFailure = { e ->
                 val msg = e.message.orEmpty()
                 if ("MerchantNotFound" in msg || "Error(Contract, #4)" in msg) {
@@ -1183,6 +1195,22 @@ class SorobanClient @Inject constructor(
     }
 
     /**
+     * Pago diferido: refresca el ancla del estimador de ledger (L0, t0) con una lectura del último ledger.
+     * Se llama al entrar en Pagar con red; si la señal se va dentro de la pantalla, la expiración del sobre
+     * se estima desde un ledger reciente. `false` si no hubo red.
+     */
+    suspend fun refreshLedgerAnchor(): Boolean = try {
+        val latest = rpcServer.getLatestLedger()
+        ledgerEstimator.record(latest.sequence, latest.closeTime)
+        true
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        Log.w(TAG, "refreshLedgerAnchor: sin red (${e.javaClass.simpleName})")
+        false
+    }
+
+    /**
      * ¿Existe en la red el contrato `contractId` (p. ej. el smart account de una wallet
      * passkey)? Preflight obligatorio antes de [sacTransfer]: un `C…` es una dirección válida
      * aunque nadie lo haya desplegado, y el USDC enviado ahí sería irrecuperable. Mismo
@@ -1292,7 +1320,9 @@ class SorobanClient @Inject constructor(
         Log.i(TAG, "tourPaymentEvents: addr=$addr pool=${deployments.pool}")
         return runCatching {
             val server = poolClient().server
-            val latestLedger = server.getLatestLedger().sequence
+            val latest = server.getLatestLedger()
+            ledgerEstimator.record(latest.sequence, latest.closeTime)
+            val latestLedger = latest.sequence
             Log.i(TAG, "tourPaymentEvents: latestLedger=$latestLedger LOOKBACK=$EVENTS_LOOKBACK_LEDGERS FALLBACK=$EVENTS_LOOKBACK_FALLBACK")
 
             // Preparamos el EventFilter (reutilizado en todas las páginas)
