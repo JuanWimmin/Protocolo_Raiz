@@ -23,6 +23,7 @@ import com.soneso.stellar.sdk.Network
 import com.soneso.stellar.sdk.TimeBounds
 import com.soneso.stellar.sdk.Transaction
 import com.soneso.stellar.sdk.TransactionBuilder
+import com.soneso.stellar.sdk.contract.ClientOptions
 import com.soneso.stellar.sdk.contract.ContractClient
 import com.soneso.stellar.sdk.rpc.SorobanServer
 import com.soneso.stellar.sdk.rpc.exception.PrepareTransactionException
@@ -34,6 +35,7 @@ import com.soneso.stellar.sdk.scval.Scv
 import com.soneso.stellar.sdk.xdr.HostFunctionXdr
 import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
 import com.soneso.stellar.sdk.xdr.SCSymbolXdr
+import com.soneso.stellar.sdk.xdr.SCValXdr
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -283,6 +285,49 @@ class SorobanClient @Inject constructor(
         )
     }
 
+    // ── Lecturas tolerantes al auto-restore (Protocol 23+) ────────────────
+
+    /**
+     * Lectura PURA que sobrevive al auto-restore de Protocol 23+ (deuda H2; gotcha "Lecturas que
+     * el host trata como WRITE" de CLAUDE.md). Si la función toca una entrada persistente con el
+     * TTL vencido, el host la restaura dentro de la propia tx: la simulación la mete en el
+     * `readWrite` del footprint y `ContractClient.invoke(signer = null)` lanza "Signer required
+     * for write call to ..." porque `isReadCall()` pasa a `false`, aunque la simulación SÍ trae
+     * el valor de retorno correcto.
+     *
+     * Aquí se simula y se parsea ese valor sin firmar, restaurar ni enviar nada:
+     *  - `autoSubmit = false` hace que `invoke` acabe en `AssembledTransaction.result()`, que solo
+     *    lee el `returnedValue` de la simulación y no consulta `isReadCall()`
+     *    (SDK 1.6.0: `ContractClient.kt:215-233`, `AssembledTransaction.kt:559-569`).
+     *  - `restore = false` evita que `simulate()` intente `restoreFootprint()`
+     *    (`AssembledTransaction.kt:191`).
+     *  - Un error de simulación (`sim.error`, p. ej. `Error(Contract, #4)`) sigue lanzando
+     *    `SimulationFailedException`, igual que antes: el llamador lo mapea a `RaizResult.Error`.
+     *
+     * SOLO para funciones del contrato que no escriben: con una función que sí escribe devolvería
+     * el valor simulado sin que nada llegue a ejecutarse.
+     */
+    private suspend fun <T> simulateRead(
+        client: ContractClient,
+        functionName: String,
+        arguments: Map<String, Any?>,
+        parse: (SCValXdr) -> T,
+    ): T = client.invoke<T>(
+        functionName = functionName,
+        arguments = arguments,
+        source = deployments.admin,
+        signer = null,
+        parseResultXdrFn = parse,
+        options = ClientOptions(
+            sourceAccountKeyPair = KeyPair.fromAccountId(deployments.admin),
+            contractId = client.contractId,
+            network = client.network,
+            rpcUrl = client.rpcUrl,
+            restore = false,
+            autoSubmit = false,
+        ),
+    )
+
     // ── Pool: list_merchants ──────────────────────────────────────────────
 
     suspend fun listMerchants(barrioId: String): RaizResult<List<Merchant>> {
@@ -290,28 +335,28 @@ class SorobanClient @Inject constructor(
             ?: return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "barrio_id inválido")
 
         return runCatching {
-            poolClient().invoke<List<Merchant>>(
+            // Lectura tolerante al auto-restore: una entrada Merchant(..) archivada no debe
+            // esconder el barrio entero (ver [simulateRead]).
+            simulateRead<List<Merchant>>(
+                client = poolClient(),
                 functionName = "list_merchants",
                 arguments = mapOf("barrio_id" to bytes),
-                source = deployments.admin,
-                signer = null,
-                parseResultXdrFn = { scval ->
-                    ScvalParse.asVec(scval).map { item ->
-                        val f = ScvalParse.asStruct(item)
-                        Merchant(
-                            address = ScvalParse.asAddressString(f.req("address")),
-                            name = ScvalParse.asString(f.req("name")),
-                            barrioId = ScvalParse.asHex(f.req("barrio_id")),
-                            verified = ScvalParse.asBoolean(f.req("verified")),
-                            latE6 = ScvalParse.asInt32(f.req("lat_e6")),
-                            lngE6 = ScvalParse.asInt32(f.req("lng_e6")),
-                            category = MerchantCategory.fromSymbol(
-                                ScvalParse.asSymbol(f.req("category"))
-                            ),
-                        )
-                    }
-                },
-            )
+            ) { scval ->
+                ScvalParse.asVec(scval).map { item ->
+                    val f = ScvalParse.asStruct(item)
+                    Merchant(
+                        address = ScvalParse.asAddressString(f.req("address")),
+                        name = ScvalParse.asString(f.req("name")),
+                        barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                        verified = ScvalParse.asBoolean(f.req("verified")),
+                        latE6 = ScvalParse.asInt32(f.req("lat_e6")),
+                        lngE6 = ScvalParse.asInt32(f.req("lng_e6")),
+                        category = MerchantCategory.fromSymbol(
+                            ScvalParse.asSymbol(f.req("category"))
+                        ),
+                    )
+                }
+            }
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
@@ -332,26 +377,26 @@ class SorobanClient @Inject constructor(
     /** Devuelve los datos del merchant dado su address G...  */
     suspend fun getMerchant(merchantAddress: String): RaizResult<Merchant> {
         return runCatching {
-            poolClient().invoke<Merchant>(
+            // Lectura tolerante al auto-restore (ver [simulateRead]): RoleResolver depende de
+            // esta consulta directa para reconocer a un comercio registrado.
+            simulateRead<Merchant>(
+                client = poolClient(),
                 functionName = "get_merchant",
                 arguments = mapOf("merchant" to merchantAddress),
-                source = deployments.admin,
-                signer = null,
-                parseResultXdrFn = { scval ->
-                    val f = ScvalParse.asStruct(scval)
-                    Merchant(
-                        address = ScvalParse.asAddressString(f.req("address")),
-                        name = ScvalParse.asString(f.req("name")),
-                        barrioId = ScvalParse.asHex(f.req("barrio_id")),
-                        verified = ScvalParse.asBoolean(f.req("verified")),
-                        latE6 = ScvalParse.asInt32(f.req("lat_e6")),
-                        lngE6 = ScvalParse.asInt32(f.req("lng_e6")),
-                        category = MerchantCategory.fromSymbol(
-                            ScvalParse.asSymbol(f.req("category"))
-                        ),
-                    )
-                },
-            )
+            ) { scval ->
+                val f = ScvalParse.asStruct(scval)
+                Merchant(
+                    address = ScvalParse.asAddressString(f.req("address")),
+                    name = ScvalParse.asString(f.req("name")),
+                    barrioId = ScvalParse.asHex(f.req("barrio_id")),
+                    verified = ScvalParse.asBoolean(f.req("verified")),
+                    latE6 = ScvalParse.asInt32(f.req("lat_e6")),
+                    lngE6 = ScvalParse.asInt32(f.req("lng_e6")),
+                    category = MerchantCategory.fromSymbol(
+                        ScvalParse.asSymbol(f.req("category"))
+                    ),
+                )
+            }
         }.fold(
             onSuccess = { RaizResult.Success(it) },
             onFailure = { e ->
