@@ -313,9 +313,27 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   SEP-24 de 5 USDC empeora su precio ≈ 0,45 puntos, y la app solo convierte SOLA si la cotización
   entrega ≥ 97 % (`SwapMath.AUTO_CONVERT_MIN_RATIO_BPS`); entre 50 % y 97 % pide un tap y por debajo
   del 50 % solo ofrece el faucet de contingencia. `node scripts/rebalance_anchor_pool.js` muestra
-  reservas y cotización; con `--apply` lo devuelve al 100,5 % usando una cuenta desechable y el faucet
-  de Blend (1 000 USDC por cuenta nueva; ninguna clave del proyecto). Correrlo antes de una demo y
-  después de una tanda de pruebas de depósito.
+  reservas y cotización; con `--apply` lo devuelve al 100,5 % en **varias rondas** (`--max-accounts`,
+  3 por defecto): cada ronda crea una cuenta desechable, pide 1 000 USDC al faucet de Blend y vende ≤ 900
+  al pool (ninguna clave del proyecto). Correrlo antes de una demo y después de una tanda de pruebas de
+  depósito. El 25-oct-2026 terceros lo habían dejado en 21 377 / 197 (0,92 %: la app bloqueaba la
+  conversión con razón) y hicieron falta 1 870 USDC en 3 rondas; el faucet de Blend a veces cuelga o
+  devuelve 504 (el script reintenta con otra cuenta).
+
+- **Los comercios registrados por el relayer nacen con TTL de 7 días y nadie lo extiende (medido
+  2026-10-25).** `Merchant(GB4O5L54… "Jugos La Plaza")`, registrado el 10-oct, se archivó y
+  `list_merchants(Centro)` dejó de ser lectura pura: la app perdía Centro entero (`Signer required for
+  write call`) y `RoleResolver` degradaba a TOURIST a un comercio registrado (síntoma: Perfil volvía a
+  ofrecer "Registrarme como comerciante"; el comercio Meridian2026 era invisible). Remedios aplicados:
+  lecturas tolerantes (`SorobanClient.simulateRead`, `invoke(autoSubmit = false)`: la simulación devuelve
+  el valor aunque el footprint traiga `readWrite`) en `listMerchants`/`getMerchant`; `RoleResolver` consulta
+  `get_merchant` primero y no cachea TOURIST tras un error; Perfil re-resuelve el rol al refrescar; y la
+  entrada se restauró (`stellar contract restore --id <pool> --network testnet --source-account raiz-tourist
+  --durability persistent --key-xdr <ScVal vec[sym Merchant, address]>`, tx `c977591f…`, 18 XLM al precio
+  de testnet; **extender 1,5 M ledgers cuesta ≈ 206 XLM por entrada**, no vale la pena). Las demás
+  lecturas (`get_resident`, `list_active_proposals`, `get_execution_log`…) siguen con `invoke(signer = null)`.
+  `Merchant(GBXWD4RU… Meridian2026)` vence ≈ 1-nov-2026. Pendiente: el relayer debe extender el TTL al
+  registrar (P0) y TTL on-touch en el próximo redeploy.
 
 - **Grabaciones de la web del anchor: el teclado enseña datos personales.** Al rellenar el formulario
   de la Custom Tab, la barra de autocompletar de Chrome y la fila de predicciones del teclado muestran

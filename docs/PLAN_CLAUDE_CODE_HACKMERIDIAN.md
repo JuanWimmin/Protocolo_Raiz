@@ -163,7 +163,9 @@ otra cuenta: tx `ebee152c…6d47` (fuente = pasarela friendbot, auth = wallet de
    hay red (p. ej. en `HorizonStream`/`SorobanClient` al leer el último ledger); `estimate(now)` y
    `expiration(windowLedgers)` según §3.1 (τ = 5 s, τ_min = 4,5 s, W por defecto 12 h).
 4. `data/deferred/DeferredStore.kt`: DataStore con los sobres emitidos y su estado (FIRMADO, ENTREGADO,
-   CONFIRMADO(hash), EXPIRADO, RECHAZADO).
+   CONFIRMADO(hash), EXPIRADO, RECHAZADO). *Implementado (25-oct) con SharedPreferences +
+   kotlinx.serialization (patrón `ExecutionHashStore`): el proyecto no tiene Room ni DataStore y no
+   compensaba añadirlos; el mismo archivo `raiz_deferred` guarda el ancla del estimador.*
 5. UI: en `PayScreen`, cuando no hay red (o con un switch "Firmar sin señal" en debug), el botón pasa a
    "Firmar sin señal"; pantalla de resultado con el QR (`QrUtils.generate`, tamaño 1024 px, corrección M),
    el detalle (comercio, monto, 2 %), "válido hasta ~hh:mm (estimado)" y el texto honesto: "Es una promesa
@@ -176,8 +178,9 @@ otra cuenta: tx `ebee152c…6d47` (fuente = pasarela friendbot, auth = wallet de
 (i128) y la UI muestra USDC con `toUsdc()`; la paleta es la del CLAUDE.md; `strings` nuevos en ES con la
 palabra "territorio" donde aplique, pero sin tocar las frases existentes (no es el momento del refactor).
 
-**Aceptación:** con `adb shell svc data disable`, el emulador firma, muestra QR, y la pasarela web (B3)
-liquida ese QR en testnet.
+**Aceptación:** sin señal (el emulador tiene DOS radios: `adb shell cmd connectivity airplane-mode enable`,
+o `svc wifi disable` + `svc data disable`; `disable`/`enable` para volver), el emulador firma, muestra QR,
+y la pasarela web (B3) liquida ese QR en testnet.
 
 **Prompt listo:**
 ```text
