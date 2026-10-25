@@ -6,7 +6,8 @@
 //
 // Uso (Git Bash):
 //   (cd landing && python -m http.server 8765 --bind 127.0.0.1 &)      # o la URL pública raizapp.xyz
-//   CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe" PROFILE_DIR=/tmp/raiz-cdp OUT_PNG=/tmp/pasarela.png //     node scripts/pasarela_web_e2e.mjs "http://127.0.0.1:8765/pasarela.html?sobre=$(cat sobre.txt)" [--no-liquidar]
+//   CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe" PROFILE_DIR=/tmp/raiz-cdp OUT_PNG=/tmp/pasarela.png \
+//     node scripts/pasarela_web_e2e.mjs "http://127.0.0.1:8765/pasarela.html?sobre=$(cat sobre.txt)" [--no-liquidar]
 // El sobre sale de scripts/deferred_envelope_demo.mjs (real) o del campo sobre_qr del fixture (solo verificación).
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
