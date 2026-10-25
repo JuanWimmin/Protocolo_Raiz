@@ -16,6 +16,7 @@ import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,6 +87,12 @@ class ProfileViewModel @Inject constructor(
         ),
     )
     val state: StateFlow<ProfileUiState> = _state.asStateFlow()
+
+    /**
+     * Resolución de rol en curso. Declarado ANTES del `init`: si lo declarase después, su
+     * inicializador (`= null`) correría tras el `init` y borraría el Job que este lanza.
+     */
+    private var roleJob: Job? = null
 
     init {
         observeBalance()
@@ -237,14 +244,20 @@ class ProfileViewModel @Inject constructor(
     }
 
     /**
-     * Recarga historial, puntos y saldo (one-shot para passkey).
+     * Recarga historial, puntos, saldo (one-shot para passkey) y rol.
      * Llamado desde ON_RESUME y desde el loop de auto-refresco periódico.
+     *
+     * El rol se vuelve a resolver porque [RoleResolver] NO cachea un resultado dudoso (una
+     * consulta falló): sin esto, un comercio cuyo rol no se pudo determinar al abrir el perfil
+     * seguiría viendo "Registrarme como comerciante" hasta reiniciar la app. Si el rol ya está
+     * cacheado, `resolve` responde al instante sin tocar la red.
      */
     fun refresh() {
         loadHistory()
         loadPoints()
         viewModelScope.launch { refreshBalanceOnce() }
         refreshDepositInTransit()
+        resolveRole()
     }
 
     /**
@@ -258,10 +271,19 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Actualiza [ProfileUiState.detectedRole] (el `roleOverride` del demo no se toca: sigue
+     * mandando en `effectiveRole`). Sin solapes: `init`, ON_RESUME y el loop de 20 s llaman aquí y
+     * una resolución sin caché hace varias consultas on-chain; si ya hay una en curso, no se
+     * lanza otra encima.
+     */
     private fun resolveRole() {
-        viewModelScope.launch {
+        if (roleJob?.isActive == true) return
+        roleJob = viewModelScope.launch {
             val role = roleResolver.resolve(walletManager.mockWallet().publicKey)
-            Log.i(TAG, "Rol detectado en perfil: ${role.role}")
+            if (_state.value.detectedRole != role) {
+                Log.i(TAG, "Rol detectado en perfil: ${role.role}")
+            }
             _state.update { it.copy(detectedRole = role) }
         }
     }
