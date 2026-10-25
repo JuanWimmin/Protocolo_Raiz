@@ -11,7 +11,7 @@ import com.raiz.app.data.model.WalletState
 import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.DeploymentsLoader
-import com.raiz.app.data.deferred.DeferredStore
+import com.raiz.app.data.deferred.DeferredPaymentManager
 import com.raiz.app.data.stellar.DepositAccountManager
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
@@ -88,7 +88,7 @@ class WalletViewModel @Inject constructor(
     private val deploymentsLoader: DeploymentsLoader,
     private val relayerClient: RelayerClient,
     private val depositAccounts: DepositAccountManager,
-    private val deferredStore: DeferredStore,
+    private val deferred: DeferredPaymentManager,
 ) : ViewModel() {
 
     private val deployments by lazy { deploymentsLoader.load() }
@@ -566,11 +566,16 @@ class WalletViewModel @Inject constructor(
         // Passkey: ¿sigue habiendo un depósito a medio camino en la cuenta de depósito?
         refreshDepositInTransit()
         publishSobresEnTransito()
+        // Pago diferido: con red, la propia red cierra los sobres (nonce consumido / expiración real).
+        viewModelScope.launch {
+            runCatching { deferred.syncWithNetwork() }
+            publishSobresEnTransito()
+        }
     }
 
     /** Pago diferido: fila "sobres en tránsito" de Inicio. */
     private fun publishSobresEnTransito() {
-        val n = runCatching { deferredStore.pendingCount() }.getOrDefault(0)
+        val n = runCatching { deferred.pendingCountFor(walletManager.currentAccountId()) }.getOrDefault(0)
         val current = _state.value
         if (current is WalletUiState.Ready && current.sobresEnTransito != n) {
             _state.value = current.copy(sobresEnTransito = n)

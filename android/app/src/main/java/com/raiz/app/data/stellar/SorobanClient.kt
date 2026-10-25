@@ -38,6 +38,12 @@ import com.soneso.stellar.sdk.xdr.HostFunctionXdr
 import com.soneso.stellar.sdk.xdr.InvokeContractArgsXdr
 import com.soneso.stellar.sdk.xdr.SCSymbolXdr
 import com.soneso.stellar.sdk.xdr.SCValXdr
+import com.soneso.stellar.sdk.xdr.ContractDataDurabilityXdr
+import com.soneso.stellar.sdk.xdr.Int64Xdr
+import com.soneso.stellar.sdk.xdr.LedgerKeyContractDataXdr
+import com.soneso.stellar.sdk.xdr.LedgerKeyXdr
+import com.soneso.stellar.sdk.xdr.SCNonceKeyXdr
+import com.soneso.stellar.sdk.xdr.toXdrBase64
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -1208,6 +1214,66 @@ class SorobanClient @Inject constructor(
     } catch (e: Exception) {
         Log.w(TAG, "refreshLedgerAnchor: sin red (${e.javaClass.simpleName})")
         false
+    }
+
+    /** Pago diferido: último ledger de la red (y refresca el ancla). `null` sin red. */
+    suspend fun latestLedgerSequence(): Long? = try {
+        val latest = rpcServer.getLatestLedger()
+        ledgerEstimator.record(latest.sequence, latest.closeTime)
+        latest.sequence
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Pago diferido: ¿la red ya consumió el nonce de este sobre? El host guarda cada nonce usado como entrada
+     * TEMPORAL `LedgerKeyNonce(nonce)` bajo la cuenta del firmante, viva hasta la expiración del sobre: si
+     * existe, una transacción con ESTE sobre se ejecutó. Es la prueba de cobro que no depende de la pasarela.
+     * `null` si no se pudo consultar (sin red).
+     */
+    suspend fun nonceConsumed(account: String, nonce: Long): Boolean? = try {
+        val key = LedgerKeyXdr.ContractData(
+            LedgerKeyContractDataXdr(
+                contract = Address(account).toSCAddress(),
+                key = SCValXdr.NonceKey(SCNonceKeyXdr(Int64Xdr(nonce))),
+                durability = ContractDataDurabilityXdr.TEMPORARY,
+            ),
+        )
+        !rpcServer.getLedgerEntries(listOf(key)).entries.isNullOrEmpty()
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        Log.w(TAG, "nonceConsumed: no se pudo consultar (${e.javaClass.simpleName})")
+        null
+    }
+
+    /** Estado de una tx y las auth entries (XDR base64) de sus operaciones `InvokeHostFunction`. */
+    data class TxAuthLookup(val status: DepositPlan.TxStatus, val authEntriesXdr: List<String>)
+
+    /** Pago diferido: para dar un sobre por cobrado con un hash, la auth de esa tx debe ser ese sobre. */
+    suspend fun transactionAuthEntries(hash: String): TxAuthLookup = try {
+        val r = rpcServer.getTransaction(hash)
+        val status = when (r.status) {
+            GetTransactionStatus.SUCCESS -> DepositPlan.TxStatus.SUCCESS
+            GetTransactionStatus.FAILED -> DepositPlan.TxStatus.FAILED
+            GetTransactionStatus.NOT_FOUND -> DepositPlan.TxStatus.NOT_FOUND
+        }
+        val auths = r.envelopeXdr?.let { env ->
+            runCatching {
+                Transaction.fromEnvelopeXdr(env, network).operations
+                    .filterIsInstance<InvokeHostFunctionOperation>()
+                    .flatMap { it.auth }
+                    .map { it.toXdrBase64() }
+            }.getOrDefault(emptyList())
+        } ?: emptyList()
+        TxAuthLookup(status, auths)
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (e: Exception) {
+        Log.w(TAG, "transactionAuthEntries($hash): no se pudo consultar (${e.javaClass.simpleName})")
+        TxAuthLookup(DepositPlan.TxStatus.UNKNOWN, emptyList())
     }
 
     /**

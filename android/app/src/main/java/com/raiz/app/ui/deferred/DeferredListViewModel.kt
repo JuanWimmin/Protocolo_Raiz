@@ -7,8 +7,11 @@ import com.raiz.app.data.deferred.DeferredRecord
 import com.raiz.app.data.model.RaizResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -24,7 +27,12 @@ class DeferredListViewModel @Inject constructor(
     private val manager: DeferredPaymentManager,
 ) : ViewModel() {
 
-    val records: StateFlow<List<DeferredRecord>> = manager.records
+    /** Los sobres son de la wallet activa, no de la app. */
+    private val payer: String? = manager.currentPayer()
+
+    val records: StateFlow<List<DeferredRecord>> = manager.recordsFlow
+        .map { list -> list.filter { it.payer == payer } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, manager.recordsFor(payer))
 
     private val _confirm = MutableStateFlow<ConfirmState?>(null)
     val confirm: StateFlow<ConfirmState?> = _confirm.asStateFlow()
@@ -33,9 +41,10 @@ class DeferredListViewModel @Inject constructor(
         refresh()
     }
 
-    /** Marca EXPIRADO lo que ya venció según la estimación local. */
+    /** Sin red: marca EXPIRADO según la estimación local. Con red: la red cierra los sobres (nonce, expiración). */
     fun refresh() {
         manager.refreshStatuses()
+        viewModelScope.launch { runCatching { manager.syncWithNetwork(payer) } }
     }
 
     fun record(id: String): DeferredRecord? = records.value.firstOrNull { it.id == id }

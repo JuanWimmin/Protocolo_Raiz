@@ -56,8 +56,8 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * Pantalla del sobre firmado sin señal (spec §7.1): QR del sobre (base64url a secas, igual que
- * "Copiar sobre"), detalle honesto y vigencia estimada. La reutiliza el historial para re-mostrar un sobre.
+ * Pantalla del sobre firmado sin señal (spec §7.1): QR del sobre (`raiz:sobre:1:` + XDR firmado, igual
+ * que "Copiar sobre"), detalle honesto y vigencia estimada. La reutiliza el historial para re-mostrar un sobre.
  *
  * El QR se genera al ancho EXACTO disponible, con módulos de tamaño entero y sin reescalado
  * ([QrUtils.generateCrisp] + `FilterQuality.None`): con ≈ 2 000 caracteres (versión 38) es lo que decide
@@ -103,7 +103,7 @@ fun DeferredSignedScreen(
                     color = RaizError,
                 )
             } else {
-                QrCardCrisp(content = record.envelopeB64url)
+                QrCardCrisp(content = record.sobreQr)
             }
 
             DetalleSobre(record = record)
@@ -124,7 +124,7 @@ fun DeferredSignedScreen(
 
             OutlinedButton(
                 onClick = {
-                    clipboard.setText(AnnotatedString(record.envelopeB64url))
+                    clipboard.setText(AnnotatedString(record.sobreQr))
                     Toast.makeText(context, "Sobre copiado", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.fillMaxWidth(),

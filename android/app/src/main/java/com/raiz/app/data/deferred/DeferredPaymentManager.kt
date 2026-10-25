@@ -2,6 +2,7 @@ package com.raiz.app.data.deferred
 
 import android.util.Log
 import com.raiz.app.data.model.Merchant
+import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.stellar.DeploymentsLoader
@@ -9,7 +10,9 @@ import com.raiz.app.data.stellar.DepositPlan
 import com.raiz.app.data.stellar.SorobanClient
 import com.raiz.app.data.stellar.WalletManager
 import com.soneso.stellar.sdk.Network
+import com.soneso.stellar.sdk.xdr.toXdrBase64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,7 +25,11 @@ import javax.inject.Singleton
  * - Solo wallet semilla ([WalletManager.seedKeyPairOrNull]); nunca la clave demo ni passkey (v1).
  * - Nonce y expiración los fija el pagador: nonce del CSPRNG, expiración = L̂ + W con el [LedgerEstimator]
  *   (reloj monotónico). Sin ancla del estimador no se firma.
- * - Antes de dar el sobre por emitido se auto-valida (JSON ↔ XDR y firma) y se persiste con `commit()`.
+ * - Antes de dar el sobre por emitido se auto-valida ([SobreValidator]) y se persiste con `commit()`.
+ * - Un sobre se da por COBRADO solo con prueba de la red: el nonce consumido bajo la cuenta del pagador
+ *   ([syncWithNetwork]) o una tx cuya auth sea exactamente este sobre ([confirmByHash]). Nunca por
+ *   `ExistingValue` ni por un hash cualquiera.
+ * - Los sobres son de cada wallet ([recordsFor]), no de la app.
  */
 @Singleton
 class DeferredPaymentManager @Inject constructor(
@@ -41,6 +48,16 @@ class DeferredPaymentManager @Inject constructor(
         data class NoDisponible(val motivo: String) : Availability
     }
 
+    /** Wallet activa (G… o C…); los sobres se filtran por ella. */
+    fun currentPayer(): String? = walletManager.currentAccountId()
+
+    /** Todos los sobres del dispositivo; las pantallas filtran por [currentPayer]. */
+    val recordsFlow: StateFlow<List<DeferredRecord>> get() = store.records
+
+    fun recordsFor(payer: String?): List<DeferredRecord> = store.recordsFor(payer)
+
+    fun pendingCountFor(payer: String?): Int = store.pendingCount(payer)
+
     /** ¿Se puede firmar sin señal ahora mismo, y si no, por qué (texto para la pantalla)? */
     fun availability(): Availability {
         if (walletManager.isPasskeyWallet()) return Availability.NoDisponible(MOTIVO_PASSKEY)
@@ -50,8 +67,6 @@ class DeferredPaymentManager @Inject constructor(
             is Readiness.NoLista -> Availability.NoDisponible(r.motivo)
         }
     }
-
-    val records get() = store.records
 
     /**
      * Firma el sobre para [merchant] por [amountStroops] (+ tip). Todo en `Dispatchers.Default`
@@ -94,30 +109,30 @@ class DeferredPaymentManager @Inject constructor(
                     keyPair,
                     network,
                 )
-                val envelope = DeferredEnvelope.of(
-                    entry = signed.entry,
-                    payer = payer,
-                    merchant = merchant.address,
-                    amountStroops = amountStroops,
-                    tipBps = tipBps,
-                    feeBps = feeBps,
-                    nonce = nonce,
-                    exp = exp,
-                    l0 = readiness.anchor.l0,
-                    t0 = readiness.anchor.closeTimeSec,
-                    network = network,
-                )
-                // Autocomprobación: si el sobre que vamos a mostrar no pasa nuestro propio validador, es un
-                // bug nuestro y no debe salir del teléfono.
-                when (val check = DeferredEnvelopeValidator.validate(envelope, ids, network)) {
-                    is EnvelopeCheck.Rechazado ->
-                        return@withContext RaizResult.Error(RaizErrorCode.UNKNOWN, "Autocomprobación del sobre fallida: ${check.motivo}")
-                    is EnvelopeCheck.Ok -> Unit
+                val authXdr = signed.entry.toXdrBase64()
+                val sobreQr = SobreCodec.encode(signed.entry)
+
+                // Autocomprobación: lo que vamos a mostrar debe pasar nuestro propio validador y volver a
+                // decodificar a los mismos bytes. Si no, es un bug nuestro y no sale del teléfono.
+                when (val check = SobreValidator.validate(signed.entry, ids, feeBps, network)) {
+                    is SobreCheck.Rechazado ->
+                        return@withContext RaizResult.Error(RaizErrorCode.UNKNOWN, "$MOTIVO_AUTOCHECK: ${check.motivo}")
+                    is SobreCheck.Ok -> {
+                        val a = check.args
+                        if (a.merchant != merchant.address || a.amount != amountStroops || a.tipBps != tipBps || a.payer != payer) {
+                            return@withContext RaizResult.Error(RaizErrorCode.UNKNOWN, "$MOTIVO_AUTOCHECK: argumentos")
+                        }
+                    }
                 }
+                if (SobreCodec.decode(sobreQr)?.toXdrBase64() != authXdr) {
+                    return@withContext RaizResult.Error(RaizErrorCode.UNKNOWN, "$MOTIVO_AUTOCHECK: codec")
+                }
+
                 val now = System.currentTimeMillis()
                 val record = DeferredRecord(
                     id = nonce.toString(),
-                    envelopeB64url = envelope.toBase64Url(),
+                    sobreQr = sobreQr,
+                    authXdr = authXdr,
                     payer = payer,
                     merchantAddress = merchant.address,
                     merchantName = merchant.name,
@@ -135,7 +150,7 @@ class DeferredPaymentManager @Inject constructor(
                 if (!store.saveDurable(record)) {
                     return@withContext RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_GUARDADO)
                 }
-                Log.i(TAG, "sobre firmado id=${record.id} merchant=${merchant.address} amount=$amountStroops exp=$exp l0=${readiness.anchor.l0}")
+                Log.i(TAG, "sobre firmado id=${record.id} merchant=${merchant.address} amount=$amountStroops exp=$exp l0=${readiness.anchor.l0} chars=${sobreQr.length}")
                 RaizResult.Success(record)
             } catch (e: Exception) {
                 Log.w(TAG, "sign falló: ${e.javaClass.simpleName}: ${e.message}")
@@ -148,7 +163,7 @@ class DeferredPaymentManager @Inject constructor(
         store.get(id)?.let { store.update(DeferredPolicy.markDelivered(it)) }
     }
 
-    /** FIRMADO/ENTREGADO con la expiración alcanzada (según la estimación) → EXPIRADO. */
+    /** Sin red: FIRMADO/ENTREGADO con la expiración alcanzada según la estimación local → EXPIRADO. */
     fun refreshStatuses() {
         val estimate = ledgerEstimator.estimate() ?: return
         val current = store.all()
@@ -156,19 +171,66 @@ class DeferredPaymentManager @Inject constructor(
         if (next != current) store.replaceAll(next)
     }
 
-    /** Cierre manual v0: el usuario pega el hash que le devolvió la pasarela. */
+    /**
+     * Con red: cierra solos los sobres pendientes de [payer] consultando a la red, que es la única fuente
+     * de verdad. Para cada uno: si la red ya **consumió su nonce** (entrada temporal bajo la cuenta del
+     * pagador; existe solo si una tx con ESTE sobre se ejecutó) → CONFIRMADO, con el hash del evento de
+     * pago si se encuentra; si no, y el ledger real ya pasó la expiración → EXPIRADO. Sin red no toca nada.
+     * Devuelve cuántos sobres cambiaron.
+     */
+    suspend fun syncWithNetwork(payer: String? = currentPayer()): Int {
+        val pending = store.recordsFor(payer).filter { it.pending }
+        if (pending.isEmpty()) return 0
+        var latest: Long? = null
+        var events: List<PaymentRecord>? = null
+        var changed = 0
+        for (r in pending) {
+            val nonce = r.id.toLongOrNull() ?: continue
+            val consumed = sorobanClient.nonceConsumed(r.payer, nonce) ?: continue
+            if (consumed) {
+                if (events == null) {
+                    events = (sorobanClient.tourPaymentEvents(r.payer) as? RaizResult.Success)?.data ?: emptyList()
+                }
+                val hash = events
+                    .filter { it.to == r.merchantAddress && it.amountStroops == r.amountStroops }
+                    .maxByOrNull { it.createdAt }
+                    ?.txHash
+                store.update(DeferredPolicy.markConfirmed(r, hash))
+                Log.i(TAG, "sobre ${r.id} CONFIRMADO por nonce consumido; hash=${hash ?: "pendiente"}")
+                changed++
+            } else {
+                if (latest == null) latest = sorobanClient.latestLedgerSequence()
+                val l = latest ?: continue
+                if (l > r.exp) {
+                    store.update(DeferredPolicy.markExpiredByNetwork(r))
+                    Log.i(TAG, "sobre ${r.id} EXPIRADO: ledger $l > exp ${r.exp}")
+                    changed++
+                }
+            }
+        }
+        return changed
+    }
+
+    /**
+     * Cierre manual v0: el usuario pega el hash que le devolvió la pasarela. Solo cuenta si la auth de esa
+     * transacción es exactamente este sobre (regla 3 de `docs/Pago diferido por enjambre.md`).
+     */
     suspend fun confirmByHash(id: String, hash: String): RaizResult<DeferredRecord> {
         val record = store.get(id) ?: return RaizResult.Error(RaizErrorCode.NOT_FOUND, "Sobre no encontrado")
         val h = hash.trim().lowercase()
         if (!HASH_RE.matches(h)) return RaizResult.Error(RaizErrorCode.PARSE_ERROR, "El hash debe tener 64 caracteres hexadecimales")
-        return when (sorobanClient.transactionStatus(h)) {
+        val lookup = sorobanClient.transactionAuthEntries(h)
+        val esEsteSobre = lookup.authEntriesXdr.contains(record.authXdr)
+        return when (lookup.status) {
             DepositPlan.TxStatus.SUCCESS -> {
+                if (!esEsteSobre) return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_OTRO_SOBRE)
                 val next = DeferredPolicy.markConfirmed(record, h)
                 store.update(next)
                 RaizResult.Success(next)
             }
             DepositPlan.TxStatus.FAILED -> {
-                val next = DeferredPolicy.markRejected(record, "La transacción falló en la red")
+                if (!esEsteSobre) return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_OTRO_SOBRE)
+                val next = DeferredPolicy.markRejected(record, "La transacción con este sobre falló en la red")
                 store.update(next)
                 RaizResult.Success(next)
             }
@@ -186,5 +248,7 @@ class DeferredPaymentManager @Inject constructor(
         const val MOTIVO_SIN_WALLET = "En modo demo no se firma sin señal: crea tu wallet con frase semilla."
         const val MOTIVO_WALLET_DISTINTA = "La wallet activa no coincide con la clave guardada."
         const val MOTIVO_GUARDADO = "No pudimos guardar el sobre en el teléfono; no se mostró el QR."
+        const val MOTIVO_AUTOCHECK = "Autocomprobación del sobre fallida"
+        const val MOTIVO_OTRO_SOBRE = "Esa transacción no lleva este sobre: no lo damos por cobrado."
     }
 }

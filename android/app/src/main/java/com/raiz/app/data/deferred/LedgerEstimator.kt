@@ -13,24 +13,37 @@ import kotlin.math.abs
  *
  * ```
  * L̂(t) = L0 + floor((t − t0) / τ)      τ = 5 s (medido el 25-oct-2026: 5,000 s exactos)
- * E     = L̂(t) + W                     W = W_deseada · (τ / τ_min), τ_min = 4,5 s
+ * E     = L̂(t) + W
+ * W     = T_des / τ_min + Δ_max · (1/τ_min − 1/τ)      (A2, paso 8 de `docs/Pago diferido por enjambre.md`)
  * ```
- * Ventana v0: 12 h → W_deseada = 8 640 → W = 9 600 ledgers. Si la red cerrara más rápido (4,5 s) la ventana
- * efectiva sería ≈ 10,8 h; si más lento, más larga (inofensivo). El tope de la red es
+ * Ventana v0: T_des = 12 h, τ_min = 4,5 s (margen por si la red acelera) y hasta Δ_max = 24 h sin señal antes
+ * de firmar → W = 9 600 + 1 920 = **11 520** ledgers: en el peor caso (red a 4,5 s y 24 h de deriva
+ * acumulada) la ventana efectiva es exactamente 12 h; con el cierre medido hoy, 16 h. El tope de la red es
  * `E − L ≤ max_entry_ttl − 1 = 3 110 399`: tres órdenes de magnitud por encima.
  */
 object LedgerMath {
     const val TAU_MS = 5_000L
     const val TAU_MIN_MS = 4_500L
-    const val W_DESIRED_12H = 8_640L
+    const val T_DESIRED_12H_MS = 12 * 3_600_000L
     const val MAX_ANCHOR_AGE_MS = 24 * 3_600_000L
     const val MAX_CLOCK_DRIFT_MS = 15 * 60_000L
 
-    /** 9 600 ledgers para 12 h. */
-    val WINDOW_12H: Long = window(W_DESIRED_12H)
+    /** 11 520 ledgers para 12 h con hasta 24 h de deriva antes de firmar. */
+    val WINDOW_12H: Long = window(T_DESIRED_12H_MS)
 
-    fun window(desiredLedgers: Long, tauMs: Long = TAU_MS, tauMinMs: Long = TAU_MIN_MS): Long =
-        desiredLedgers * tauMs / tauMinMs
+    /**
+     * `W = ⌈T_des/τ_min + Δ_max·(1/τ_min − 1/τ)⌉` en ledgers. El primer término cubre la ventana al cierre
+     * más rápido; el segundo, la deriva acumulada entre la última sincronización y la firma.
+     */
+    fun window(
+        desiredMs: Long,
+        tauMs: Long = TAU_MS,
+        tauMinMs: Long = TAU_MIN_MS,
+        deltaMaxMs: Long = MAX_ANCHOR_AGE_MS,
+    ): Long {
+        val w = desiredMs.toDouble() / tauMinMs + deltaMaxMs.toDouble() * (1.0 / tauMinMs - 1.0 / tauMs)
+        return Math.ceil(w - 1e-9).toLong()
+    }
 
     fun estimate(l0: Long, t0Ms: Long, nowMs: Long, tauMs: Long = TAU_MS): Long =
         l0 + Math.floorDiv(nowMs - t0Ms, tauMs)
@@ -38,9 +51,8 @@ object LedgerMath {
     fun expiration(l0: Long, t0Ms: Long, nowMs: Long, windowLedgers: Long = WINDOW_12H): Long =
         estimate(l0, t0Ms, nowMs) + windowLedgers
 
-    /** Hora de pared prudente para mostrar "válido hasta": la ventana al cierre más rápido observado. */
-    fun validUntilWallMs(wallNowMs: Long, windowLedgers: Long = WINDOW_12H): Long =
-        wallNowMs + windowLedgers * TAU_MIN_MS
+    /** Hora de pared prudente para mostrar "válido hasta": la ventana garantizada en el peor caso (12 h). */
+    fun validUntilWallMs(wallNowMs: Long, desiredMs: Long = T_DESIRED_12H_MS): Long = wallNowMs + desiredMs
 
     fun isExpiredLocally(exp: Long, estimate: Long): Boolean = exp <= estimate
 }

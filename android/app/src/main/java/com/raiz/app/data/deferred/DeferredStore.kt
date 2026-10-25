@@ -15,12 +15,18 @@ import javax.inject.Singleton
 /** Estados del sobre del lado del pagador (spec §6). */
 enum class DeferredStatus { FIRMADO, ENTREGADO, CONFIRMADO, EXPIRADO, RECHAZADO }
 
-/** Un sobre emitido por este teléfono, tal como se guarda. */
+/**
+ * Un sobre emitido por este teléfono, tal como se guarda. Pertenece a la wallet [payer]: la app puede
+ * alojar varias wallets a lo largo del tiempo y cada una ve solo sus sobres.
+ */
 @Serializable
 data class DeferredRecord(
     /** = nonce en decimal (puede ser negativo: String, nunca Long en rutas de navegación). */
     val id: String,
-    val envelopeB64url: String,
+    /** Lo que va en el QR y en "Copiar sobre": `raiz:sobre:1:` + base64url del XDR ([SobreCodec]). */
+    val sobreQr: String,
+    /** La entrada firmada en base64 estándar (`toXdrBase64()`): para comparar con la auth de una tx. */
+    val authXdr: String,
     val payer: String,
     val merchantAddress: String,
     val merchantName: String,
@@ -57,7 +63,8 @@ object DeferredRecordCodec {
 
 /** Transiciones puras de la máquina de estados (spec §6); testeables sin Android. */
 object DeferredPolicy {
-    const val MOTIVO_EXPIRADO = "La vigencia del sobre terminó sin liquidarse."
+    const val MOTIVO_EXPIRADO = "La vigencia del sobre terminó sin liquidarse (según la estimación local)."
+    const val MOTIVO_EXPIRADO_RED = "La red pasó la expiración del sobre sin que nadie lo liquidara."
 
     /** Solo se firma si hay estimación y la expiración queda por delante de ella. */
     fun canSign(readiness: Readiness, exp: Long): Boolean =
@@ -78,10 +85,17 @@ object DeferredPolicy {
     fun markDelivered(r: DeferredRecord): DeferredRecord =
         if (r.status == DeferredStatus.FIRMADO) r.copy(status = DeferredStatus.ENTREGADO) else r
 
-    /** Un hash confirmado manda sobre un EXPIRADO local (la estimación puede ir atrasada). */
-    fun markConfirmed(r: DeferredRecord, txHash: String): DeferredRecord =
+    /**
+     * Cobrado: la red consumió el nonce de ESTE sobre (o una tx cuya auth es este sobre tuvo éxito).
+     * Manda sobre un EXPIRADO local (la estimación puede ir atrasada). [txHash] puede faltar si la
+     * prueba vino del nonce y el evento aún no se encontró.
+     */
+    fun markConfirmed(r: DeferredRecord, txHash: String?): DeferredRecord =
         if (r.status == DeferredStatus.RECHAZADO) r
-        else r.copy(status = DeferredStatus.CONFIRMADO, txHash = txHash, motivo = null)
+        else r.copy(status = DeferredStatus.CONFIRMADO, txHash = txHash ?: r.txHash, motivo = null)
+
+    fun markExpiredByNetwork(r: DeferredRecord): DeferredRecord =
+        if (r.pending) r.copy(status = DeferredStatus.EXPIRADO, motivo = MOTIVO_EXPIRADO_RED) else r
 
     fun markRejected(r: DeferredRecord, motivo: String): DeferredRecord =
         if (r.pending) r.copy(status = DeferredStatus.RECHAZADO, motivo = motivo) else r
@@ -90,7 +104,8 @@ object DeferredPolicy {
 /**
  * Sobres emitidos + ancla del estimador, en SharedPreferences (`raiz_deferred`) con kotlinx.serialization.
  * Desviación declarada respecto a "Room/DataStore" de la spec §7.1: el proyecto no los tiene y el patrón
- * de [com.raiz.app.data.local.ExecutionHashStore] basta para decenas de sobres.
+ * de [com.raiz.app.data.local.ExecutionHashStore] basta para decenas de sobres. El archivo es del
+ * dispositivo; las vistas por wallet salen de [recordsFor].
  */
 @Singleton
 class DeferredStore @Inject constructor(
@@ -104,9 +119,13 @@ class DeferredStore @Inject constructor(
 
     fun all(): List<DeferredRecord> = _records.value
 
+    /** Sobres de una wallet concreta; vacío si no hay wallet. */
+    fun recordsFor(payer: String?): List<DeferredRecord> =
+        if (payer == null) emptyList() else all().filter { it.payer == payer }
+
     fun get(id: String): DeferredRecord? = all().firstOrNull { it.id == id }
 
-    fun pendingCount(): Int = all().count { it.pending }
+    fun pendingCount(payer: String?): Int = recordsFor(payer).count { it.pending }
 
     /**
      * Guarda con `commit()` y relee antes de dar el sobre por emitido: si devuelve false, NO se muestra el QR
@@ -164,7 +183,8 @@ class DeferredStore @Inject constructor(
 
     private companion object {
         const val PREFS = "raiz_deferred"
-        const val KEY_RECORDS = "records_v1"
+        /** v2: el sobre es el XDR firmado con prefijo (ya no el JSON de la spec §5). */
+        const val KEY_RECORDS = "records_v2"
         const val KEY_ANCHOR_L0 = "anchor_l0"
         const val KEY_ANCHOR_T0_MS = "anchor_t0_ms"
         const val KEY_ANCHOR_CLOSE = "anchor_close_sec"
