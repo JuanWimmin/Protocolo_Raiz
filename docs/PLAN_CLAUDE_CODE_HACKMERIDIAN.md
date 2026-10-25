@@ -138,6 +138,17 @@ qué byte. Se importa el **método**, cero código del repo viejo.
 Lee CLAUDE.md, docs/pago_diferido_v0.md (secciones 2 y 3) y docs/PLAN_CLAUDE_CODE_HACKMERIDIAN.md B1. Estamos en la rama feat/pago-diferido. Usa el subagente kmp-stellar-integration. Antes de tocar Kotlin, crea scripts/gen-auth-fixture.mjs (Node, @stellar/stellar-sdk): construye la invocación de Pool.pay_merchant(tourist, merchant, amount, tip_bps) con el árbol de la spec §2.1 (fee_bps 50, ids de deployments.json), firma la SorobanAuthorizationEntry con authorizeEntry usando un keypair de prueba fijo, nonce fijo y expiración fija, y vuelca a android/app/src/test/resources/deferred_auth_fixture.json: preimage XDR, hash, firma, entrada firmada XDR y todos los parámetros. Luego, en 1 hora como máximo: un test JVM android/app/src/test/.../stellar/DeferredAuthSpikeTest.kt que (1) construya a mano la misma SorobanAuthorizationEntry con kmp-stellar-sdk 1.6.0, (2) firme el preimage ENVELOPE_TYPE_SOROBAN_AUTHORIZATION y compare byte a byte contra el fixture (preimage, hash, firma, XDR), y (3) serialice/parsee la entrada. Solo cuando coincida, un segundo test marcado como integración (desactivado por defecto con una propiedad del sistema) envía a testnet una invocación de pay_merchant construida por OTRA cuenta (fondeada por friendbot) adjuntando esa entrada, con expiración = ledger actual + 100, usando una wallet pagadora semilla con USDC del fondo que yo te doy por variable de entorno. No toques contracts/. Antes de escribir código, dame el plan con las clases del SDK que vas a usar y si el AssembledTransaction permite inyectar auth entries externas; si no lo permite, dime cómo construirías la operación a mano. Al final, reporta: ¿funcionó (c)? ¿cuál es la expiración máxima que acepta la red? Gate: ./gradlew :app:testDebugUnitTest verde.
 ```
 
+**Resultado (25-oct, cerrado ≈ 17:00): (a), (b) y (c) funcionan con `kmp-stellar-sdk` 1.6.0.** Fixture
+`scripts/gen-auth-fixture.mjs` → `android/app/src/test/resources/deferred_auth_fixture.json` (credenciales
+legacy; el árbol coincide con la simulación del host). Kotlin: `data/deferred/AuthTreeBuilder.kt` +
+`DeferredAuthSigner.kt`; `DeferredAuthSpikeTest` (16 tests byte a byte, verde) y `DeferredAuthTestnetIT`
+(apagado por defecto: `RAIZ_DEFERRED_IT=1` + `RAIZ_DEFERRED_PAYER_MNEMONIC` o `_SECRET`, `--rerun`). Envío desde
+otra cuenta: tx `ebee152c…6d47` (fuente = pasarela friendbot, auth = wallet del emulador); replay →
+`Error(Auth, ExistingValue)`; expirada → `Error(Auth, InvalidInput)`. **Expiración máxima que acepta la red:
+`E − L = max_entry_ttl − 1 = 3 110 399` ledgers** (≈ 180 días). Cierre de ledger medido: 5,000 s. No hizo falta
+`AssembledTransaction`: la pasarela construye `InvokeHostFunctionOperation(auth = [entrada])`, simula
+`ENFORCE` y `prepareTransaction` conserva la auth adjunta.
+
 ---
 
 ## B2 — Pagador: firma sin red + QR (14:00–17:30)

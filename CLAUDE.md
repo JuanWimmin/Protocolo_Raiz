@@ -324,6 +324,13 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   por `python scripts/mask_video_autofill.py ENTRADA SALIDA` (detecta los tramos con teclado sobre la
   Custom Tab, tapa las dos franjas y verifica el resultado; geometría de una pantalla 720×1612).
 
+- **Fee de recursos de Soroban en testnet (medido 2026-10-25): un `pay_merchant` cuesta ≈ 30–40 XLM**
+  (`fee_charged` 28,65 XLM en `ebee152c…`; simulación 41,7 XLM con 1,2 KB escritos, 2,6 M instrucciones y
+  ninguna entrada archivada). En mayo la misma llamada costaba 0,0009 XLM: es el precio de escritura de
+  testnet por el tamaño de su estado, no el contrato. Toda cuenta que envíe txs de Soroban (pasarela del
+  pago diferido, wallets de demo) debe ir fondeada por friendbot (10 000 XLM); no prometer "con unos pocos
+  XLM" hasta medirlo en mainnet.
+
 ## Estado actual (2026-10-04)
 
 - **F1 completada** (yield vía BlendAdapter en testnet, DeFindex eliminado). 85 tests verdes.
@@ -434,6 +441,16 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   (raizapp.xyz): tras cada cambio en `landing/` hay que copiar los HTML allí. Los IDs de contratos
   viven en un objeto `DEPLOYMENTS` al inicio del `<script>` de cada HTML — sincronizar con
   `deployments.json` en cada redeploy.
+
+- **HackMeridian 2026 (25–26 oct; rama `feat/pago-diferido`, tag `hackmeridian-start` = `1361b38`): pago
+  diferido por enjambre** (`docs/pago_diferido_v0.md` congelada; plan y prompts por bloque en
+  `docs/PLAN_CLAUDE_CODE_HACKMERIDIAN.md`). **B1 cerrado el 25-oct:** el pagador construye y firma SIN red la
+  auth entry de `pay_merchant` con kmp-stellar-sdk 1.6.0 (`data/deferred/AuthTreeBuilder` +
+  `DeferredAuthSigner`; 16 tests byte a byte contra el fixture de `scripts/gen-auth-fixture.mjs`, stellar-sdk 17)
+  y OTRA cuenta la envía como fuente (`DeferredAuthTestnetIT`, apagado por defecto; tx `ebee152c…`). Hechos
+  medidos: credenciales legacy aceptadas en P29 (V2/CAP-71 cuando el SDK Kotlin las tenga); tope de
+  expiración `E − L ≤ max_entry_ttl − 1 = 3 110 399`; cierre de ledger 5,000 s; replay →
+  `Error(Auth, ExistingValue)`. Siguen B2 (pagador en la app), B3 (pasarela web, sesión aparte) y B4 (cobrador).
 
 ### Próximo paso
 

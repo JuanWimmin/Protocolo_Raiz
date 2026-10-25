@@ -36,6 +36,12 @@ Una `SorobanAuthorizationEntry` con credenciales de dirección firma el hash SHA
 La firma cubre **el árbol completo de invocación** (función raíz + sub-invocaciones), no el footprint ni la
 transacción. Por eso se puede firmar sin red y enviar después desde otra cuenta.
 
+Credenciales **legacy** (`SOROBAN_CREDENTIALS_ADDRESS`, preimage tipo 9). Medido el 25-oct-2026 en testnet
+(Protocol 29): el host emite las credenciales V2 de CAP-71 (preimage `…WITH_ADDRESS`, tipo 10) solo si el
+cliente las pide (`useUpgradedAuth`), y sigue aceptando las legacy, que son las únicas que conoce
+`kmp-stellar-sdk` 1.6.0. El fixture y el pagador usan legacy; cuando el SDK Kotlin incorpore V2 se migra
+(cambia el preimage, no el flujo).
+
 ### 2.1 Árbol de autorización de `pay_merchant` (verificado en `contracts/pool/src/lib.rs`)
 
 Para `pay_merchant(tourist, merchant, amount, tip_bps)` con `fee_bps` leído de instancia (hoy 50):
@@ -88,6 +94,25 @@ spike (`max_entry_ttl` de las entradas temporales acota E − L).
 
 Parámetro honesto en la UI: "válido hasta ~hh:mm (estimado)".
 
+**Medido en el spike B1 (25-oct-2026, testnet Protocol 29):**
+
+- Cierre de ledger: **5,000 s exactos** en 199 ledgers consecutivos (mín = máx = 5 s). Con τ = τ_min = 5 s, W para
+  12 h sería 8 640; se mantiene el margen de la fórmula por si el cierre baja (τ_min = 4,5 s → W ≈ 9 600).
+- Tope de la red: el nonce se guarda como entrada temporal viva hasta E y la red exige
+  `E − L ≤ max_entry_ttl − 1`. Con `max_entry_ttl = 3 110 400` (≈ 180 días a 5 s): Δ = 3 110 399 **aceptado**,
+  Δ = 3 110 400 **rechazado** con `Error(Auth, InvalidInput)` (simulación en modo enforce, juzgado por
+  `E − latestLedger` de la propia simulación). La ventana de 12 h queda tres órdenes de magnitud por debajo.
+- E = L (ledger actual) sigue siendo válido; E < L falla con `Error(Auth, InvalidInput)`; reenviar un sobre ya
+  liquidado falla con `Error(Auth, ExistingValue)` (nonce consumido). Son los tres mensajes que la pasarela
+  traduce a `expirada` y `nonce usado`.
+- **Fee que paga la pasarela (testnet, hoy): 28,65 XLM** (`fee_charged` de `ebee152c…`; la simulación pedía
+  32,95 XLM de recursos y hoy pide 41,7). No es el sobre ni una restauración: la simulación lista 1 224 bytes
+  escritos, 2,6 M de instrucciones y ninguna entrada archivada; es el precio de escritura de testnet por el
+  tamaño de su estado (la misma `pay_merchant` costaba 0,0009 XLM en mayo). Consecuencias: la pasarela de la
+  demo se fondea con friendbot (10 000 XLM ≈ 250 liquidaciones) y el pitch no promete "con unos pocos XLM"
+  hasta medirlo en mainnet. El modelo de quién paga ese fee (pasarela voluntaria, comercio, relayer) es parte
+  del modelo de sostenibilidad en evaluación.
+
 ### 3.2 Exposición y doble gasto
 
 Sea B el saldo del pagador, A_i los montos de los sobres pendientes que emitió, y P el bolsillo (v1).
@@ -117,9 +142,11 @@ una sola vez.
 
 ### 3.4 Capacidad del QR
 
-Entrada de auth con 3 sub-invocaciones: del orden de 600–900 bytes de XDR; en base64 ≈ 0,8–1,2 KB.
-Un QR versión 40 con corrección M admite 2 331 bytes alfanuméricos/binarios: cabe en un solo código.
-Si el sobre cifrado de v1 se pasa, se fragmenta en 2 QR con índice `i/n`.
+Medido con el fixture de B1 (3 sub-invocaciones): la entrada firmada ocupa **912 bytes** de XDR (1 216
+caracteres en base64) y el sobre JSON de la §5 completo, en base64url, **2 043 caracteres**. Un QR versión 40
+con corrección M admite 2 331 bytes en modo binario (el base64url lleva minúsculas: no es el modo alfanumérico
+del QR): cabe en un solo código con ≈ 290 bytes de margen; con corrección L caben 2 953. Si el sobre cifrado
+de v1 se pasa, se fragmenta en 2 QR con índice `i/n`.
 
 ## 4. Seguridad: modelo de amenazas (siguiendo la taxonomía de Jie et al.)
 
@@ -200,6 +227,14 @@ debe reproducir esos bytes exactamente (test JVM), y la pasarela web se prueba p
 Es el patrón fixture-byte-a-byte que ya funcionó en `raiz-confidential-stack` (`gen-sign-fixture.mjs` +
 `StellarAccountTest`); se importa el método, no el código.
 
+**Hecho el 25-oct:** `node scripts/gen-auth-fixture.mjs` genera el fixture (determinista; `--check` lo
+verifica; `--verify-tree` simula `pay_merchant` en testnet sin firmar y comprueba que el árbol construido a
+mano es el que emite el host: igual, 3 sub-invocaciones). El pagador Kotlin vive en
+`android/app/src/main/java/com/raiz/app/data/deferred/` (`AuthTreeBuilder`, `DeferredAuthSigner`) y
+`DeferredAuthSpikeTest` (16 tests) comprueba byte a byte invocación, entrada sin firmar, preimage, hash, firma,
+entrada firmada, el contraste con `Auth.authorizeEntry` del SDK, el round-trip, `verify` y las variantes
+(tip 0, fee 0, truncado, monto minúsculo, nonce negativo).
+
 ## 8. Tests (mínimo v0)
 
 JVM (Android):
@@ -215,6 +250,14 @@ JVM (Android):
 9. Expirado localmente (exp ≤ L̂) → no se envía.
 Integración (testnet, manual el domingo): sobre firmado en modo avión → pasarela web envía → hash; mismo
 sobre reenviado → falla por nonce; sobre con exp pasado → falla por expiración.
+
+**Hecha el 25-oct desde Kotlin** (`DeferredAuthTestnetIT`, apagada por defecto; se activa con variables de
+entorno, sin secretos en el repo): la wallet semilla del emulador `GC4VHSZY…CQQEH` firmó sin red un sobre de
+0,5 USDC + 2 % a Cafe Don Aurelio; una pasarela desechable fondeada por friendbot (`GCCXC2E2…2WRH`) reconstruyó
+la invocación desde el XDR, simuló en modo enforce, pagó el fee y envió:
+[`ebee152c…6d47`](https://stellar.expert/explorer/testnet/tx/ebee152cc8bc39af0c3ab1060e515cfdf3a5a6cc76d7ba35f3ab2f2aab506d47)
+(ledger 5 384 473; fuente = pasarela, auth = pagador). El mismo sobre reenviado → `Error(Auth, ExistingValue)`;
+expirado → `Error(Auth, InvalidInput)`; tope de expiración medido en la §3.1.
 
 ## 9. Lo que el deck dice de esto (una slide)
 
