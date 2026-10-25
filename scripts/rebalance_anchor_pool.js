@@ -12,11 +12,15 @@
 //   node scripts/rebalance_anchor_pool.js                 → solo lee: reservas y cotización de 5 USDC
 //   node scripts/rebalance_anchor_pool.js --apply         → reequilibra hasta que 5 USDC coticen al 100,5 %
 //   node scripts/rebalance_anchor_pool.js --apply --target-bps 10200
+//   node scripts/rebalance_anchor_pool.js --apply --max-accounts 5   → hasta 5 rondas (1..6; por defecto 3)
 //
-// `--apply` NO usa ninguna clave del proyecto: crea una cuenta desechable de testnet (friendbot), le
-// pide 1 000 USDC del fondo al faucet de Blend, hace UN path payment contra el pool y descarta la
-// clave. Para reutilizar una cuenta propia: REBALANCER_SECRET=S… (variable de entorno; no la escribas
-// en ningún archivo del repo).
+// `--apply` NO usa ninguna clave del proyecto: en cada ronda crea una cuenta desechable de testnet
+// (friendbot), le pide 1 000 USDC del fondo al faucet de Blend (que da 1 000 UNA sola vez por cuenta),
+// vende hasta 900 USDC al pool con UN path payment y descarta la clave. Si una ronda no basta (tras
+// muchos depósitos el pool puede necesitar miles de USDC), encadena rondas hasta alcanzar el objetivo o
+// agotar --max-accounts; si el faucet rechaza a una cuenta o una tx falla, reintenta la ronda con otra
+// cuenta (hasta 2 veces). Para reutilizar una cuenta propia: REBALANCER_SECRET=S… (variable de entorno;
+// no la escribas en ningún archivo del repo) → una sola ronda con esa cuenta.
 //
 // Requiere @stellar/stellar-sdk ≥ 17 (npm i -g, o el node_modules del repo hermano raiz-relayer).
 const path = require('path');
@@ -46,9 +50,11 @@ const toStroops = s => { const [i, f = ''] = String(s).split('.'); return BigInt
 const fmt = n => { const neg = n < 0n; const a = neg ? -n : n; return (neg ? '-' : '') + (a / STROOP) + '.' + String(a % STROOP).padStart(7, '0'); };
 const pct = (num, den) => (Number(num * 1_000_000n / den) / 10_000).toFixed(2) + ' %';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const FETCH_TIMEOUT_MS = 60_000; // friendbot y el faucet de Blend a veces se cuelgan minutos: mejor fallar y reintentar
+const fetchT = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
 async function getJson(url) {
-  const r = await fetch(url);
+  const r = await fetchT(url);
   if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
   return r.json();
 }
@@ -70,18 +76,25 @@ async function readPool() {
   return { id: p.id, feeBp: BigInt(p.fee_bp), anchor: reserve(ANCHOR_ISSUER), fund: reserve(FUND_ISSUER) };
 }
 
-/** USDC del fondo que hay que vender al pool para que `SAMPLE` USDC del anchor coticen ≥ targetBps. */
+const MAX_SELL = 900n * STROOP; // tope por ronda: el faucet de Blend da 1 000 USDC por cuenta (margen para redondeos)
+const MAX_RETRIES = 2; // rondas fallidas (faucet o tx) que se reintentan con otra cuenta desechable
+
+/**
+ * USDC del fondo que hay que vender al pool para que `SAMPLE` USDC del anchor coticen ≥ targetBps.
+ * Devuelve `{ sell, partial }`: `sell` es 0 si ya cotiza por encima del objetivo; si harían falta más
+ * de `MAX_SELL`, devuelve ese tope con `partial = true` (una ronda no basta: habrá que encadenar otra).
+ */
 function fundToSell(pool, targetBps) {
   const ratioOk = x => {
     const anchorOut = x > 0n ? swapOut(pool.fund, pool.anchor, x, pool.feeBp) : 0n;
     const out = swapOut(pool.anchor - anchorOut, pool.fund + x, SAMPLE, pool.feeBp);
     return out * FEE_DEN >= SAMPLE * targetBps;
   };
-  if (ratioOk(0n)) return 0n;
-  let lo = 0n, hi = 900n * STROOP;
-  if (!ratioOk(hi)) throw new Error('El pool está demasiado desequilibrado para corregirlo con una sola cuenta del faucet.');
+  if (ratioOk(0n)) return { sell: 0n, partial: false };
+  if (!ratioOk(MAX_SELL)) return { sell: MAX_SELL, partial: true };
+  let lo = 0n, hi = MAX_SELL;
   while (hi - lo > 1000n) { const mid = (lo + hi) / 2n; if (ratioOk(mid)) hi = mid; else lo = mid; }
-  return hi;
+  return { sell: hi, partial: false };
 }
 
 async function quoteSample() {
@@ -97,35 +110,45 @@ async function report(label) {
   console.log(`${label} · pool ${pool.id.slice(0, 8)}…${pool.id.slice(-6)} (fee ${pool.feeBp} bp)`);
   console.log(`  reservas: ${fmt(pool.anchor)} USDC del anchor · ${fmt(pool.fund)} USDC del fondo`);
   console.log(`  5 USDC del anchor → ${fmt(quoted)} USDC del fondo (${pct(quoted, SAMPLE)}) · la app convierte sola desde el 97 %`);
-  return pool;
+  return { ...pool, quoted };
 }
 
 async function submit(server, tx, label) {
+  const hash = tx.hash().toString('hex');
   try {
     const res = await server.submitTransaction(tx);
     console.log(`  ${label}: ${res.hash}`);
     return res.hash;
   } catch (e) {
     const codes = e.response && e.response.data && e.response.data.extras && e.response.data.extras.result_codes;
-    throw new Error(`${label} falló: ${codes ? JSON.stringify(codes) : e.message}`);
+    if (codes) throw new Error(`${label} falló: ${JSON.stringify(codes)}`);
+    // Sin códigos de resultado (504 / timeout): Horizon dejó de esperar, pero la tx puede entrar igual → por hash.
+    for (let i = 0; i < 12; i++) {
+      await sleep(5000);
+      const found = await server.transactions().transaction(hash).call().catch(() => null);
+      if (!found) continue;
+      if (!found.successful) throw new Error(`${label} falló on-chain: ${hash}`);
+      console.log(`  ${label}: ${hash} (confirmada por hash tras «${e.message}»)`);
+      return hash;
+    }
+    throw new Error(`${label} falló: ${e.message}`);
   }
 }
 
-async function apply(targetBps) {
-  const pool = await report('Antes');
-  const sell = fundToSell(pool, targetBps);
-  if (sell === 0n) { console.log(`Nada que hacer: ya cotiza por encima del ${pct(targetBps, FEE_DEN)}.`); return; }
+/**
+ * Una ronda con la cuenta `kp`: la crea con friendbot si no existe → le pide USDC del fondo al faucet de
+ * Blend si le falta → trustline al USDC del anchor si falta → path payment de `sell` contra el pool.
+ * Devuelve la cuenta, lo vendido y los hashes (el del faucet es null si la cuenta ya tenía saldo).
+ */
+async function sellRound(server, kp, pool, sell, kind) {
   const expected = swapOut(pool.fund, pool.anchor, sell, pool.feeBp);
-  console.log(`Vendiendo ${fmt(sell)} USDC del fondo al pool (≈ ${fmt(expected)} USDC del anchor de vuelta)…`);
-
-  const server = new SDK.Horizon.Server(HORIZON);
-  const kp = process.env.REBALANCER_SECRET ? SDK.Keypair.fromSecret(process.env.REBALANCER_SECRET) : SDK.Keypair.random();
+  console.log(`  vendiendo ${fmt(sell)} USDC del fondo al pool (≈ ${fmt(expected)} USDC del anchor de vuelta)…`);
   const G = kp.publicKey();
-  console.log(`  cuenta ${process.env.REBALANCER_SECRET ? 'indicada' : 'desechable'}: ${G}`);
+  console.log(`  cuenta ${kind}: ${G}`);
 
   let account = await server.loadAccount(G).catch(() => null);
   if (!account) {
-    const fb = await fetch(`${FRIENDBOT}/?addr=${G}`);
+    const fb = await fetchT(`${FRIENDBOT}/?addr=${G}`);
     if (!fb.ok) throw new Error(`friendbot → HTTP ${fb.status}`);
     for (let i = 0; i < 10 && !account; i++) { await sleep(1500); account = await server.loadAccount(G).catch(() => null); }
     if (!account) throw new Error('friendbot no creó la cuenta a tiempo');
@@ -135,12 +158,15 @@ async function apply(targetBps) {
     return line ? toStroops(line.balance) : null;
   };
 
+  let faucetHash = null;
   if ((balanceOf(FUND_ISSUER) ?? 0n) < sell) {
     // Faucet de Blend: devuelve una tx ya firmada por el emisor (trustlines + 1 000 USDC); falta nuestra firma.
-    const raw = (await (await fetch(`${BLEND_FAUCET}?userId=${G}`)).text()).trim().replace(/^"|"$/g, '');
+    const fr = await fetchT(`${BLEND_FAUCET}?userId=${G}`);
+    const raw = (await fr.text()).trim().replace(/^"|"$/g, '');
+    if (!fr.ok) throw new Error(`faucet de Blend → HTTP ${fr.status}: ${raw.slice(0, 120)}`);
     const faucetTx = SDK.TransactionBuilder.fromXDR(raw, SDK.Networks.TESTNET);
     faucetTx.sign(kp);
-    await submit(server, faucetTx, 'faucet de Blend');
+    faucetHash = await submit(server, faucetTx, 'faucet de Blend');
     account = await server.loadAccount(G);
     if ((balanceOf(FUND_ISSUER) ?? 0n) < sell) throw new Error('La cuenta no tiene suficiente USDC del fondo (el faucet de Blend da 1 000 una sola vez por cuenta).');
   }
@@ -157,17 +183,68 @@ async function apply(targetBps) {
   }));
   const tx = builder.setTimeout(60).build();
   tx.sign(kp);
-  await submit(server, tx, 'reequilibrio (path payment)');
+  const swapHash = await submit(server, tx, 'reequilibrio (path payment)');
+  return { account: G, sell, expected, faucetHash, swapHash };
+}
 
-  await sleep(6000); // Horizon tarda un ledger en reflejar las reservas nuevas
-  await report('Después');
+async function apply(targetBps, maxAccounts) {
+  const server = new SDK.Horizon.Server(HORIZON);
+  const own = process.env.REBALANCER_SECRET ? SDK.Keypair.fromSecret(process.env.REBALANCER_SECRET) : null;
+  const maxRounds = own ? 1 : maxAccounts; // con cuenta propia, una sola ronda (comportamiento de siempre)
+
+  const before = await report('Antes');
+  let pool = before;
+  let need = fundToSell(pool, targetBps);
+  if (need.sell === 0n) { console.log(`Nada que hacer: ya cotiza por encima del ${pct(targetBps, FEE_DEN)}.`); return; }
+
+  const rounds = [], failures = [];
+  while (need.sell > 0n && rounds.length < maxRounds) {
+    const n = rounds.length + 1;
+    console.log(`Ronda ${n}/${maxRounds}${need.partial ? ' (tope de una cuenta: hará falta otra ronda)' : ''}`);
+    const kp = own || SDK.Keypair.random();
+    let result;
+    try {
+      result = await sellRound(server, kp, pool, need.sell, own ? 'indicada' : 'desechable');
+    } catch (e) {
+      if (own || failures.length >= MAX_RETRIES) throw e;
+      failures.push({ account: kp.publicKey(), error: e.message });
+      console.log(`  la ronda ${n} falló: ${e.message} → reintento ${failures.length}/${MAX_RETRIES} con otra cuenta`);
+      await sleep(6000); pool = await readPool(); need = fundToSell(pool, targetBps); // por si la tx entró igual
+      continue;
+    }
+    rounds.push({ n, ...result });
+    await sleep(6000); // Horizon tarda un ledger en reflejar las reservas nuevas
+    pool = await report(`Ronda ${n}`);
+    need = fundToSell(pool, targetBps);
+  }
+
+  const after = await report('Después');
+  const left = fundToSell(after, targetBps);
+  console.log(`Resumen · ${rounds.length} ronda(s)` + (own ? ' con la cuenta indicada' : ` · ${rounds.length} cuenta(s) desechable(s)`)
+    + (failures.length ? ` · ${failures.length} intento(s) fallido(s)` : ''));
+  for (const r of rounds) {
+    console.log(`  ronda ${r.n} · ${r.account} · vendió ${fmt(r.sell)} USDC del fondo (≈ ${fmt(r.expected)} del anchor)`);
+    if (r.faucetHash) console.log(`    faucet ${r.faucetHash}`);
+    console.log(`    swap   ${r.swapHash}`);
+  }
+  for (const f of failures) console.log(`  fallido · ${f.account} · ${f.error}`);
+  console.log(`  reservas (anchor / fondo): ${fmt(before.anchor)} / ${fmt(before.fund)} → ${fmt(after.anchor)} / ${fmt(after.fund)}`);
+  console.log(`  5 USDC del anchor: ${pct(before.quoted, SAMPLE)} → ${pct(after.quoted, SAMPLE)} · objetivo ≥ ${pct(targetBps, FEE_DEN)}`);
+  if (left.sell > 0n) {
+    console.log(`  Objetivo NO alcanzado: faltan ≈ ${fmt(left.sell)}${left.partial ? '+' : ''} USDC del fondo por vender → vuelve a ejecutar --apply (o sube --max-accounts).`);
+    process.exitCode = 2;
+  } else {
+    console.log('  Objetivo alcanzado.');
+  }
 }
 
 (async () => {
   const args = process.argv.slice(2);
-  const i = args.indexOf('--target-bps');
-  const targetBps = BigInt(i >= 0 ? args[i + 1] : 10_050);
+  const flag = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
+  const targetBps = BigInt(flag('--target-bps', 10_050));
   if (targetBps < 9_700n || targetBps > 10_500n) throw new Error('--target-bps debe estar entre 9700 y 10500');
-  if (args.includes('--apply')) await apply(targetBps);
+  const maxAccounts = Number(flag('--max-accounts', 3));
+  if (!Number.isInteger(maxAccounts) || maxAccounts < 1 || maxAccounts > 6) throw new Error('--max-accounts debe ser un entero entre 1 y 6');
+  if (args.includes('--apply')) await apply(targetBps, maxAccounts);
   else await report('Ahora');
 })().catch(e => { console.error('ERROR', e.message); process.exit(1); });
