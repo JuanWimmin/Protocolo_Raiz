@@ -1,7 +1,7 @@
 # 🌱 RAÍZ
 > **Tu paga, el barrio crece.**
 
-🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo (oct-2026, app 0.4.0)](https://www.youtube.com/watch?v=9nmfjS9q7GQ)
+🌐 [raizapp.xyz](https://raizapp.xyz) · 📦 [APK 0.4.0](https://github.com/JuanWimmin/Protocolo_Raiz/releases/tag/v0.4.0) · ✅ [Evidencia del SOW Instaward](docs/evidencia_sow/README.md) · 🎤 [Entrevistas a comercios y residentes (Drive)](https://drive.google.com/drive/folders/1vd_3RpL_2eZphFwEavG5rx7ZF3PYScdp?usp=sharing) · 📽️ [Video demo (oct-2026, app 0.4.0)](https://www.youtube.com/watch?v=9nmfjS9q7GQ) · 🔁 [Pasarela de pago diferido (HackMeridian 2026)](https://raizapp.xyz/pasarela.html)
 
 **RAÍZ** es una red de pagos turísticos sobre **Stellar** que redirige un **"Tip Barrio"** (2% por defecto) de cada pago a un **fondo comunitario gobernado por los residentes del barrio** mediante tokens *soulbound* (no transferibles). El turista paga al comercio en USDC, un porcentaje se desvía automáticamente al pool del barrio, y los residentes votan en qué se reinvierte — todo el estado **on-chain** y sin que nadie tenga la llave del fondo. El único servicio propio es el relayer [`raiz-relayer`](https://github.com/JuanWimmin/raiz-relayer), que firma las operaciones de admin para que el APK no lleve ninguna clave privada.
 
@@ -15,7 +15,17 @@ App Android nativa + 5 contratos Soroban (Rust) desplegados y poblados en **Stel
 
 **New work at the hackathon: deferred payments over a device swarm, for territories without signal.** The visitor signs the Soroban authorization entry for `Pool.pay_merchant` while offline and hands it to the merchant by QR; the merchant verifies the signature locally and shows "in transit"; any device with connectivity — the merchant, a resident, a public web page, even a phone without the app — rebuilds the transaction as fee payer and submits it. Nonce and ledger expiration bound replay; no new contract is deployed. Design, math and threat model: [`docs/pago_diferido_v0.md`](docs/pago_diferido_v0.md).
 
-**Prior work vs. hackathon work.** Everything up to the tag `hackmeridian-start` existed before the event; what we built during the hackathon is the diff `hackmeridian-start...main`. Known limits are stated as such: there is no offline finality, the merchant holds a signed promise until the hash lands, and double-spend is bounded by expiration, per-merchant caps and (v1) a prefunded territory pocket.
+**Prior work vs. hackathon work.** Everything up to the tag `hackmeridian-start` (`1361b38`) existed before the event; what we built during the hackathon is the diff [`hackmeridian-start...feat/pago-diferido`](https://github.com/JuanWimmin/Protocolo_Raiz/compare/hackmeridian-start...feat/pago-diferido) (26 commits up to `a782f51`, 2026-10-26; on that date `main` was still at the tag, so a diff against `main` shows nothing until the branch is merged). Known limits are stated as such: there is no offline finality, the merchant holds a signed promise until the hash lands, and double-spend is bounded by expiration, per-merchant caps and (v1) a prefunded territory pocket.
+
+### Deferred payment (HackMeridian 2026) — what shipped
+
+Built on the branch [`feat/pago-diferido`](https://github.com/JuanWimmin/Protocolo_Raiz/tree/feat/pago-diferido) (diff: [`hackmeridian-start...feat/pago-diferido`](https://github.com/JuanWimmin/Protocolo_Raiz/compare/hackmeridian-start...feat/pago-diferido)). No new contract, no redeploy: the payer signs the `SorobanAuthorizationEntry` of `Pool.pay_merchant` offline and exports it as an *envelope* (`raiz:sobre:1:` + signed XDR, one QR); any account with XLM submits it as fee payer.
+
+- **Public gateway** (any phone with signal settles an envelope, no app needed): <https://raizapp.xyz/pasarela.html> — source [`landing/pasarela.html`](landing/pasarela.html) (static, no server); terminal gateway [`scripts/pasarela_cli.mjs`](scripts/pasarela_cli.mjs).
+- **In the app:** "Firmar sin señal" in Pay (QR envelope, "válido hasta ~hh:mm (estimado)"), "Mis sobres", "Recibir sobre" (merchant = *cobro*, anyone else = *portador*) and Cobros ("Pagos en tránsito"); both phones settle automatically when they regain signal ([`data/deferred/SobreSettler.kt`](android/app/src/main/java/com/raiz/app/data/deferred/SobreSettler.kt)). The receiver (merchant or carrier) shows "Cobrado"/"Liquidado" only with a transaction hash whose auth is that envelope ([`ui/deferred/DeferredLabels.kt`](android/app/src/main/java/com/raiz/app/ui/deferred/DeferredLabels.kt)); the payer's own envelope may also close as "Confirmado" on the consumed nonce alone ([`DeferredPolicy.markConfirmed`](android/app/src/main/java/com/raiz/app/data/deferred/DeferredStore.kt) accepts a null hash).
+- **Spec** (roles, protocol piece, math, threat model, state machine): [`docs/pago_diferido_v0.md`](docs/pago_diferido_v0.md) · **Architecture:** [`docs/ARQUITECTURA_TECNICA.md` §13](docs/ARQUITECTURA_TECNICA.md#13-pago-diferido-por-enjambre-hackmeridian-2026) · **Evidence package** (hashes, 5-minute verification for judges): [`docs/evidencia_hackmeridian/README.md`](docs/evidencia_hackmeridian/README.md).
+- **On-chain proof** (testnet; source account ≠ payer, auth = payer): [`ebee152c…`](https://stellar.expert/explorer/testnet/tx/ebee152cc8bc39af0c3ab1060e515cfdf3a5a6cc76d7ba35f3ab2f2aab506d47) Kotlin integration test · [`cec2388a…`](https://stellar.expert/explorer/testnet/tx/cec2388a231379b79ee51b0c2f0baf8b6bbb6dd6cb962cb71f95942014e41c34) terminal gateway · [`27c61461…`](https://stellar.expert/explorer/testnet/tx/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47) web gateway · [`79a4c858…`](https://stellar.expert/explorer/testnet/tx/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2) carrier settling from the app.
+- **Demo video:** pending.
 
 ---
 
@@ -217,6 +227,19 @@ resolve(address):
    3. si nada → TOURIST
    (cachea por address; fallback a los barrios del seed si list_barrios viene vacío)
 ```
+
+### (f) Pago diferido por enjambre (HackMeridian 2026)
+
+Cuando el pagador, el comercio o ambos están **sin señal**, el visitante firma sin red la autorización de `Pool.pay_merchant` y la entrega como **sobre** (`raiz:sobre:1:` + XDR firmado, un QR); cualquier cuenta con XLM y señal la envía tal cual, como fuente de la transacción, y la red garantiza unicidad (nonce) y expiración (ledger). No hay contrato nuevo ni finalidad offline: "en tránsito" es una promesa firmada, no dinero, hasta que llega el hash.
+
+```
+PAGADOR (sin señal) ──QR/texto──▶ COBRADOR o PORTADOR (app) ──al tener señal──▶ Pool.pay_merchant
+         └──────────────────────▶ pasarela web raizapp.xyz/pasarela.html ────────▶ (auth = pagador, fuente = quien envía)
+```
+
+- Pasarela pública: <https://raizapp.xyz/pasarela.html> (`landing/pasarela.html`) · de terminal: `scripts/pasarela_cli.mjs`.
+- En la app: "Firmar sin señal" en Pagar, "Mis sobres", "Recibir sobre" y Cobros ("Pagos en tránsito"); los dos teléfonos liquidan solos al recuperar señal (`data/deferred/SobreSettler.kt`). "Cobrado" solo con un hash cuya auth sea el sobre.
+- Spec: [`docs/pago_diferido_v0.md`](docs/pago_diferido_v0.md) · arquitectura: [`docs/ARQUITECTURA_TECNICA.md` §13](docs/ARQUITECTURA_TECNICA.md#13-pago-diferido-por-enjambre-hackmeridian-2026) · evidencia: [`docs/evidencia_hackmeridian/README.md`](docs/evidencia_hackmeridian/README.md) · video: pendiente.
 
 ---
 
@@ -428,24 +451,34 @@ Protocolo_Raiz/
 │       │   │                         #   BlendClient, RoleResolver, ScvalParse…
 │       │   ├── relayer/              # RelayerClient: operaciones de admin por HTTP (D1)
 │       │   ├── anchor/               # AnchorClient: SEP-1 / SEP-10 / SEP-24 (D3)
-│       │   ├── local/                # ExecutionHashStore: hash real de cada ejecución (D2)
+│       │   ├── local/                # ExecutionHashStore: hash real de cada ejecución (D2) · MerchantCache (comercios sin señal)
+│       │   ├── deferred/             # pago diferido por enjambre (HackMeridian 2026): firma sin red, sobres, SobreSettler
+│       │   ├── network/              # ConnectivityMonitor: ¿hay red? (decide "Firmar sin señal")
 │       │   ├── security/             # AppLock (biométrico/PIN)
 │       │   └── model/                # data classes espejo de los structs Rust
 │       └── ui/                       # wallet, pay, rewards, map, governance, dashboard,
 │                                     #   treasury(yield), deposit, profile, welcome,
-│                                     #   become_merchant, become_resident, security
+│                                     #   become_merchant, become_resident, security,
+│                                     #   deferred (Mis sobres / Recibir sobre), cobros (pagos en tránsito)
 ├── scripts/
 │   ├── deploy_testnet.sh             # despliegue de los 5 contratos + sync assets
 │   ├── seed_testnet.sh               # datos demo (barrios, comercios, residentes…)
 │   ├── setup_admin_multisig.sh       # admin a multisig 2-de-3 (preparado)
 │   ├── treasury_ttl.js               # estado del TTL de las entradas del Treasury
-│   └── verify_apk_no_secrets.py      # verifica que un APK no lleva claves privadas (D1)
+│   ├── verify_apk_no_secrets.py      # verifica que un APK no lleva claves privadas (D1)
+│   ├── gen-auth-fixture.mjs          # referencia byte a byte de la auth entry de pay_merchant (HackMeridian)
+│   ├── pasarela_cli.mjs              # pasarela de terminal: liquida un sobre desde cualquier cuenta con señal
+│   ├── deferred_envelope_demo.mjs    # sobre real de prueba firmado por una wallet de testnet
+│   └── pasarela_web_e2e.mjs          # prueba headless (CDP) de landing/pasarela.html
 ├── landing/                          # raizapp.xyz (se publica en un repo Pages aparte)
+│   └── pasarela.html                 # pasarela web pública del pago diferido (raizapp.xyz/pasarela.html)
 ├── docs/                             # spec, arquitectura técnica, pitch, guías
 │   ├── raiz_v2_spec_contratos.md     # spec canónica de los 5 contratos
 │   ├── ARQUITECTURA_TECNICA.md       # estado real implementado, verificado vs código
 │   ├── RaizModels.kt                 # modelos Kotlin espejo de los structs Rust
+│   ├── pago_diferido_v0.md           # spec del pago diferido por enjambre (HackMeridian 2026)
 │   ├── evidencia_sow/                # paquete de evidencia del SOW Instaward (D1, D2, D3)
+│   ├── evidencia_hackmeridian/       # evidencia de HackMeridian 2026 (hashes, verificación en 5 min)
 │   └── presentacion/pitch.md         # guion del pitch (7–10 min)
 ├── deployments.json                  # IDs de contratos en testnet (versionado)
 ├── CLAUDE.md                         # convenciones, comandos y subagentes del proyecto

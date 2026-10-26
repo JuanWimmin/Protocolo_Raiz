@@ -3,7 +3,8 @@
 > Fuente de verdad del **estado real implementado** (no de la visión). Todo lo
 > aquí descrito está leído directamente del código en `contracts/` y `android/`
 > y verificado contra el despliegue en `deployments.json` (Stellar Testnet).
-> Última revisión: 2026-10-04 (tras F1 y el sprint SOW: D1 relayer, D2 tx real, D3 SEP-10/24).
+> Última revisión: 2026-10-26 (tras F1, el sprint SOW — D1 relayer, D2 tx real, D3 SEP-10/24 — y
+> HackMeridian 2026: pago diferido por enjambre, §13; rama `feat/pago-diferido`).
 
 ---
 
@@ -29,6 +30,7 @@ un contrato y **gobernado por los residentes** del barrio mediante tokens
 | Smart wallets passkey (WebAuthn/secp256r1, contrato `C…`) | — |
 | Yield del fondo en Blend v2 vía `yield_adapter` (cross-contract; APY on-chain con `apy_hint`) | — |
 | Log de ejecuciones auditable | — |
+| Pago diferido por enjambre (HackMeridian 2026): la autorización de `pay_merchant` firmada **sin red** se ejecuta on-chain con nonce y expiración por ledger, enviada por cualquier cuenta con XLM (§13) | Verificación sin red, estados "en tránsito" y colas de liquidación viven en el teléfono o en el navegador de la pasarela; **no hay finalidad offline** |
 
 La app Android es un **cliente delgado**: lee por simulación vía Soroban RPC (sin
 firmar) y escribe enviando transacciones firmadas con la clave del usuario. Las
@@ -62,6 +64,7 @@ de Soneso, no un backend de RAÍZ.
 | Wallet | **Passkey WebAuthn (smart account `C…`)** + fallback seed **BIP-39 / SEP-05** | `OZSmartAccountKit` de Soneso; operativo end-to-end en dispositivo |
 | Concurrencia | Coroutines + StateFlow | MVVM por pantalla |
 | Async stream | Ktor (CIO) para friendbot/Horizon, el relayer y el anchor | ver gotcha TLS |
+| Pago diferido | `SorobanAuthorizationEntry` de `pay_merchant` firmada **sin red** (credenciales legacy, preimage tipo 9) con `kmp-stellar-sdk` 1.6.0 · pasarela web estática con `@stellar/stellar-sdk` 17.0.1, `html5-qrcode` 2.3.8 y `qrcode-generator` 1.4.4 por CDN | `data/deferred/`, `landing/pasarela.html`, `scripts/pasarela_cli.mjs` (HackMeridian 2026, rama `feat/pago-diferido`; ver §13) |
 
 ---
 
@@ -78,6 +81,7 @@ de Soneso, no un backend de RAÍZ.
 │   │  (claves)        (contratos)     (balances/      (rol on-    │ │
 │   │                                   friendbot)      chain)     │ │
 │   │ + RelayerClient · AnchorClient · BlendClient                │ │
+│   │ + DeferredPaymentManager · SobreSettler (pago diferido, §13)│ │
 │   └──────────────────────────────────────────┼─────────────────┘ │
 └───────────────────────────────────────────────┼─────────────────┘
               firma tx │                         │ simula (read)
@@ -101,6 +105,7 @@ Servicios fuera del teléfono (además de RPC y Horizon):
 
   RelayerClient ──HTTPS──▶ raiz-relayer (Fly.io) ──tx de admin firmadas──▶ Soroban RPC
   AnchorClient  ──HTTPS──▶ testanchor.stellar.org (SEP-1/10/24) ──paga el USDC del anchor──▶ cuenta G… del usuario
+  Pasarela web (cualquier navegador) ── raizapp.xyz/pasarela.html, estática, sin servidor propio ──tx con la auth del pagador──▶ Soroban RPC   (pago diferido, §13)
 ```
 
 **5 contratos Soroban** (deploy vigente: 2026-07-31T20:34:53Z — re-deploy F1; el deploy original del 29-jun quedó obsoleto):
@@ -477,6 +482,19 @@ como éxito idempotente.
 > esto pasaría por un flujo de aprobación del admin del barrio o KYC SEP-12 —
 > un usuario no debería poder auto-verificarse.
 
+### 6.6 Pago diferido por enjambre (HackMeridian 2026)
+
+Variante del flujo 6.1 para cuando el pagador, el comercio o ambos están **sin
+señal**: el pagador firma sin red la `SorobanAuthorizationEntry` de
+`Pool.pay_merchant` (`DeferredPaymentManager.sign`) y la entrega como **sobre**
+(`raiz:sobre:1:` + XDR firmado) por QR o texto; quien lo recibe lo verifica sin
+red (`SobreSettler.receive`) y, en cuanto cualquier teléfono con la app o la
+pasarela web recupera la red, la invocación se envía **tal cual** desde esa
+cuenta, que paga el fee (`SorobanClient.submitSobre`). El contrato no cambia:
+`pay_merchant` ejecuta el mismo pipeline de 6.1 con `tourist` autorizado por la
+firma del sobre. Roles, pieza del protocolo, componentes, reglas de cierre y
+pruebas: **§13**.
+
 ---
 
 ## 7. Capa Android en detalle
@@ -501,18 +519,23 @@ ViewModels usan directamente los servicios singleton de `data/`.
 | `RoleResolver` | Deriva el rol on-chain: residente (`getResident`) → comerciante (`listBarrios` → `listMerchants` por barrio; fallback a los barrios del seed) → turista. Cachea por address. |
 | `ScvalParse` | Parsea SCVal Map → tipos Kotlin con type-safety (`asLong`, `asStruct`, `asAddressString`, `asHex`, `asEnumSymbol`, …). |
 | `DeploymentsLoader` | Carga `deployments.json` desde assets. |
+| `data/deferred/` (`DeferredPaymentManager`, `SobreSettler`, …) | Pago diferido por enjambre (HackMeridian 2026): firma sin red, sobres propios y recibidos, liquidación automática al recuperar señal. Tabla clase por clase en §13.4. |
+| `ConnectivityMonitor` (`data/network/`) | Fuente única de "¿hay red?" (`online`, `offline`, `forceOffline` solo en debug): decide "Firmar sin señal" **antes** de intentar el pago en línea y gobierna el envío automático de sobres. |
+| `MerchantCache` (`data/local/`) | Última foto de los comercios que la red devolvió (`list_merchants` / `get_merchant`), para elegir comercio sin señal; nada de mocks. |
 
 **Modelos (`data/model/`):** espejo Kotlin de los structs Rust (`Barrio`,
 `Merchant`, `Proposal`, `Reward`, `Execution`, `ResidentToken`), con helpers
 `.toUsdc()` / `.toStroops()` y `RaizConstants` (RPC URL, divisores).
 
-**21 pantallas (`*Screen.kt` en `ui/`)** en grupos: onboarding/auth (welcome,
+**24 pantallas (`*Screen.kt` en `ui/`)** en grupos: onboarding/auth (welcome,
 registro passkey/seed, login, import, elección de rol), roles (become_resident,
 become_merchant con Mapbox), núcleo (Wallet con RAÍZ Passport, Pay, Rewards,
 BarrioMap con Mapbox, Profile), on-ramp (**Depositar**: SEP-24 + conversión al
 USDC del fondo, D3), gobernanza (proposals + crear propuesta), comercio
-(cobros), público sin login (Dashboard de transparencia → Yield) y LockScreen
-biométrico. El bottom nav cambia según el rol resuelto on-chain por
+(cobros, con "Escanear/Pegar sobre" y "Pagos en tránsito" desde HackMeridian
+2026), pago diferido (**Mis sobres** + Recibidos, **Recibir sobre** y la
+pantalla del sobre firmado dentro de Pagar; §13), público sin login (Dashboard
+de transparencia → Yield) y LockScreen biométrico. El bottom nav cambia según el rol resuelto on-chain por
 `RoleResolver`.
 
 **Conversión de tipos en llamadas:** los `u32`/`u64` del contrato se mandan como
@@ -617,9 +640,28 @@ próximo re-deploy (H2).
   en Stellar Expert (app y landing); **D3** depósito SEP-10 + SEP-24 completo
   desde la app contra el anchor de prueba para todas las wallets, que termina
   en USDC del fondo (conversión automática + envío al smart account en passkey).
-- **85 tests de contratos en verde** (CI en GitHub Actions) + 131 tests JVM de la app.
+- **HackMeridian 2026 — pago diferido por enjambre** (rama `feat/pago-diferido`,
+  25–26 oct): 4 sobres firmados por el pagador **fuera de la transacción** y
+  liquidados en testnet por una cuenta **distinta del pagador** — prueba de
+  integración Kotlin, pasarela de terminal, pasarela web en Chrome headless y la
+  app como portador en el emulador. Hashes verificados en §13.7. La cadena no
+  prueba el momento de la firma: de esos 4 sobres, solo el de `cec2388a…` salió de
+  la app del emulador en modo "Firmar sin señal" (commit `d391756`); el de la IT
+  Kotlin y los dos de `scripts/deferred_envelope_demo.mjs` nacieron con red (ambos
+  leen el ledger con `getLatestLedger` antes de firmar). La firma sin dependencia
+  de red la cubre el código (`DeferredAuthSigner` / `AuthTreeBuilder`, byte a byte
+  contra el fixture de `stellar-sdk` 17) y el video pendiente (B5). Todavía sin
+  prueba en dispositivo físico.
+- **85 tests de contratos en verde** (CI en GitHub Actions) + **315 tests JVM**
+  de la app (26-oct-2026, tras B4 de HackMeridian; eran 131 el 4-oct).
 
 **Limitaciones conocidas:**
+- **Pago diferido sin finalidad offline:** hasta que el sobre llega a la red el
+  comercio tiene una promesa firmada, no dinero; el doble gasto se acota con la
+  expiración (12 h garantizadas), el tope por cobro (20 USDC por defecto) y la
+  identidad firmada, no se elimina (bolsillo prefondeado: v1). Solo firman y
+  envían sin red las wallets **semilla**; las passkey liquidan por la pasarela
+  web. Detalle en §13.8.
 - **Clave admin única:** la autoridad admin del protocolo sigue siendo una sola
   cuenta. Ya no viaja en el APK: la clave del admin vive solo en el servidor del
   relayer; el APK no la lleva desde 0.2.0 (rotación de la clave: ver
@@ -694,14 +736,31 @@ android/app/.../data/stellar/
 android/app/.../data/relayer/RelayerClient.kt   → operaciones de admin vía raiz-relayer (D1)
 android/app/.../data/anchor/AnchorClient.kt     → SEP-1/10/24 contra el anchor de prueba (D3)
 android/app/.../data/local/ExecutionHashStore.kt → hash real de cada ejecución (D2)
+android/app/.../data/local/MerchantCache.kt      → comercios sin señal: última respuesta de la red (pago diferido)
+android/app/.../data/network/ConnectivityMonitor.kt → ¿hay red? decide "Firmar sin señal"; forceOffline solo en debug
+android/app/.../data/deferred/   → pago diferido por enjambre (HackMeridian 2026, §13): AuthTreeBuilder,
+                                   DeferredAuthSigner, SobreCodec, SobreValidator, LedgerEstimator (LedgerMath),
+                                   DeferredStore (DeferredPolicy), DeferredPaymentManager, ReceivedSobre* (record,
+                                   verifier, policy, store), SobreInbox, SobrePaymentsCache, SobreSubmit/SobreErrors,
+                                   SobreSettler
+android/app/.../data/stellar/EventsPaging.kt · SobreLookup.kt → paginación completa de getEvents y candidatas al hash de un sobre
 android/app/src/main/assets/execution_hashes.json → archivo versionado de hashes (D2)
-android/app/.../ui/       → 21 pantallas Compose (onboarding, roles, núcleo,
-                            depositar, gobernanza, cobros, dashboard → yield)
+android/app/src/test/resources/deferred_auth_fixture.json → referencia byte a byte de la auth entry (stellar-sdk 17)
+android/app/.../ui/       → 24 pantallas Compose (onboarding, roles, núcleo, depositar, gobernanza,
+                            cobros, dashboard → yield, pago diferido: pay/DeferredSignedScreen,
+                            deferred/ = Mis sobres + Recibir sobre)
+landing/pasarela.html     → pasarela web pública del pago diferido (raizapp.xyz/pasarela.html), sin servidor
 scripts/deploy_testnet.sh → despliegue (copia deployments.json a los assets de la app)
 scripts/seed_testnet.sh   → datos demo
 scripts/treasury_ttl.js   → estado del TTL de las entradas del Treasury (solo lectura) + claves XDR para restore/extend
+scripts/gen-auth-fixture.mjs      → fixture byte a byte de la auth entry de pay_merchant (--check, --verify-tree)
+scripts/pasarela_cli.mjs          → pasarela de terminal: liquida un sobre desde cualquier cuenta con señal
+scripts/deferred_envelope_demo.mjs → sobre real de prueba firmado por una wallet de testnet
+scripts/pasarela_web_e2e.mjs      → prueba end-to-end headless (CDP) de landing/pasarela.html
 deployments.json          → IDs de contratos en testnet (fuente canónica)
 docs/evidencia_sow/       → evidencia del SOW Instaward (D1, D2, D3)
+docs/pago_diferido_v0.md  → spec congelada del pago diferido (HackMeridian 2026)
+docs/evidencia_hackmeridian/ → evidencia de HackMeridian 2026 (hashes, verificación en 5 min)
 ```
 
 ---
@@ -795,3 +854,336 @@ en dos niveles:
   acuñarlo. `deployments.json` registraba además `defindex_vault` y
   `defindex_usdc`, que desaparecieron con el re-deploy F1 (hoy: `usdc_sac`,
   `usdc_issuer` y `blend_pool`).
+
+---
+
+## 13. Pago diferido por enjambre (HackMeridian 2026)
+
+> **Estado (2026-10-26):** construido durante HackMeridian 2026 (Lisboa, 25–26 oct)
+> en la rama `feat/pago-diferido`; todo lo posterior al tag `hackmeridian-start`
+> (`1361b38`) es trabajo del evento (`git log --oneline hackmeridian-start..HEAD`).
+> **Cero contratos nuevos, cero redeploy:** usa `Pool.pay_merchant` tal como está
+> desplegado (§4.1). Spec congelada: `docs/pago_diferido_v0.md`; plan y resultado de
+> cada bloque (B1–B4): `docs/PLAN_CLAUDE_CODE_HACKMERIDIAN.md`; evidencia (hashes,
+> verificación en 5 minutos): `docs/evidencia_hackmeridian/README.md`. Todo lo que
+> sigue está leído del código de `android/app/src/main/java/com/raiz/app/data/deferred/`,
+> `data/stellar/SorobanClient.kt`, `landing/pasarela.html` y `scripts/`.
+
+### 13.1 Qué resuelve y qué no
+
+**Resuelve** que un visitante pague a un comercio del territorio cuando uno de los
+dos (o ambos) no tiene señal, y que el pago se liquide en la red en cuanto
+**cualquier** dispositivo del enjambre la recupere: el propio pagador, el comercio,
+un tercero con la app o una página web.
+
+**No promete finalidad offline.** Mientras el sobre no llega a la red, el comercio
+tiene una **promesa firmada, no dinero**; el doble gasto es posible dentro de la
+ventana y se acota con expiración por ledger, tope por cobro e identidad firmada
+(y, en v1, un bolsillo prefondeado por territorio). La UI lo dice con esas
+palabras («"En tránsito" es una promesa firmada, no dinero confirmado»,
+`ui/deferred/DeferredListScreen.kt`) y los textos hablan siempre de **"pago
+diferido"**, nunca de "pago offline" a secas (regla H5 del plan).
+
+### 13.2 Roles del enjambre
+
+```
+         SIN SEÑAL                                          SIN SEÑAL                                  CON SEÑAL
+┌────────────────────────┐                        ┌────────────────────────┐                ┌────────────────────────────────┐
+│ PAGADOR (visitante)    │  QR o "Copiar sobre"   │ COBRADOR (comercio)    │   el sobre     │ PASARELA (cualquier G… con XLM)│
+│ wallet semilla (G…)    │ ─────────────────────▶ │ verifica sin red,      │ ─────────────▶ │ · la app (semilla) de quien lo │
+│ firma sin red la auth  │  raiz:sobre:1:<XDR>    │ guarda EN_TRANSITO,    │   viaja tal    │   tenga: pagador, comercio o   │
+│ entry de pay_merchant: │                        │ entrega la mercancía   │   cual, sin    │   portador                     │
+│ nonce + exp. estimada  │ ─────────────────────▶ │ contra una promesa     │   cambios      │ · raizapp.xyz/pasarela.html    │
+└────────────────────────┘           │            └────────────────────────┘                │ · scripts/pasarela_cli.mjs     │
+                                     │            ┌────────────────────────┐                │ reconstruye la tx como FUENTE, │
+                                     └──────────▶ │ PORTADOR (otro tel.)   │ ─────────────▶ │ simula ENFORCE, paga el fee,   │
+                                                  │ transporta el sobre;   │                │ envía y devuelve el hash       │
+                                                  │ no puede alterarlo ni  │                └───────────────┬────────────────┘
+                                                  │ redirigirlo            │                                │
+                                                  └────────────────────────┘                                ▼
+                               Stellar testnet · Pool.pay_merchant(tourist, merchant, amount, tip_bps)
+                               auth = pagador · fuente = pasarela · el nonce se consume una sola vez
+```
+
+| Rol | Quién | Hace | No puede |
+|---|---|---|---|
+| **Pagador** | Visitante con wallet **semilla** (`G…`); passkey queda para v1 (`DeferredPaymentManager.availability`) | Construye y firma **sin red** la `SorobanAuthorizationEntry` de `pay_merchant` (nonce del CSPRNG, expiración estimada) y la muestra como QR o la copia como texto | Retirar la promesa una vez entregada: solo expira o se liquida |
+| **Cobrador** | Teléfono del comercio destinatario (`args.merchant == owner` → `RolRecibido.COBRO`) | Verifica el sobre sin red, lo guarda `EN_TRANSITO`, aplica el tope por cobro y entrega contra una promesa firmada; con señal lo liquida solo | Alterar monto, destinatario, aporte ni tarifa (están firmados); dar por cobrado sin un hash cuya auth sea el sobre |
+| **Portador** | Cualquier otra wallet con la app (residente, otro comercio) (`RolRecibido.PORTADOR`) | Transporta el sobre (QR o texto) y lo liquida solo al tener señal; puede aceptarlo sin poder comprobar su vigencia | Gastarlo, redirigirlo ni alterarlo; solo retrasarlo o perderlo (replicarlo es gratis y seguro: la red consume el nonce una vez) |
+| **Pasarela** | Cualquier cuenta `G…` con XLM y señal: la app con wallet semilla, `landing/pasarela.html` en cualquier navegador, `scripts/pasarela_cli.mjs` o (v1) el relayer | Reconstruye la tx con su cuenta como **fuente**, simula en modo `ENFORCE`, paga el fee, envía y devuelve el hash | Cambiar nada de la invocación: la firma del pagador la fija byte a byte (`Error(Auth, InvalidAction)` si algo cambia) |
+
+Propiedad clave: **la pasarela no necesita ser de confianza**. Solo aporta
+conectividad y XLM para el fee; por eso un iPhone sin la app, con una página web,
+sirve de pasarela.
+
+### 13.3 La pieza del protocolo
+
+**Qué se firma.** Una `SorobanAuthorizationEntry` con credenciales de dirección
+firma `sha256(XDR(HashIdPreimage::SorobanAuthorization { network_id, nonce,
+signature_expiration_ledger, invocation }))` (`ENVELOPE_TYPE_SOROBAN_AUTHORIZATION`,
+tipo 9). La firma cubre **el árbol completo de invocación** (función raíz +
+sub-invocaciones), **no** el footprint ni la transacción: por eso se puede firmar
+sin red y enviar después desde **otra cuenta**, que es la fuente de la tx y paga
+el fee. El host rechaza cualquier cambio del árbol con `Error(Auth, InvalidAction)`.
+Credenciales **legacy** (`SorobanCredentialsXdr.Address`): son las únicas que
+conoce `kmp-stellar-sdk` 1.6.0 y Protocol 29 las sigue aceptando (medido el
+25-oct-2026; las V2 de CAP-71 cuando el SDK Kotlin las tenga — cambia el
+preimage, no el flujo).
+
+**Árbol de `pay_merchant`** (espejo de `contracts/pool/src/lib.rs`, `AuthTreeBuilder`;
+el fixture `scripts/gen-auth-fixture.mjs --verify-tree` comprueba contra la
+simulación del host que es el mismo árbol, 3 sub-invocaciones):
+
+```
+tip  = amount * tip_bps / 10_000        fee = amount * fee_bps / 10_000        to_m = amount - fee   (i128, trunca)
+
+root:  Pool.pay_merchant(tourist, merchant, amount, tip_bps)       [require_auth(tourist)]
+  ├─ USDC.transfer(tourist, merchant, to_m)
+  ├─ USDC.transfer(tourist, Pool,     tip)     solo si tip > 0
+  └─ USDC.transfer(tourist, admin,    fee)     solo si fee > 0
+```
+
+`Rewards.accrue_points` lo autoriza el propio Pool (`current_contract_address()`) y
+no entra en el árbol del turista. Las ramas se deciden por el valor calculado
+(`tip > 0`, `fee > 0`), no por los bps: con montos pequeños el contrato trunca a 0 y
+omite el transfer. Direcciones que fija el árbol (`DeferredIds.from(deployments)`,
+fuente `deployments.json`; la pasarela web lleva su copia en `DEPLOYMENTS`):
+
+| Pieza | Dirección (testnet) |
+|---|---|
+| Pool (raíz `pay_merchant`) | `CD775D33SPEO3BTAZIEQTQGN6HERTR5YNEQOZWWKXLDKLJ2B34LCKBE2` |
+| USDC SAC de Blend (sub-invocaciones `transfer`) | `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU` |
+| Admin (destino del fee; `protocol_fee_bps = 50`) | `GBLS7PL5Y65DHQIPMJO6HVQLX4FXEEHQDWHGSBUTGT4V6ZV2IOACYC2P` |
+
+Si el Pool cambiara `ProtocolFeeBps` o el admin, la firma dejaría de coincidir y la
+red rechazaría el sobre (`InvalidAction`): fallo seguro, nunca un cobro distinto del
+firmado.
+
+**Nonce y expiración.**
+- `nonce`: 64 bits del CSPRNG del teléfono (`DeferredAuthSigner.newNonce`). El host
+  guarda el nonce consumido como entrada **temporal** `LedgerKeyNonce(nonce)` bajo la
+  cuenta del firmante, viva hasta `signature_expiration_ledger`: un segundo envío
+  del mismo sobre falla con `Error(Auth, ExistingValue)`; una lectura
+  `getLedgerEntries` de esa clave (`SorobanClient.nonceConsumed`) prueba que una tx
+  con ESE sobre se ejecutó, sin depender de la pasarela.
+- `signature_expiration_ledger` E = L̂ + W, estimado sin red. La red exige
+  `E − L ≤ max_entry_ttl − 1 = 3 110 399` (≈ 180 días; medido: 3 110 399 aceptado,
+  3 110 400 rechazado) y rechaza E < L con `Error(Auth, InvalidInput)`.
+
+**Estimación del ledger sin red** (`LedgerMath`, spec §3.1). El pagador guarda,
+cada vez que tiene red, el ancla (L0, t0): último ledger visto y el instante
+**monotónico** (`SystemClock.elapsedRealtime()`, nunca la hora de pared), más
+`BOOT_COUNT` para detectar reinicios y la hora de pared solo para detectar saltos
+de reloj (> 15 min invalida el ancla):
+
+```
+L̂(t) = L0 + floor((t − t0) / τ)                      τ = 5 s (medido 25-oct: 5,000 s exactos en 199 ledgers)
+E     = L̂(t) + W
+W     = T_des / τ_min + Δ_max · (1/τ_min − 1/τ)       T_des = 12 h, τ_min = 4,5 s, Δ_max = 24 h sin señal
+      = 9 600 + 1 920 = 11 520 ledgers                (LedgerMath.WINDOW_12H)
+```
+
+El primer término cubre la ventana al cierre más rápido; el segundo, la deriva
+acumulada entre la última sincronización y la firma. Peor caso (red a 4,5 s tras
+24 h sin señal): exactamente 12 h; con el cierre medido hoy, 16 h. La UI muestra
+la ventana garantizada: "Válido ~12 h (hasta ~hh:mm, estimado)". Sin ancla, con
+ancla de otro arranque, de más de 24 h o con el reloj saltado **no se firma**
+(`LedgerEstimator.readiness` → `Readiness.NoLista(motivo)`).
+
+**El sobre que viaja** (`SobreCodec`): `raiz:sobre:1:` + base64url **sin relleno** del
+XDR de la `SorobanAuthorizationEntry` firmada. Nada más: comercio, monto, aporte y
+reparto se **derivan** de la invocación firmada (`PayArgs.from`), así que hay una
+sola fuente de verdad y no existe la clase de error "lo que se enseña no es lo
+que se firmó". Tamaño con 3 transfers: 912 bytes de XDR → 1 216 caracteres + 13 de
+prefijo = **1 229** (QR versión 29, corrección M). El JSON de la spec §5 quedó como
+descripción de campos, no como formato de transporte.
+
+### 13.4 Componentes de la app
+
+Capa de datos (`android/app/src/main/java/com/raiz/app/data/deferred/` salvo que se
+indique otro paquete). Las clases marcadas **puro** no tocan Android ni la red y se
+prueban en JVM.
+
+| Clase | Responsabilidad y firmas |
+|---|---|
+| `DeferredIds` · `PayMerchantSplit` · `AuthTreeBuilder` (`object`, **puro**) | Árbol §13.3. `split(amount: Long, tipBps: Int, feeBps: Int): PayMerchantSplit` (misma aritmética entera que el contrato) · `payMerchantInvocation(payer, merchant, amount, tipBps, feeBps, ids: DeferredIds): SorobanAuthorizedInvocationXdr` · `transfer(usdcSac, from, to, amount)`. Constantes `BPS_DENOMINATOR = 10_000`, `FN_PAY_MERCHANT`, `FN_TRANSFER`. Bytes comparados con el fixture en `DeferredAuthSpikeTest`. |
+| `DeferredAuthSigner` (`object`) · `SignedDeferredAuth` | Firma y verificación **sin red** de la entrada, como la produce `Auth.authorizeEntry` del SDK pero fijando nonce y expiración: `newNonce(): Long` · `unsignedEntry(payer, nonce, expirationLedger, invocation)` · `preimage(networkId, nonce, expirationLedger, invocation): HashIDPreimageXdr` · `suspend payloadHash(network, nonce, expirationLedger, invocation): ByteArray` · `signatureScVal(publicKey, signature)` (`Vec[Map{public_key, signature}]`) · `suspend sign(entry, keyPair, network): SignedDeferredAuth` · `suspend verify(entry, network): Boolean` (una sola firma, de la clave de la dirección; no mira expiración ni nonce). Solo credenciales legacy. |
+| `SobreCodec` (`object`, **puro**) | Formato del sobre: `PREFIX = "raiz:sobre:1:"`, `MAX_CHARS = 4_096` · `encode(entry): String` · `isSobre(text): Boolean` · `decode(text): SorobanAuthorizationEntryXdr?` (nunca lanza). |
+| `PayArgs` · `SobreCheck` · `SobreValidator` (`object`, **puro**) | Verificación sin red de cualquier sobre: `suspend validateText(text, ids, feeBps, network): SobreCheck` · `suspend validate(entry, ids, feeBps, network)`. Comprueba, en orden: es un sobre RAÍZ; lo firma una cuenta `G…`; la raíz es `pay_merchant` de **nuestro** Pool con 4 argumentos; el firmante es el pagador del árbol; el árbol reconstruido con nuestro `fee_bps` es **idéntico byte a byte**; la firma ed25519 vale para la red → `SobreCheck.Ok(entry, args, split, nonce, expirationLedger)` o `Rechazado(motivo)`. **No** comprueba expiración, nonce visto, destinatario ni tope (eso depende de quién verifica). |
+| `LedgerMath` (`object`, **puro**) · `LedgerAnchor` · `AnchorStorage` · `Readiness` · `LedgerEstimator` (`@Singleton`) | Estimador §13.3. `LedgerMath`: `TAU_MS = 5_000`, `TAU_MIN_MS = 4_500`, `MAX_ANCHOR_AGE_MS = 24 h`, `MAX_CLOCK_DRIFT_MS = 15 min`, `WINDOW_12H` (11 520), `window(desiredMs, tauMs, tauMinMs, deltaMaxMs)`, `estimate(l0, t0Ms, nowMs)`, `expiration(...)`, `isExpiredLocally(exp, estimate)`. `LedgerEstimator`: `record(sequence, closeTimeSec?)` (lo alimentan `SorobanClient.refreshLedgerAnchor()` y `latestLedgerSequence()` cada vez que hay red) · `readiness(): Readiness.Lista(anchor, estimate) \| NoLista(motivo)` · `estimate()` · `expiration(windowLedgers)` · `validUntilWallMs()`. |
+| `DeferredStatus` · `DeferredRecord` · `DeferredRecordCodec` · `DeferredPolicy` (`object`, **puro**) · `DeferredStore` (`@Singleton`, implementa `AnchorStorage`) | Sobres **propios** del pagador. Estados `FIRMADO, ENTREGADO, CONFIRMADO, EXPIRADO, RECHAZADO`. Registro con `id` = nonce en decimal, `sobreQr`, `authXdr`, comercio, montos, `exp`, `l0`/`t0`, `txHash`, `motivo` y el diario de envío (`sendAttempts`, `inFlightHash`, `inFlightValidUntilSec`, `lastQuotedFeeStroops`…). Almacén en SharedPreferences `raiz_deferred` (`records_v2` + ancla): `saveDurable(record): Boolean` (`commit()` y relectura: si falla **no se muestra el QR**) · `mutate(id, f)` (lee-modifica-escribe el registro VIVO bajo candado) · `refreshAll(f)` · `recordsFor(payer)` · `pendingCount(payer)`. `DeferredPolicy`: `MAX_SEND_ATTEMPTS = 3`, `RETRY_BACKOFF_MS = 5 min`, `MIN_LEDGERS_BEFORE_EXP = 3`, `canSign`, `refresh` (vencimiento local), `markDelivered`, `markConfirmed(r, txHash?)`, `markExpiredByNetwork`, `markRejected`, `markInFlight`/`clearInFlight`/`markSendFailed`/`markFeeTooHigh`, `shouldAutoSend(r, ledgerHint, nowMs)`, `consulta(r, nonceConsumed)`, `whenPastExpiration(r, prueba)`, `eventsSinceLedger(r) = l0 − 20`. |
+| `DeferredPaymentManager` (`@Singleton`) | Orquestador del **pagador**. `availability(): Disponible \| NoDisponible(motivo)` (solo wallet semilla — nunca la clave demo ni passkey — y estimador listo) · `suspend sign(merchant: Merchant, amountStroops: Long, tipBps: Int): RaizResult<DeferredRecord>` (nonce CSPRNG, `exp = L̂ + WINDOW_12H`, árbol, firma, **autocomprobación** con `SobreValidator` y round-trip del codec, `saveDurable` **antes** de mostrar el QR) · `markDelivered(id)` · `refreshStatuses()` (sin red: EXPIRADO local por estimación) · `suspend syncWithNetwork(payer): Int` (con red: nonce consumido → CONFIRMADO con el hash del pago si se encuentra; ledger real > `exp` → busca el hash antes de dar EXPIRADO) · `suspend confirmByHash(id, hash)` (solo si la auth de esa tx es exactamente este sobre). |
+| `RolRecibido` · `RecibidoStatus` · `ReceivedSobreRecord` · `RecibidoCheck` (`ReceivedSobre.kt`) | Sobres **recibidos** de otro teléfono. `RolRecibido { COBRO, PORTADOR }`, `RecibidoStatus { EN_TRANSITO, CONFIRMADO, EXPIRADO, RECHAZADO }`; registro con `id = "<payer>:<nonce>"`, `owner`, `sobreQr`, `authXdr`, `rol`, `receivedAtLedger`, `vigenciaComprobada` y el mismo diario de envío que el propio. `RecibidoCheck { Aceptado(record), YaRegistrado(record), Rechazado(motivo) }`. |
+| `ReceivedSobreVerifier` (`object`, **puro**) | `suspend verify(text, owner, topeStroops, ledgerActual: Long?, estimate: Long?, anchorAgeMs: Long?, vistos, ids, feeBps, network, nowMs): RecibidoCheck`. Orden: (1) `SobreValidator`; (2) índice `(owner, payer, nonce)`: mismo XDR → `YaRegistrado` (idempotente), otro XDR con el mismo nonce → rechazo por **nonce reutilizado** (posible fraude); (3) rol: `COBRO` si `args.merchant == owner`, si no `PORTADOR`; (4) tope solo en `COBRO` (`TOPE_DEFAULT_STROOPS = 200_000_000` = 20 USDC); (5) vigencia: ledger real si hay red, si no el estimado más `margen(anchorAgeMs) = MARGEN_LEDGERS (360) + deriva por la edad del ancla`; un `COBRO` **nunca se acepta sin referencia de ledger**, un `PORTADOR` sí con `vigenciaComprobada = false`. |
+| `ReceivedSobrePolicy` (`object`, **puro**) | Transiciones anti fraude del receptor: `MAX_SEND_ATTEMPTS = 3`, `RETRY_BACKOFF_MS = 300_000`, `EVENTS_DRIFT_MARGIN_LEDGERS = 3_000` · `Prueba { Hash(txHash), Ninguna, NoComprobable }` · `markConfirmed(r, txHash)` (**hash obligatorio**; pisa EXPIRADO/RECHAZADO previos) · `markNonceConsumidoSinHash` · `whenNonceConsumed(r, prueba, nonceEnOtraTx)` · `whenPastExpiration(r, prueba)` · `consulta(r, nonceConsumed)` · `reaccion(outcome: SobreSubmit): Reaccion { Confirmar, Nada, RevisarNonce, RevisarExpiracion, Rechazar, Aplazar, FeeAlta }` · `shouldAutoSend` · `eventsSinceLedger(r) = exp − 11 520 − 3 000`. |
+| `ReceivedSobreStore` (`@Singleton`) | SharedPreferences `raiz_received_sobres` (`records_v1`, `tope_<owner>`): `saveDurable(record): Boolean` (nunca pisa un registro; idempotente solo para el mismo sobre de la misma wallet) · `mutate(id, f)` · `refreshAll(f)` · `seen(owner, payer, nonce)` · `recordsFor(owner)` · `pendingCount(owner)` · `topeStroops(owner)` / `setTopeStroops(owner, stroops)` (0 = no aceptar cobros sin señal). |
+| `SobreInbox` (`@Singleton`) | Buzón en memoria entre el escáner de Inicio y "Recibir sobre": `pendingText`, `take()` (una sola vez; un sobre de ≈ 1,2 KB no viaja en la ruta de navegación). |
+| `SobrePaymentsCache` | Una lectura de pagos del Pool por pagador y pasada: `payments(payer, sinceLedger): List<PaymentRecord>?` (`null` = "no se pudo comprobar", nunca "no hay"). |
+| `SobreSubmit` (sealed) · `SobreErrors` (`object`, **puro**) (`SobreSubmit.kt`) | Veredicto de enviar un sobre: `Liquidado(txHash)`, `EnVuelo(txHash, validUntilSec)`, `NonceUsado`, `Expirada`, `RechazadaDefinitiva(motivo)`, `RechazadaTransitoria(motivo)`, `FallidaEnRed(txHash)`, `SinFondosFuente(motivo)`, `FeeAlta(feeStroops, maxFeeStroops)`, `SinRed(motivo)`. `SobreErrors.classifySimulation(error)`: `Error(Auth, ExistingValue)` → `NonceUsado`; `Error(Auth, InvalidInput)` → `Expirada`; `Error(Contract, #10/#13/#5/#4)` y `#6/#7/#8` → transitoria; `Error(Auth, InvalidAction)` → **única** definitiva; otro `Auth` → transitoria. `classifySend(code)`: `txINSUFFICIENT_BALANCE`/`txINSUFFICIENT_FEE` → `SinFondosFuente`; `txBAD_SEQ`/`txTOO_LATE` → reconstruir. |
+| `SobreSettler` (`@Singleton`) | **Orquestador único que liquida** sobres propios y recibidos desde la wallet de la app. `liquidador(): DesdeLaApp \| Pasarela(motivo)` (passkey o sin semilla → pasarela web) · `pasarelaUrl(sobreQr)` → `https://raizapp.xyz/pasarela.html#sobre=…` · `start(scope)` (idempotente; cada vez que la conectividad pasa a "con señal", y al arrancar si la hay, espera 2 s y lanza `settlePending`; lo llama `MainActivity` tras desbloquear, con alcance de proceso) · `suspend settlePending(owner): Resumen(confirmados, expirados, rechazados, aplazados, enviados)`: candado por pasada y wallet; **primero consulta** (`syncWithNetwork` + política de recibidos), **después envía** solo con red, wallet semilla y siendo la wallet activa: recibidos de inmediato y antes que los propios; para un sobre propio ya mostrado (`ENTREGADO`) espera `PAYER_JITTER_MS = 10 s` y vuelve a consultar, por si el cobrador ya liquida · `suspend settleOwn(id, manual)` / `suspend settleReceived(id, manual): Resultado { Actualizado, NoEnviable(motivo, pasarelaUrl), Ocupado, SinSenal, FeeAlta }` ("Liquidar ahora" = `manual = true`: salta backoff y tope de intentos, no la simulación) · `suspend receive(text): RecibidoCheck` (verifica con el ledger real si hay red o la estimación y la edad del ancla si no; guarda con `saveDurable`) · `refreshStatuses()`. Topes: `AUTO_MAX_FEE_PROPIOS = 1_000_000_000` (100 XLM), `AUTO_MAX_FEE_RECIBIDOS = 20_000_000` (2 XLM), `MANUAL_MAX_FEE = 1_000_000_000` (100 XLM). Mutex por sobre (`tryLock` → `Ocupado`) y por cuenta fuente (dos envíos de la misma cuenta darían `txBAD_SEQ`), siempre en ese orden; diario `TxJournal` → `markInFlight`/`clearInFlight`; reanudación por hash con la hora de la red. |
+| `SorobanClient` (`data/stellar/`) | `suspend submitSobre(entry: SorobanAuthorizationEntryXdr, signer: KeyPair, maxFeeStroops: Long, journal: TxJournal? = null): SobreSubmit`: (1) `InvokeHostFunctionOperation(hostFunction = InvokeContract(fn raíz), auth = listOf(entry))`, `maxTime` = hora de la **red** + `SOBRE_TX_TIMEOUT_SEC = 90`, `SOBRE_BASE_FEE = 500_000` stroops, simulación `AuthMode.ENFORCE` **antes** de firmar (gratis); cotización = fee de la tx + `minResourceFee`, por encima de `maxFeeStroops` → `FeeAlta` sin enviar; `prepareTransaction` conserva la auth; (2) firma **una** vez y `journal.signed(hash, validUntil, sequence)` antes de enviar (si el diario lanza, no se envía); (3) justo antes de enviar vuelve a mirar `nonceConsumed` (carrera pagador/cobrador); (4) envía el **mismo** sobre (reintenta solo `TRY_AGAIN_LATER`); (5) confirma por hash; sin veredicto → `EnVuelo` con el diario abierto. Nunca lanza. · `suspend nonceConsumed(account, nonce): Boolean?` (`getLedgerEntries` de `LedgerKeyNonce`, `TEMPORARY`) · `suspend latestLedgerSequence(): Long?` y `suspend refreshLedgerAnchor(): Boolean` (alimentan el estimador) · `suspend transactionAuthEntries(hash): TxAuthLookup(status, authEntriesXdr)` · `suspend sobrePaymentEvents(addr, sinceLedger): RaizResult<List<PaymentRecord>>` (lectura **completa o error**; sigue el cursor hasta que se detiene) · `suspend lookupSobreHash(payer, merchant, authXdr, events?, sinceLedger?): SobreHashLookup { Found(txHash), NotFound, Unavailable }` · `suspend sobreNonceEnOtraTx(payer, merchant, nonce, authXdr, events?, sinceLedger?): String?`. Apoyo **puro**: `EventsPaging` (`PAGE_LIMIT = 100`, `cursorLedger`, `isLastPage`, `readAll`, `covers`) y `SobreLookup` (`MAX_CANDIDATES = 24`, `hashCandidates`, `nonceCandidates`). |
+| `ConnectivityMonitor` (`data/network/`) | `online: StateFlow<Boolean>`, `forceOffline: StateFlow<Boolean>` (solo debug), `offline: Flow<Boolean>`, `isOnline()`, `isOffline()`, `setForceOffline(value)`, `refresh()`. Recalcula con `activeNetwork` + `NET_CAPABILITY_INTERNET` (sin exigir `VALIDATED`) y vuelve a comprobar 600 ms después. |
+| `MerchantCache` (`data/local/`) | `putBarrio(barrioId, merchants)`, `putMerchant(merchant)`, `merchant(address)`, `barrio(barrioId)`, `updatedAt(barrioId)`: la llena `SorobanClient` cada vez que `list_merchants` / `get_merchant` responden; sin señal, Pagar elige comercio de aquí. |
+
+Capa UI (`ui/`):
+
+| Pantalla / ruta | Qué hace |
+|---|---|
+| **Pagar** — `ui/pay/PayScreen.kt` + `PayViewModel` | La decisión "sin señal" se toma por conectividad **antes** de confirmar (`connectivity.offline` con debounce), nunca como respaldo tras un pago fallido (podría cobrar dos veces). Sin red el botón pasa a **"Firmar sin señal"** (`PayUiState.Editing.sinSenal`; si no se puede firmar, `sinSenalNoDisponible` dice por qué); en debug, un switch "Firmar sin señal (debug)" fuerza el modo con red (`forceOffline`). Al confirmar → `DeferredPaymentManager.sign` → `PayUiState.Signed(record, validUntilLabel)`. |
+| **Sobre firmado** — `ui/pay/DeferredSignedScreen.kt` | QR del sobre al ancho exacto disponible (`QrUtils.generateCrisp`, módulos enteros), detalle honesto (comercio, monto, aporte, fee del protocolo), "válido hasta ~hh:mm (estimado)" y **"Copiar sobre"**. Al mostrarse, `markDelivered` (FIRMADO → ENTREGADO). La reutiliza el historial. |
+| **Mis sobres** — `ui/deferred/DeferredListScreen.kt`, ruta `sobres`; detalle `sobres/{id}` (`DeferredDetailRoute`) y `recibido/{id}` (`RecibidoDetailRoute`) | Sobres firmados sin señal con su estado («"En tránsito" es una promesa firmada, no dinero confirmado») y, debajo, **"Recibidos"** (cobros y portes) con "Liquidar ahora" o "Copiar sobre y abrir la pasarela" según `SobreSettler.liquidador()`; botón "Recibir sobre". |
+| **Recibir sobre** — `ui/deferred/RecibirSobreScreen.kt`, ruta `recibir` | Para **cualquier** wallet: recoge del `SobreInbox` el sobre que el escáner de Inicio reconoció (`SobreCodec.isSobre`) o acepta el pegado manual, muestra el veredicto (`RecibidoCheck`) con el rol (p. ej. «Lo llevas para GA7CDZ…4TSN»), y lo deja `EN_TRANSITO` para que `SobreSettler` lo envíe solo. |
+| **Cobros** — `ui/cobros/CobrosScreen.kt` + `CobrosViewModel`, ruta `cobros` | Además del cobro con QR en línea: **"Escanear sobre"** / **"Pegar sobre"**, veredicto (`VeredictoDialog`), lista **"Pagos en tránsito"** con estado y motivo, tope por pago sin señal editable (`TopeDialog`), detalle con **"Liquidar ahora"** (wallet semilla; deshabilitado sin señal) o "Copiar sobre y abrir la pasarela" (passkey), banner sin señal (`SinSenalCobrosBanner`). La pantalla se pinta sin red. |
+| **Inicio** — `ui/wallet/WalletScreen.kt` | Fila siempre visible «Sobres sin señal · Mis sobres» / «Tienes N sobres en tránsito · Ver» (propios + recibidos pendientes); el escáner de Inicio reconoce un sobre y navega a `recibir`. |
+| `MainActivity` | `sobreSettler.start(procesoScope)` tras desbloquear la app (alcance de proceso, no de Activity); rutas `DEFERRED = "sobres"`, `RECIBIR = "recibir"`, `RECIBIDO = "recibido"`, `COBROS = "cobros"`. |
+
+### 13.5 Máquina de estados y reglas de cierre
+
+```
+Pagador  (DeferredStatus):   FIRMADO → ENTREGADO(QR mostrado) → CONFIRMADO(hash) | EXPIRADO | RECHAZADO
+Receptor (RecibidoStatus):   ReceivedSobreVerifier → EN_TRANSITO → CONFIRMADO(hash) | EXPIRADO | RECHAZADO
+Envío    (submitSobre):      simular ENFORCE → firmar 1 vez → diario → ¿nonce consumido? → enviar el MISMO sobre → confirmar por hash
+```
+
+Reglas decididas tras la revisión adversarial de B4 (`SobreSettler`, `DeferredPolicy`,
+`ReceivedSobrePolicy`, `SobreErrors`):
+
+1. **La red es la única fuente de verdad del cierre.** Un sobre **propio** se da por
+   cobrado con el nonce consumido bajo la cuenta del pagador (`nonceConsumed`) o con
+   una tx `SUCCESS` cuya auth sea el sobre; un sobre **recibido** exige **siempre un
+   hash cuya auth sea ese sobre** (`ReceivedSobrePolicy.markConfirmed(r, txHash)` no
+   acepta un hash en blanco). Nonce consumido sin hash ⇒ sigue `EN_TRANSITO`
+   «buscando el comprobante»; el nonce aparece en **otro** pago, o vence sin hash tras
+   haberse visto consumido ⇒ `RECHAZADO` (posible fraude). `Error(Auth, ExistingValue)`
+   significa "nonce ya usado", **nunca** "cobrado".
+2. **Nada se rechaza por causas transitorias.** Solo `Error(Auth, InvalidAction)` (la
+   firma no corresponde al árbol) y el nonce reutilizado / en otro pago son
+   definitivos. Fondos (#10), trustline (#13), comercio (#4/#5), los códigos de
+   resultado de la cuenta fuente y la red **aplazan con motivo visible** y decide la
+   red. La verdad on-chain pisa un `RECHAZADO` o `EXPIRADO` previo (`markConfirmed`).
+3. **Antes de `EXPIRADO` por ledger > `exp` se busca el hash** en los eventos
+   `payment` del Pool desde el ancla (`eventsSinceLedger`, lectura completa o error
+   vía `sobrePaymentEvents`), porque la entrada del nonce es **temporal** y
+   desaparece al vencer. El `EXPIRADO` por estimación local es provisional
+   (`isLocalExpiry`) hasta que la red lo confirma.
+4. **Tope de fee.** La simulación es gratis; si la cotización (fee de la tx +
+   `minResourceFee`) supera el tope no se envía nada (`FeeAlta`): 100 XLM para sobres
+   propios, **2 XLM** en el envío automático de sobres ajenos (un desconocido no puede
+   drenar el XLM de un comercio con sobres de un stroop) y 100 XLM con "Liquidar
+   ahora". Medido en testnet: el **primer** `pay_merchant` de un turista en un barrio
+   costó 28,65 XLM (crea `TouristSeen` y `Points`); los siguientes, ≈ 0,0023 XLM
+   (§13.7).
+5. **Recepción.** Un cobro (`COBRO`) no se acepta sin referencia de ledger (real o
+   estimada con margen `360 + deriva por la edad del ancla`) ni por encima del tope
+   por pago (20 USDC por defecto, editable por wallet); un portador sí, con aviso de
+   vigencia no comprobada. El mismo sobre dos veces ⇒ «Ya tenías este sobre»
+   (idempotente); el mismo nonce con otro XDR ⇒ rechazo.
+6. **Candados y diario.** Mutex por sobre y por cuenta fuente; el hash de la tx
+   firmada se anota (`commit()`) **antes** de enviarla y la próxima pasada la resuelve
+   por hash con la **hora de la red** (`maxTime = closeTime + 90 s`), nunca con el
+   reloj del teléfono; ≤ 3 envíos que llegaron a la red por sobre y 5 min de backoff
+   en el automático; el "sin señal" forzado de depuración bloquea todo envío
+   automático.
+7. **Wallets passkey (`C…`)** no firman sin red ni envían desde la app en v0: Pagar
+   muestra el motivo; Cobros y Recibidos copian el sobre y abren la pasarela web con
+   el fragmento `#sobre=`.
+
+Texto del pagador en la app: «Se liquida sola en cuanto tu teléfono, el del comercio
+o el de cualquier usuario de RAÍZ que la lleve tenga señal».
+
+### 13.6 Pasarelas web y de terminal
+
+**Pasarela web** — `landing/pasarela.html`, publicada en
+<https://raizapp.xyz/pasarela.html> (se copia a mano al repo Pages, como el resto de
+`landing/`). Página **estática, sin servidor propio ni build**: `@stellar/stellar-sdk`
+17.0.1, `html5-qrcode` 2.3.8 y `qrcode-generator` 1.4.4 desde jsDelivr; estilo y
+objeto `DEPLOYMENTS` de la landing; textos ES/EN en un objeto. Flujo: escanear con
+la cámara o pegar → **verificar sin red** con las mismas reglas que
+`SobreValidator` (prefijo `raiz:sobre:1:`, XDR, credenciales legacy de una cuenta
+`G…`, raíz `pay_merchant` del Pool, árbol reconstruido con `fee_bps` 50 idéntico
+byte a byte, firma ed25519 sobre el preimage tipo 9) → estado en la red (ledger
+actual, nonce consumido vía `getLedgerEntries`, nombre del comercio con
+`get_merchant` simulado desde la cuenta del admin) → cuenta pasarela en
+`localStorage` (creada y fondeada por friendbot, o una secret pegada; saldo por
+Horizon) → **liquidar**: `invokeHostFunction` con los argumentos firmados y
+`auth = [sobre]`, simulación `enforce`, `assembleTransaction` (conserva la auth),
+firma, `sendTransaction`, polling de `getTransaction` → hash, enlace a Stellar
+Expert y QR del hash; errores traducidos (nonce usado, expirado, firma/árbol, #4,
+#5, #10, #13). `?sobre=` o `#sobre=` precargan y verifican (es lo que abre la app
+en passkey). Tras liquidar marca el nonce como consumido y bloquea el reenvío sin
+gastar. Probada en Chrome headless por CDP con `scripts/pasarela_web_e2e.mjs`
+(fixture y sobre real: tx `27c61461…`, §13.7). Pendiente: la aceptación manual
+desde Safari en un iPhone escaneando el QR del emulador (la cámara exige HTTPS, ya
+cubierto por raizapp.xyz).
+
+**Pasarela de terminal** — `scripts/pasarela_cli.mjs` (Node, `@stellar/stellar-sdk`
+≥ 17): `node scripts/pasarela_cli.mjs "<sobre>"` liquida con una cuenta desechable
+fondeada por friendbot; acepta también un archivo o `-` (stdin); `--dry-run` solo
+verifica y simula; `PASARELA_SECRET=S…` usa una cuenta propia. Es la referencia de la
+pasarela web y aplica las mismas reglas (sin claves del proyecto).
+
+**Scripts de apoyo** — `scripts/gen-auth-fixture.mjs` genera el fixture determinista
+`android/app/src/test/resources/deferred_auth_fixture.json` (preimage, hash, firma y
+entrada firmada; `--check` verifica el determinismo; `--verify-tree` simula
+`pay_merchant` en testnet sin firmar y comprueba que el árbol a mano es el del host);
+`scripts/deferred_envelope_demo.mjs` firma un sobre **real** desde una wallet de
+testnet (`DEFERRED_PAYER_SECRET` por variable de entorno; por defecto 1 USDC + 2 % a
+Cafe Don Aurelio, ventana 11 520) para probar las pasarelas sin pasar por la app.
+
+### 13.7 Pruebas y transacciones verificadas
+
+**JVM** (`./gradlew :app:testDebugUnitTest`): 315 tests en verde tras B4 (26-oct). En
+`android/app/src/test/java/com/raiz/app/data/deferred/`: `DeferredAuthSpikeTest` (16:
+invocación, entrada sin firmar, preimage, hash, firma y entrada firmada **byte a
+byte** contra el fixture de `stellar-sdk` 17, contraste con `Auth.authorizeEntry`,
+round-trip, `verify`, variantes tip 0 / fee 0 / truncado / nonce negativo),
+`LedgerMathTest`, `SobreCodecTest`, `DeferredPolicyTest`, `DeferredStoreTest`,
+`ReceivedSobreVerifierTest`, `ReceivedSobrePolicyTest`, `ReceivedSobreStoreTest`,
+`SobreErrorsTest`, `SobrePaymentsCacheTest`; en `data/stellar/`: `EventsPagingTest`,
+`SobreLookupTest`. Integración contra testnet, **apagada por defecto** y sin
+secretos en el repo: `DeferredAuthTestnetIT` (`RAIZ_DEFERRED_IT=1` +
+`RAIZ_DEFERRED_PAYER_MNEMONIC` o `_SECRET`) y `SobreEventsTestnetIT`.
+
+**Transacciones en testnet** (las cuatro con **fuente ≠ pagador** y **auth = pagador**;
+verificadas en Horizon el 2026-10-26: `successful = true`, ledger, cuenta fuente y
+`fee_charged`):
+
+| Tx | Qué prueba | Ledger · fecha (UTC) | Fuente (pasarela) | Pagador → comercio | Fee cobrado |
+|---|---|---|---|---|---|
+| [`ebee152c…6d47`](https://stellar.expert/explorer/testnet/tx/ebee152cc8bc39af0c3ab1060e515cfdf3a5a6cc76d7ba35f3ab2f2aab506d47) | **B1**, `DeferredAuthTestnetIT` (Kotlin): sobre firmado localmente por la wallet semilla del emulador (IT en una JVM con red: lee el ledger con `getLatestLedger` y firma con `DeferredAuthSigner`) y enviado por una cuenta desechable fondeada por friendbot | 5 384 473 · 25-oct 16:32 | `GCCXC2E2…2WRH` | `GC4VHSZY…CQQEH` → `GA7CDZDQ…4TSN` (Cafe Don Aurelio), 0,5 USDC + 2 % | 28,65 XLM (primer pago del turista en el barrio) |
+| [`cec2388a…1c34`](https://stellar.expert/explorer/testnet/tx/cec2388a231379b79ee51b0c2f0baf8b6bbb6dd6cb962cb71f95942014e41c34) | **Pasarela de terminal** `scripts/pasarela_cli.mjs`: segundo sobre del mismo turista, firmado en la app del emulador en modo "Firmar sin señal" (commit `d391756`; la cadena no prueba ese momento) | 5 388 242 · 25-oct 21:46 | `GD2Q2CZU…JLVF` | `GC4VHSZY…CQQEH` → `GAGVM6AT…DVIN`, 5 USDC + 2 % | 0,0023 XLM |
+| [`27c61461…9f47`](https://stellar.expert/explorer/testnet/tx/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47) | **B3**, pasarela web `landing/pasarela.html` en Chrome headless (CDP): sobre real de `deferred_envelope_demo.mjs` firmado por `raiz-tourist` (el script fija la expiración con `getLatestLedger`, es decir, con red); la página creó su cuenta con friendbot y liquidó | 5 388 486 · 25-oct 22:06 | `GADSC7Z5…T43MO` | `GDLGYDO4…IZM7` → `GA7CDZDQ…4TSN`, 0,5 USDC + 2 % | 0,0044 XLM |
+| [`79a4c858…eee2`](https://stellar.expert/explorer/testnet/tx/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2) | **B4**, la app en el emulador como **portador**: sobre de `deferred_envelope_demo.mjs` pegado en "Recibir sobre", verificado sin consultar la red (`SobreValidator`) y enviado solo por `SobreSettler` 11 s después | 5 391 483 · 26-oct 02:16 | `GC4VHSZY…CQQEH` (la wallet del emulador) | `GDLGYDO4…IZM7` → `GA7CDZDQ…4TSN`, 0,5 USDC + 2 % | 0,0023 XLM |
+
+Comprobado también en B1: reenviar un sobre ya liquidado → `Error(Auth,
+ExistingValue)`; expirado → `Error(Auth, InvalidInput)`; cierre de ledger 5,000 s
+en 199 ledgers consecutivos. En B4, el mismo sobre pegado otra vez → «Ya tenías
+este sobre». **Pendiente de probar** (B4): el camino `COBRO` con una wallet de
+comercio y la autoliquidación de un sobre propio firmado sin señal; y todo el
+flujo en un dispositivo físico (lo probado corre en el emulador y en Chrome
+headless).
+
+### 13.8 Límites declarados y deuda
+
+- **Sin finalidad offline.** La promesa firmada no es dinero hasta el hash. Un
+  pagador malicioso puede emitir sobres por más de su saldo y decidir qué comercios
+  cobran: exposición por comercio = su monto, acotada por la expiración (12 h
+  garantizadas), el tope por cobro (20 USDC) y la identidad firmada. El bolsillo
+  prefondeado por territorio (`pocket`), la atestación de hardware contra passkeys
+  sincronizadas o teléfonos rooteados y los portadores BLE son **v1**.
+- **Solo wallets semilla** firman y envían sin red; las passkey (`C…`) copian el sobre
+  y abren la pasarela web (SEP-45 y la firma offline del smart account siguen
+  pendientes, WP7).
+- **Retención del RPC (~7 días):** un sobre más viejo que la retención queda sin
+  veredicto terminal («venció y ya no se puede comprobar»).
+- **Fee de la pasarela:** en testnet el primer `pay_merchant` de un turista en un
+  barrio cuesta ≈ 28,65 XLM (renta inicial de `TouristSeen` y `Points`); quién paga
+  ese fee (pasarela voluntaria, comercio, relayer) forma parte del modelo de
+  sostenibilidad en evaluación. Las pasarelas de demo se fondean con friendbot.
+- **Privacidad:** el sobre expone pagador, comercio y monto a quien lo transporte;
+  el sobre cifrado al destino es v1.
+- **Deuda de contrato (no se toca en la hack):** el Pool descuenta el fee del
+  protocolo del monto del comercio (`to_m = amount − fee`), en tensión con "el
+  comercio recibe íntegra su venta"; se resuelve en los contratos v2.
+- **Fuera de v0:** pasarela en el relayer (`POST /v1/deferred-payment`), iOS vía KMP,
+  historia consultable más allá de 7 días (`raiz-memory`).
