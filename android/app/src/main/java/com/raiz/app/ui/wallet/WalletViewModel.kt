@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,6 +114,7 @@ class WalletViewModel @Inject constructor(
         loadPassport()
         refreshSetupStep()
         refreshDepositInTransit()
+        observeSobresEnTransito()
         // Auto-refresco periódico — un solo loop para no duplicar coroutines.
         viewModelScope.launch {
             while (true) {
@@ -567,6 +569,8 @@ class WalletViewModel @Inject constructor(
         }
         // Passkey: ¿sigue habiendo un depósito a medio camino en la cuenta de depósito?
         refreshDepositInTransit()
+        // Pago diferido, sin red: lo que ya venció según la estimación local sale de la cuenta (propios y recibidos).
+        runCatching { settler.refreshStatuses() }
         publishSobresEnTransito()
         // Pago diferido: con red, la propia red cierra los sobres (nonce consumido / expiración real).
         viewModelScope.launch {
@@ -575,12 +579,27 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    /** Pago diferido: fila "sobres en tránsito" de Inicio. */
+    /**
+     * Pago diferido: fila "sobres en tránsito" de Inicio = los sobres que esta wallet firmó sin señal MÁS los que recibió
+     * de otros teléfonos (como comercio o como portador) y aún no se han liquidado.
+     */
     private fun publishSobresEnTransito() {
-        val n = runCatching { deferred.pendingCountFor(walletManager.currentAccountId()) }.getOrDefault(0)
-        val current = _state.value
-        if (current is WalletUiState.Ready && current.sobresEnTransito != n) {
-            _state.value = current.copy(sobresEnTransito = n)
+        val cuenta = walletManager.currentAccountId()
+        val n = runCatching { deferred.pendingCountFor(cuenta) + settler.pendingReceivedCount(cuenta) }.getOrDefault(0)
+        _state.update { current ->
+            if (current is WalletUiState.Ready && current.sobresEnTransito != n) {
+                current.copy(sobresEnTransito = n)
+            } else {
+                current
+            }
+        }
+    }
+
+    /** La fila sigue a los sobres propios y a los recibidos: baja sola cuando la red los liquida o vencen. */
+    private fun observeSobresEnTransito() {
+        viewModelScope.launch {
+            combine(deferred.recordsFlow, settler.receivedFlow) { _, _ -> Unit }
+                .collect { publishSobresEnTransito() }
         }
     }
 

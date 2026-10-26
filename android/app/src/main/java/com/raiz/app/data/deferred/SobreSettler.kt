@@ -563,8 +563,8 @@ class SobreSettler @Inject constructor(
             return SendRun(Resultado.NoEnviable(MOTIVO_WALLET_DISTINTA, pasarela), null)
         }
 
-        // D9: sin red no hay simulación. El automático respeta además el "sin señal" forzado de debug.
-        val hayRed = if (manual) connectivity.online.value else connectivity.isOnline()
+        // D9: sin red no hay simulación. El "sin señal" forzado de debug también bloquea "Liquidar ahora" (manual).
+        val hayRed = connectivity.isOnline()
         if (!hayRed) return SendRun(Resultado.SinSenal, null)
 
         // D6: un mutex por sobre (tryLock) y uno por cuenta fuente, siempre en este orden.
@@ -763,8 +763,8 @@ class SobreSettler @Inject constructor(
             return SendRun(Resultado.NoEnviable(MOTIVO_WALLET_DISTINTA, pasarela), null)
         }
 
-        // D9: sin red no hay simulación. El automático respeta además el "sin señal" forzado de debug.
-        val hayRed = if (manual) connectivity.online.value else connectivity.isOnline()
+        // D9: sin red no hay simulación. El "sin señal" forzado de debug también bloquea "Liquidar ahora" (manual).
+        val hayRed = connectivity.isOnline()
         if (!hayRed) return SendRun(Resultado.SinSenal, null)
 
         // D6: un mutex por sobre (tryLock) y uno por cuenta fuente, siempre en este orden.
@@ -1023,10 +1023,14 @@ class SobreSettler @Inject constructor(
         val nowMs = System.currentTimeMillis()
         return when (lookup.status) {
             DepositPlan.TxStatus.SUCCESS ->
-                if (lookup.authEntriesXdr.isEmpty() || lookup.authEntriesXdr.contains(live.authXdr)) {
+                if (lookup.authEntriesXdr.contains(live.authXdr)) {
                     Log.i(TAG, "SobreSettler: sobre ${target.id}: la tx en vuelo $hash entró (cobrado)")
                     target.markConfirmed(hash)
                     Resume.RESUELTO
+                } else if (lookup.authEntriesXdr.isEmpty()) {
+                    // SUCCESS sin auth legible: no prueba que lleve este sobre. Sin veredicto; se reintenta la lectura en la siguiente pasada.
+                    Log.w(TAG, "SobreSettler: sobre ${target.id}: la tx en vuelo $hash tuvo SUCCESS pero su auth no se pudo leer; se espera")
+                    Resume.ESPERANDO
                 } else {
                     // Éxito de una tx que no lleva este sobre: no es prueba de nada. Se libera el diario.
                     Log.w(TAG, "SobreSettler: sobre ${target.id}: la tx $hash tuvo éxito pero su auth no es este sobre")

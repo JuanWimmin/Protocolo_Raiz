@@ -1,5 +1,6 @@
 package com.raiz.app
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -43,6 +44,9 @@ import androidx.fragment.app.FragmentActivity
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -50,12 +54,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.raiz.app.data.model.UserRole
+import com.raiz.app.data.deferred.SobreInbox
+import com.raiz.app.data.deferred.SobreSettler
 import com.raiz.app.data.security.AppLock
 import com.raiz.app.data.stellar.PasskeyWalletManager
 import com.raiz.app.data.stellar.WalletManager
 import com.raiz.app.ui.become_merchant.BecomeMerchantScreen
 import com.raiz.app.ui.deferred.DeferredDetailRoute
 import com.raiz.app.ui.deferred.DeferredListScreen
+import com.raiz.app.ui.deferred.RecibidoDetailRoute
+import com.raiz.app.ui.deferred.RecibirSobreScreen
 import com.raiz.app.ui.become_resident.BecomeResidentScreen
 import com.raiz.app.ui.cobros.CobrosScreen
 import com.raiz.app.ui.dashboard.DashboardScreen
@@ -100,6 +108,9 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var passkeyManager: PasskeyWalletManager
     @Inject lateinit var appLock: AppLock
     @Inject lateinit var roleResolver: RoleResolver
+    // Pago diferido: buzón del sobre escaneado en Inicio y liquidador (envío automático al volver la señal).
+    @Inject lateinit var sobreInbox: SobreInbox
+    @Inject lateinit var sobreSettler: SobreSettler
 
     /** true = la app está bloqueada y requiere desbloqueo ahora. */
     private var locked by mutableStateOf(false)
@@ -114,6 +125,12 @@ class MainActivity : FragmentActivity() {
         setContent {
             RaizTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
+
+                    // Pago diferido: el envío automático de sobres arranca con la app desbloqueada (o sin bloqueo).
+                    // start() es idempotente; su alcance dura lo que el proceso (ver procesoScope).
+                    LaunchedEffect(locked) {
+                        if (!locked) sobreSettler.start(procesoScope)
+                    }
 
                     // App principal + gate de lock (lógica intacta)
                     if (locked) {
@@ -140,6 +157,8 @@ class MainActivity : FragmentActivity() {
                             resolveRole = { address -> roleResolver.resolve(address) },
                             onLogout = { walletManager.logout() },
                             passkeyEnabled = passkeyManager.isAvailable,
+                            // Pago diferido: el sobre escaneado en Inicio pasa a "Recibir sobre" por el buzón.
+                            onGuardarSobre = { texto -> sobreInbox.pendingText = texto },
                         )
                     }
 
@@ -194,6 +213,15 @@ class MainActivity : FragmentActivity() {
             .build()
         prompt.authenticate(info)
     }
+
+    private companion object {
+        /**
+         * Alcance del envío automático de sobres ([SobreSettler.start]). Dura lo que el PROCESO, no lo que la Activity:
+         * `start` es idempotente por proceso (no se relanza), así que con `lifecycleScope` un simple giro de pantalla
+         * (la Activity se recrea) mataría el colector y la app dejaría de liquidar sola al volver la señal.
+         */
+        val procesoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
 }
 
 /**
@@ -221,6 +249,8 @@ private fun RaizApp(
     resolveRole: suspend (String) -> RoleContext = { RoleContext(role = UserRole.TOURIST) },
     onLogout: () -> Unit = {},
     passkeyEnabled: Boolean = false,
+    /** Pago diferido: deja en el buzón el sobre escaneado en Inicio antes de ir a "Recibir sobre". */
+    onGuardarSobre: (String) -> Unit = {},
 ) {
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -462,6 +492,11 @@ private fun RaizApp(
                 onNavigateCobros    = { goTo(Routes.COBROS) },
                 onNavigateDeposit   = { nav.navigate(Routes.DEPOSIT) },
                 onNavigateSobres    = { nav.navigate(Routes.DEFERRED) },
+                // Sobre de otro teléfono (portador o cobro): el texto va por el buzón, no por la ruta (≈ 1,2 KB).
+                onSobreRecibido     = { texto ->
+                    onGuardarSobre(texto)
+                    nav.navigate(Routes.RECIBIR)
+                },
                 currentRole = currentRole,
             )
         }
@@ -491,6 +526,8 @@ private fun RaizApp(
             DeferredListScreen(
                 onBack = { nav.popBackStack() },
                 onOpen = { id -> nav.navigate("${Routes.DEFERRED}/$id") },
+                onOpenRecibido = { id -> nav.navigate("${Routes.RECIBIDO}/${Uri.encode(id)}") },
+                onRecibir = { nav.navigate(Routes.RECIBIR) },
             )
         }
         composable(
@@ -499,6 +536,26 @@ private fun RaizApp(
         ) { entry ->
             DeferredDetailRoute(
                 id = entry.arguments?.getString("id").orEmpty(),
+                onBack = { nav.popBackStack() },
+            )
+        }
+        // Pago diferido: recibir un sobre de otro teléfono (cualquier wallet). El texto llega por SobreInbox.
+        composable(Routes.RECIBIR) {
+            RecibirSobreScreen(
+                onBack = { nav.popBackStack() },
+                onVerRecibidos = { nav.navigate(Routes.DEFERRED) },
+                onOpenRecibido = { id -> nav.navigate("${Routes.RECIBIDO}/${Uri.encode(id)}") },
+            )
+        }
+        // Detalle de un sobre recibido. NO usa el prefijo "sobres/" (esa ruta es del sobre propio y capturaría el texto).
+        // El id es `<pagador>:<nonce>` (lleva ":" y el nonce puede ser negativo): se codifica con Uri.encode al navegar
+        // y se decodifica al leer (Navigation ya decodifica el segmento; Uri.decode de un id sin "%" no cambia nada).
+        composable(
+            route = "${Routes.RECIBIDO}/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+        ) { entry ->
+            RecibidoDetailRoute(
+                id = Uri.decode(entry.arguments?.getString("id").orEmpty()),
                 onBack = { nav.popBackStack() },
             )
         }
@@ -741,6 +798,10 @@ private object Routes {
     const val DEPOSIT                    = "deposit"
     /** Pago diferido: historial "Mis sobres"; el detalle es `sobres/{id}` (id = nonce en decimal). */
     const val DEFERRED                   = "sobres"
+    /** Pago diferido: recibir un sobre de otro teléfono; el texto va por SobreInbox, no por la ruta. */
+    const val RECIBIR                    = "recibir"
+    /** Detalle de un sobre recibido: `recibido/{id}` (id = `<pagador>:<nonce>`); NO usa el prefijo `sobres/`. */
+    const val RECIBIDO                   = "recibido"
 
     // Registrar comerciante — dos rutas por contexto de origen
     const val BECOME_MERCHANT            = "become_merchant"

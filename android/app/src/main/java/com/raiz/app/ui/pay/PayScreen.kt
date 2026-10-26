@@ -432,8 +432,9 @@ private fun SinSenalBanner(motivoNoDisponible: String?) {
             )
             Text(
                 text = motivoNoDisponible
-                    ?: "Vas a firmar un sobre de pago diferido. El comercio lo cobra cuando cualquier " +
-                        "dispositivo del territorio tenga señal.",
+                    ?: "Vas a firmar un sobre de pago diferido. Es una promesa firmada. Se liquida sola en " +
+                        "cuanto tu teléfono, el del comercio o el de cualquier usuario de RAÍZ que la lleve " +
+                        "tenga señal.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
             )

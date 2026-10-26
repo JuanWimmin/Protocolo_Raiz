@@ -114,8 +114,8 @@ fun DeferredSignedScreen(
                 color = RaizBlack,
             )
             Text(
-                text = "Es una promesa firmada. El comercio la cobra cuando cualquier dispositivo del " +
-                    "territorio tenga señal. Hasta entonces no es dinero confirmado.",
+                text = "Es una promesa firmada. Se liquida sola en cuanto tu teléfono, el del comercio o el de " +
+                    "cualquier usuario de RAÍZ que la lleve tenga señal. Hasta entonces no es dinero confirmado.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = RaizBlack.copy(alpha = 0.7f),
             )

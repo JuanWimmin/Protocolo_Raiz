@@ -55,6 +55,7 @@ import com.raiz.app.ui.util.StellarExpert
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.raiz.app.BuildConfig
+import com.raiz.app.data.deferred.SobreCodec
 import com.raiz.app.data.model.PassportData
 import com.raiz.app.data.model.UserRole
 import com.raiz.app.data.model.WalletState
@@ -104,6 +105,8 @@ fun WalletScreen(
     onNavigateCobros: () -> Unit = {},
     onNavigateDeposit: () -> Unit = {},
     onNavigateSobres: () -> Unit = {},
+    /** Pago diferido: el QR escaneado es un sobre RAÍZ (`raiz:sobre:1:…`) de otro teléfono; lo verifica "Recibir sobre". */
+    onSobreRecibido: (String) -> Unit = {},
     currentRole: UserRole = UserRole.TOURIST,
     viewModel: WalletViewModel = hiltViewModel(),
 ) {
@@ -122,10 +125,11 @@ fun WalletScreen(
     }
 
     // Launcher para el escáner de QR de zxing-android-embedded.
-    // Distingue dos formatos:
+    // Distingue tres formatos:
     //   1. Orden de cobro RAÍZ: `raiz:pay?to=<addr>&amount=<stroops>` → onPayMerchantConMonto
     //      Acepta tanto G… (cuenta clásica) como C… (smart account passkey).
     //   2. Dirección Stellar pelada G… o C… → onPayMerchant (cobro abierto)
+    //   3. Sobre de pago diferido `raiz:sobre:1:…` (de otro teléfono) → onSobreRecibido
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents?.trim().orEmpty()
         val ordenDeCobro = parsearQrRaizPay(raw)
@@ -135,10 +139,12 @@ fun WalletScreen(
                 onPayMerchantConMonto(ordenDeCobro.first, ordenDeCobro.second)
             // Dirección Stellar pelada: G… cuenta clásica o C… smart account (passkey)
             raw.isStellarAddress() -> onPayMerchant(raw)
+            // Sobre de otro teléfono (portador o cobro): lo verifica y guarda "Recibir sobre"
+            SobreCodec.isSobre(raw) -> onSobreRecibido(raw)
             // QR no reconocido
             raw.isNotEmpty() -> Toast.makeText(
                 context,
-                "QR inválido: se esperaba una dirección Stellar (G… o C…) o una orden RAÍZ",
+                "QR inválido: se esperaba una dirección Stellar (G… o C…), una orden o un sobre RAÍZ",
                 Toast.LENGTH_SHORT,
             ).show()
             // raw vacío = el usuario canceló el escáner
@@ -175,7 +181,7 @@ fun WalletScreen(
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                         .setBeepEnabled(false)
                         .setOrientationLocked(true)
-                        .setPrompt("Apunta al QR del comercio")
+                        .setPrompt("Apunta al QR del comercio o de un sobre")
                     scanLauncher.launch(opts)
                 },
                 onTransparencyTap = onNavigateDashboard,
