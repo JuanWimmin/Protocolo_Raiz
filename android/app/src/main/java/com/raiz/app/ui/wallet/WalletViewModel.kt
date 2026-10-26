@@ -12,6 +12,7 @@ import com.raiz.app.data.model.formatUsdc
 import com.raiz.app.data.relayer.RelayerClient
 import com.raiz.app.data.stellar.DeploymentsLoader
 import com.raiz.app.data.deferred.DeferredPaymentManager
+import com.raiz.app.data.deferred.SobreSettler
 import com.raiz.app.data.stellar.DepositAccountManager
 import com.raiz.app.data.stellar.HorizonStream
 import com.raiz.app.data.stellar.SorobanClient
@@ -89,6 +90,7 @@ class WalletViewModel @Inject constructor(
     private val relayerClient: RelayerClient,
     private val depositAccounts: DepositAccountManager,
     private val deferred: DeferredPaymentManager,
+    private val settler: SobreSettler,
 ) : ViewModel() {
 
     private val deployments by lazy { deploymentsLoader.load() }
@@ -568,7 +570,7 @@ class WalletViewModel @Inject constructor(
         publishSobresEnTransito()
         // Pago diferido: con red, la propia red cierra los sobres (nonce consumido / expiración real).
         viewModelScope.launch {
-            runCatching { deferred.syncWithNetwork() }
+            runCatching { settler.settlePending() }
             publishSobresEnTransito()
         }
     }

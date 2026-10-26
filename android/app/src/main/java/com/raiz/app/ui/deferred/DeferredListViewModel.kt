@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raiz.app.data.deferred.DeferredPaymentManager
 import com.raiz.app.data.deferred.DeferredRecord
+import com.raiz.app.data.deferred.SobreSettler
 import com.raiz.app.data.model.RaizResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ sealed interface ConfirmState {
 @HiltViewModel
 class DeferredListViewModel @Inject constructor(
     private val manager: DeferredPaymentManager,
+    private val settler: SobreSettler,
 ) : ViewModel() {
 
     /** Los sobres son de la wallet activa, no de la app. */
@@ -44,7 +46,7 @@ class DeferredListViewModel @Inject constructor(
     /** Sin red: marca EXPIRADO según la estimación local. Con red: la red cierra los sobres (nonce, expiración). */
     fun refresh() {
         manager.refreshStatuses()
-        viewModelScope.launch { runCatching { manager.syncWithNetwork(payer) } }
+        viewModelScope.launch { runCatching { settler.settlePending(payer) } }
     }
 
     fun record(id: String): DeferredRecord? = records.value.firstOrNull { it.id == id }

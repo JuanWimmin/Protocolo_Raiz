@@ -2,7 +2,6 @@ package com.raiz.app.data.deferred
 
 import android.util.Log
 import com.raiz.app.data.model.Merchant
-import com.raiz.app.data.model.PaymentRecord
 import com.raiz.app.data.model.RaizErrorCode
 import com.raiz.app.data.model.RaizResult
 import com.raiz.app.data.stellar.DeploymentsLoader
@@ -160,55 +159,81 @@ class DeferredPaymentManager @Inject constructor(
 
     /** El QR se mostró: la promesa ya puede estar viajando. */
     fun markDelivered(id: String) {
-        store.get(id)?.let { store.update(DeferredPolicy.markDelivered(it)) }
+        store.mutate(id) { DeferredPolicy.markDelivered(it) }
     }
 
     /** Sin red: FIRMADO/ENTREGADO con la expiración alcanzada según la estimación local → EXPIRADO. */
     fun refreshStatuses() {
         val estimate = ledgerEstimator.estimate() ?: return
-        val current = store.all()
-        val next = DeferredPolicy.refresh(current, estimate)
-        if (next != current) store.replaceAll(next)
+        store.refreshAll { DeferredPolicy.refresh(it, estimate) }
     }
 
     /**
-     * Con red: cierra solos los sobres pendientes de [payer] consultando a la red, que es la única fuente
-     * de verdad. Para cada uno: si la red ya **consumió su nonce** (entrada temporal bajo la cuenta del
-     * pagador; existe solo si una tx con ESTE sobre se ejecutó) → CONFIRMADO, con el hash del evento de
-     * pago si se encuentra; si no, y el ledger real ya pasó la expiración → EXPIRADO. Sin red no toca nada.
-     * Devuelve cuántos sobres cambiaron.
+     * Con red: cierra solos los sobres de [payer] consultando a la red, que es la única fuente de verdad. Se consultan los
+     * pendientes y también los que solo vencieron según la estimación local ([DeferredPolicy.needsNetworkCheck]): esa
+     * estimación puede ir adelantada y un cobrador pudo liquidar el sobre justo antes de vencer. Para cada uno
+     * ([DeferredPolicy.consulta]): si la red ya **consumió su nonce** (entrada temporal bajo la cuenta del pagador; existe
+     * solo si una tx con ESTE sobre se ejecutó) → CONFIRMADO, con el hash del evento de pago si se encuentra; si no, y el
+     * ledger real ya pasó la expiración → antes de dar el sobre por EXPIRADO se busca su hash (la entrada del nonce es
+     * temporal y desaparece al vencer `exp`: un sobre cobrado justo antes ya no deja rastro del nonce, solo el evento del
+     * pago). Sin red no toca nada, y si no se puede comprobar el hash no se declara EXPIRADO (se vuelve a intentar en la
+     * próxima pasada).
+     *
+     * Los pagos del Pool se leen con [SorobanClient.sobrePaymentEvents] desde el ancla de cada sobre —un sobre vive 16 h,
+     * más de lo que alcanza [SorobanClient.tourPaymentEvents]— y UNA vez por pasada ([SobrePaymentsCache]). Los sobres se
+     * recorren del más antiguo al más reciente (la primera lectura, la más ancha, sirve a todos); uno tan viejo que el
+     * RPC ya no retiene sus eventos se queda sin comprobar y no impide cerrar los demás.
+     *
+     * Devuelve cuántos sobres cambiaron. Solo consulta: el envío es de [SobreSettler]. Cada cambio se aplica con
+     * [DeferredStore.mutate] sobre el registro VIVO (el envío automático puede estar escribiendo el mismo sobre a la vez).
      */
     suspend fun syncWithNetwork(payer: String? = currentPayer()): Int {
-        val pending = store.recordsFor(payer).filter { it.pending }
-        if (pending.isEmpty()) return 0
+        val toCheck = store.recordsFor(payer)
+            .filter { DeferredPolicy.needsNetworkCheck(it) }
+            .sortedBy { DeferredPolicy.eventsSinceLedger(it) }
+        if (toCheck.isEmpty()) return 0
         var latest: Long? = null
-        var events: List<PaymentRecord>? = null
+        // Una sola lectura de eventos por pagador y pasada, tan atrás como lo pida el sobre más antiguo. null = no se pudo leer.
+        val pagos = SobrePaymentsCache { forPayer, since -> sorobanClient.sobrePaymentEvents(forPayer, since) }
         var changed = 0
-        for (r in pending) {
+        for (snapshot in toCheck) {
+            val r = store.get(snapshot.id)?.takeIf { DeferredPolicy.needsNetworkCheck(it) } ?: continue
             val nonce = r.id.toLongOrNull() ?: continue
-            val consumed = sorobanClient.nonceConsumed(r.payer, nonce) ?: continue
-            if (consumed) {
-                if (events == null) {
-                    events = (sorobanClient.tourPaymentEvents(r.payer) as? RaizResult.Success)?.data ?: emptyList()
+            val since = DeferredPolicy.eventsSinceLedger(r)
+            // Un EXPIRADO por estimación local no tiene nonce que mirar: la entrada temporal ya desapareció.
+            val consumed = if (r.pending) sorobanClient.nonceConsumed(r.payer, nonce) else null
+            when (DeferredPolicy.consulta(r, consumed)) {
+                DeferredPolicy.Consulta.SALTAR -> Unit
+
+                DeferredPolicy.Consulta.NONCE_CONSUMIDO -> {
+                    // El hash se toma solo de una tx cuya auth sea ESTE sobre (regla 3). En un sobre PROPIO el nonce
+                    // consumido basta para darlo por cobrado: si el hash aún no aparece queda "pendiente".
+                    val hash = pagos.payments(r.payer, since)
+                        ?.let { sorobanClient.findSobreHash(r.payer, r.merchantAddress, r.authXdr, it) }
+                    if (store.mutate(r.id) { DeferredPolicy.markConfirmed(it, hash) } != null) {
+                        Log.i(TAG, "sobre ${r.id} CONFIRMADO por nonce consumido; hash=${hash ?: "pendiente"}")
+                        changed++
+                    }
                 }
-                // El hash se toma solo de una tx cuya auth sea ESTE sobre (regla 3): se prueban los últimos
-                // pagos a ese comercio y se comprueba la auth de cada candidato.
-                val hash = events
-                    .filter { it.to == r.merchantAddress }
-                    .sortedByDescending { it.createdAt }
-                    .take(MAX_HASH_CANDIDATES)
-                    .firstOrNull { ev -> sorobanClient.transactionAuthEntries(ev.txHash).authEntriesXdr.contains(r.authXdr) }
-                    ?.txHash
-                store.update(DeferredPolicy.markConfirmed(r, hash))
-                Log.i(TAG, "sobre ${r.id} CONFIRMADO por nonce consumido; hash=${hash ?: "pendiente"}")
-                changed++
-            } else {
-                if (latest == null) latest = sorobanClient.latestLedgerSequence()
-                val l = latest ?: continue
-                if (l > r.exp) {
-                    store.update(DeferredPolicy.markExpiredByNetwork(r))
-                    Log.i(TAG, "sobre ${r.id} EXPIRADO: ledger $l > exp ${r.exp}")
-                    changed++
+
+                DeferredPolicy.Consulta.MIRAR_EXPIRACION -> {
+                    if (latest == null) latest = sorobanClient.latestLedgerSequence()
+                    val l = latest ?: continue
+                    if (l <= r.exp) continue
+                    // D4: el nonce ya no deja rastro tras `exp`; solo el hash del pago prueba un cobro previo.
+                    val events = pagos.payments(r.payer, since)
+                    if (events == null) {
+                        Log.i(TAG, "sobre ${r.id}: ledger $l > exp ${r.exp} pero no se pudieron leer los pagos desde el ledger $since; se reintenta")
+                        continue
+                    }
+                    val prueba = when (val lookup = sorobanClient.lookupSobreHash(r.payer, r.merchantAddress, r.authXdr, events)) {
+                        is SorobanClient.SobreHashLookup.Found -> ReceivedSobrePolicy.Prueba.Hash(lookup.txHash)
+                        SorobanClient.SobreHashLookup.NotFound -> ReceivedSobrePolicy.Prueba.Ninguna
+                        SorobanClient.SobreHashLookup.Unavailable -> ReceivedSobrePolicy.Prueba.NoComprobable
+                    }
+                    val updated = store.mutate(r.id) { DeferredPolicy.whenPastExpiration(it, prueba) }
+                    Log.i(TAG, "sobre ${r.id}: ledger $l > exp ${r.exp} → ${updated?.status} (${prueba.javaClass.simpleName})")
+                    if (updated != null && updated != r) changed++
                 }
             }
         }
@@ -228,14 +253,18 @@ class DeferredPaymentManager @Inject constructor(
         return when (lookup.status) {
             DepositPlan.TxStatus.SUCCESS -> {
                 if (!esEsteSobre) return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_OTRO_SOBRE)
-                val next = DeferredPolicy.markConfirmed(record, h)
-                store.update(next)
+                val next = store.mutate(id) { DeferredPolicy.markConfirmed(it, h) }
+                    ?: return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_GUARDADO_CIERRE)
                 RaizResult.Success(next)
             }
             DepositPlan.TxStatus.FAILED -> {
                 if (!esEsteSobre) return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_OTRO_SOBRE)
-                val next = DeferredPolicy.markRejected(record, "La transacción con este sobre falló en la red")
-                store.update(next)
+                // Una tx fallida no consume el nonce y suele fallar por causas transitorias (fondos, trustline,
+                // comercio): el sobre NO se rechaza, sigue pendiente y decide la red (nonce → CONFIRMADO, ledger
+                // pasado de `exp` → EXPIRADO). Solo `Error(Auth, InvalidAction)` rechaza, y eso lo ve el envío.
+                val next = store.mutate(id) {
+                    DeferredPolicy.markSendFailed(it, MOTIVO_TX_FALLIDA, System.currentTimeMillis(), countAsSend = false)
+                } ?: return RaizResult.Error(RaizErrorCode.UNKNOWN, MOTIVO_GUARDADO_CIERRE)
                 RaizResult.Success(next)
             }
             DepositPlan.TxStatus.NOT_FOUND ->
@@ -248,11 +277,13 @@ class DeferredPaymentManager @Inject constructor(
     companion object {
         private const val TAG = "RAIZ"
         private val HASH_RE = Regex("[0-9a-f]{64}")
-        private const val MAX_HASH_CANDIDATES = 5
         const val MOTIVO_PASSKEY = "Firmar sin señal llega en v1 para wallets passkey."
         const val MOTIVO_SIN_WALLET = "En modo demo no se firma sin señal: crea tu wallet con frase semilla."
         const val MOTIVO_WALLET_DISTINTA = "La wallet activa no coincide con la clave guardada."
         const val MOTIVO_GUARDADO = "No pudimos guardar el sobre en el teléfono; no se mostró el QR."
+        const val MOTIVO_GUARDADO_CIERRE = "No pudimos guardar el cierre del sobre en el teléfono. Inténtalo de nuevo."
+        const val MOTIVO_TX_FALLIDA =
+            "Una transacción con este sobre entró y falló en la red: no se cobró. El sobre sigue pendiente hasta que venza."
         const val MOTIVO_AUTOCHECK = "Autocomprobación del sobre fallida"
         const val MOTIVO_OTRO_SOBRE = "Esa transacción no lleva este sobre: no lo damos por cobrado."
     }

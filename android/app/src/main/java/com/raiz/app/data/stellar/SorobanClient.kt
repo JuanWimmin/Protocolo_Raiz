@@ -1,6 +1,9 @@
 package com.raiz.app.data.stellar
 
+import com.raiz.app.data.deferred.DeferredAuthSigner
 import com.raiz.app.data.deferred.LedgerEstimator
+import com.raiz.app.data.deferred.SobreErrors
+import com.raiz.app.data.deferred.SobreSubmit
 import com.raiz.app.data.local.MerchantCache
 import com.raiz.app.data.model.Barrio
 import com.raiz.app.data.model.Deployments
@@ -28,8 +31,10 @@ import com.soneso.stellar.sdk.TransactionBuilder
 import com.soneso.stellar.sdk.contract.ClientOptions
 import com.soneso.stellar.sdk.contract.ContractClient
 import com.soneso.stellar.sdk.rpc.SorobanServer
+import com.soneso.stellar.sdk.rpc.exception.AccountNotFoundException
 import com.soneso.stellar.sdk.rpc.exception.PrepareTransactionException
 import com.soneso.stellar.sdk.rpc.requests.GetEventsRequest
+import com.soneso.stellar.sdk.rpc.requests.SimulateTransactionRequest
 import com.soneso.stellar.sdk.rpc.responses.GetEventsResponse
 import com.soneso.stellar.sdk.rpc.responses.GetTransactionStatus
 import com.soneso.stellar.sdk.rpc.responses.SendTransactionStatus
@@ -43,6 +48,10 @@ import com.soneso.stellar.sdk.xdr.Int64Xdr
 import com.soneso.stellar.sdk.xdr.LedgerKeyContractDataXdr
 import com.soneso.stellar.sdk.xdr.LedgerKeyXdr
 import com.soneso.stellar.sdk.xdr.SCNonceKeyXdr
+import com.soneso.stellar.sdk.xdr.SorobanAuthorizationEntryXdr
+import com.soneso.stellar.sdk.xdr.SorobanAuthorizedFunctionXdr
+import com.soneso.stellar.sdk.xdr.TransactionResultCodeXdr
+import com.soneso.stellar.sdk.xdr.fromXdrBase64
 import com.soneso.stellar.sdk.xdr.toXdrBase64
 import android.util.Log
 import javax.inject.Inject
@@ -1152,6 +1161,201 @@ class SorobanClient @Inject constructor(
         }
     }
 
+    // ── Pago diferido: enviar un sobre firmado como tx propia ─────────────────────
+
+    /**
+     * Pago diferido: liquida un sobre (la `SorobanAuthorizationEntry` de `Pool.pay_merchant` firmada por el
+     * pagador) como una transacción cuya FUENTE es [signer] — el pagador mismo, el comercio o quien lo lleve —,
+     * que paga el fee. Mismo patrón que el spike `DeferredAuthTestnetIT` (tx `ebee152c…`): la operación lleva
+     * los argumentos firmados de la raíz y `auth = [entry]` (no vacía: así el ensamblado la conserva).
+     *
+     * Disciplina de [sacTransfer] (un envío no es idempotente, hay dinero de por medio):
+     *  1. se simula en modo ENFORCE ANTES de firmar (gratis: descubre nonce usado, expirado, firma, fondos…);
+     *     si la cotización de fee supera [maxFeeStroops] devuelve [SobreSubmit.FeeAlta] sin enviar;
+     *  2. se firma UNA vez; el hash y su `maxTime` (hora de la RED + [SOBRE_TX_TIMEOUT_SEC], nunca el reloj del
+     *     teléfono) se anotan en el [journal] ANTES de enviar (si el diario lanza, no se envía);
+     *  3. justo antes de enviar se vuelve a mirar el nonce: si otro (el cobrador, una pasarela) ya lo consumió
+     *     se evita pagar un fee por una tx que fallaría ([SobreSubmit.NonceUsado]);
+     *  4. se envía ese MISMO sobre (reenviar ante `TRY_AGAIN_LATER` es seguro; reconstruirlo no);
+     *  5. se confirma por hash. Con veredicto (entró, falló, venció, se rechazó) se llama a `journal.settled`;
+     *     sin veredicto devuelve [SobreSubmit.EnVuelo] con el diario ABIERTO: quien llama debe resolver ese hash
+     *     antes de construir otra tx.
+     *
+     * Nunca lanza (salvo `CancellationException`). Logs: direcciones públicas, nonce y hash; nunca XDR ni claves.
+     */
+    suspend fun submitSobre(
+        entry: SorobanAuthorizationEntryXdr,
+        signer: KeyPair,
+        maxFeeStroops: Long,
+        journal: TxJournal? = null,
+    ): SobreSubmit {
+        val fn = (entry.rootInvocation.function as? SorobanAuthorizedFunctionXdr.ContractFn)?.value
+            ?: return SobreSubmit.RechazadaDefinitiva(SobreErrors.MSG_NO_CONTRACT_FN)
+        val credentials = DeferredAuthSigner.addressCredentials(entry)
+            ?: return SobreSubmit.RechazadaDefinitiva(SobreErrors.MSG_SIN_CREDENCIALES)
+        val payer = try {
+            Address.fromSCAddress(credentials.address).toString()
+        } catch (e: Exception) {
+            return SobreSubmit.RechazadaDefinitiva(SobreErrors.MSG_SIN_CREDENCIALES)
+        }
+        val nonce = credentials.nonce.value
+        val from = signer.getAccountId()
+        val server = rpcServer
+
+        // 1. Construir, simular (enforce), cotizar, firmar UNA vez y anotar el diario.
+        val built = try {
+            val source = server.getAccount(from)
+            val op = InvokeHostFunctionOperation(
+                hostFunction = HostFunctionXdr.InvokeContract(fn),
+                auth = listOf(entry),
+            )
+            // `maxTime` desde la hora de la red, como en sacTransfer; sin ella no se arma nada.
+            val closeTime = server.getLatestLedger().closeTime
+                ?: return SobreSubmit.SinRed(SobreErrors.MSG_SIN_HORA_RED)
+            val maxTime = closeTime + SOBRE_TX_TIMEOUT_SEC
+            val unsigned = TransactionBuilder(source, network)
+                .addOperation(op)
+                .setBaseFee(SOBRE_BASE_FEE)
+                .addTimeBounds(TimeBounds(minTime = 0L, maxTime = maxTime))
+                .build()
+            val sim = server.simulateTransaction(unsigned, null, SimulateTransactionRequest.AuthMode.ENFORCE)
+            sim.error?.let { simError ->
+                val verdict = SobreErrors.classifySimulation(simError)
+                Log.w(
+                    TAG,
+                    "submitSobre: simulación rechazada payer=$payer nonce=$nonce → ${verdict.javaClass.simpleName} " +
+                        "(${SobreErrors.hostErrorFragment(simError) ?: "sin fragmento"})",
+                )
+                return verdict
+            }
+            // Fee total que se pagaría: fee de inclusión (tope de la tx) + fee de recursos de la simulación.
+            val quotedFee = unsigned.fee + (sim.minResourceFee ?: 0L)
+            if (quotedFee > maxFeeStroops) {
+                Log.w(TAG, "submitSobre: cotización $quotedFee stroops supera el tope $maxFeeStroops (payer=$payer nonce=$nonce)")
+                return SobreSubmit.FeeAlta(quotedFee, maxFeeStroops)
+            }
+            val tx = server.prepareTransaction(unsigned, sim)
+            tx.sign(signer)
+            val hash = tx.hashHex()
+            val validUntil = tx.getTimeBounds()?.maxTime?.takeIf { it > 0L } ?: maxTime
+            try {
+                journal?.signed(hash, validUntil, tx.sequenceNumber)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                Log.w(TAG, "submitSobre: el diario no pudo anotar la tx $hash; no se envía (${e.javaClass.simpleName})")
+                return SobreSubmit.SinRed(SobreErrors.MSG_SIN_DIARIO)
+            }
+            PreparedSobre(tx, hash, validUntil)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: AccountNotFoundException) {
+            Log.w(TAG, "submitSobre: la cuenta que envía $from no existe en la red")
+            return SobreSubmit.SinFondosFuente(SobreErrors.MSG_SIN_XLM)
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "submitSobre: no se pudo preparar el envío desde $from (${e.javaClass.simpleName}" +
+                    "${hostErrorFragment(e.message)?.let { ": $it" }.orEmpty()})",
+            )
+            return SobreSubmit.SinRed("No se pudo preparar el envío (${e.javaClass.simpleName})")
+        }
+        val prepared = built.tx
+        val txHash = built.hash
+        val validUntilSec = built.validUntilSec
+
+        // 2. Carrera pagador/cobrador: si el nonce ya se consumió, enviar solo costaría un fee por una tx que fallaría.
+        if (nonceConsumed(payer, nonce) == true) {
+            journal.settleQuietly(txHash)
+            Log.i(TAG, "submitSobre: el nonce $nonce de $payer ya se consumió; no se envía, hash=$txHash")
+            return SobreSubmit.NonceUsado
+        }
+
+        // 3. Enviar el MISMO sobre. Una excepción aquí es ambigua (pudo llegar): se sigue al sondeo por hash.
+        var rejected = false
+        var rejectedCode: TransactionResultCodeXdr? = null
+        var saturated = false
+        try {
+            var attempt = 0
+            while (true) {
+                val sent = server.sendTransaction(prepared)
+                if (sent.status == SendTransactionStatus.ERROR) {
+                    rejected = true
+                    rejectedCode = try {
+                        sent.parseErrorResultXdr()?.result?.discriminant
+                    } catch (e: Exception) {
+                        null
+                    }
+                    break
+                }
+                if (sent.status != SendTransactionStatus.TRY_AGAIN_LATER) break // PENDING / DUPLICATE
+                attempt++
+                if (attempt >= SAC_SEND_ATTEMPTS) {
+                    saturated = true
+                    break
+                }
+                delay(SAC_SEND_RETRY_MS)
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "submitSobre: sin respuesta al enviar (${e.javaClass.simpleName}); se consulta por hash $txHash")
+        }
+        if (rejected) {
+            // La red no aceptó el sobre: no está en vuelo ni puede entrar.
+            journal.settleQuietly(txHash)
+            Log.w(TAG, "submitSobre: la red rechazó el envío desde $from (${rejectedCode?.name ?: "sin código"}), hash=$txHash")
+            return SobreErrors.classifySend(rejectedCode)
+        }
+        if (saturated) {
+            // Todos los intentos fueron TRY_AGAIN_LATER: ningún nodo la aceptó; no está en vuelo.
+            journal.settleQuietly(txHash)
+            Log.w(TAG, "submitSobre: red saturada, la tx no entró en cola, hash=$txHash")
+            return SobreSubmit.SinRed(SobreErrors.MSG_SATURADA)
+        }
+
+        // 4. Confirmar por hash.
+        return when (awaitSacTransfer(server, txHash, validUntilSec)) {
+            GetTransactionStatus.SUCCESS -> {
+                journal.settleQuietly(txHash)
+                Log.i(TAG, "submitSobre: sobre liquidado payer=$payer nonce=$nonce, hash=$txHash")
+                SobreSubmit.Liquidado(txHash)
+            }
+            GetTransactionStatus.FAILED -> {
+                journal.settleQuietly(txHash)
+                Log.w(TAG, "submitSobre: la tx entró y falló, hash=$txHash")
+                SobreSubmit.FallidaEnRed(txHash)
+            }
+            GetTransactionStatus.NOT_FOUND -> {
+                journal.settleQuietly(txHash)
+                Log.w(TAG, "submitSobre: la tx venció sin entrar, hash=$txHash")
+                SobreSubmit.SinRed(SobreErrors.MSG_VENCIO)
+            }
+            null -> {
+                // Sin veredicto: NO se cierra el diario, la tx puede entrar todavía.
+                Log.w(TAG, "submitSobre: enviada sin confirmar, hash=$txHash")
+                SobreSubmit.EnVuelo(txHash, validUntilSec)
+            }
+        }
+    }
+
+    /** Tx de un [submitSobre] ya firmada: se envía tal cual, nunca se reconstruye. */
+    private class PreparedSobre(val tx: Transaction, val hash: String, val validUntilSec: Long)
+
+    /**
+     * Cierra el diario de [submitSobre] sin dejar que un fallo suyo (disco) rompa la promesa de "nunca lanza": si no
+     * se pudo cerrar, la tx queda anotada como en vuelo y la próxima pasada la resuelve por hash.
+     */
+    private suspend fun TxJournal?.settleQuietly(txHash: String) {
+        try {
+            this?.settled(txHash)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "submitSobre: el diario no pudo cerrar la tx $txHash (${e.javaClass.simpleName}); se resolverá por hash")
+        }
+    }
+
     /**
      * Sondea `getTransaction(hash)` hasta un veredicto definitivo:
      *  - `SUCCESS` / `FAILED`: la tx está en un ledger;
@@ -1274,6 +1478,191 @@ class SorobanClient @Inject constructor(
     } catch (e: Exception) {
         Log.w(TAG, "transactionAuthEntries($hash): no se pudo consultar (${e.javaClass.simpleName})")
         TxAuthLookup(DepositPlan.TxStatus.UNKNOWN, emptyList())
+    }
+
+    /** Resultado de buscar el hash de la tx que liquidó un sobre. `Unavailable` = no se pudo consultar (no es un "no"). */
+    sealed interface SobreHashLookup {
+        data class Found(val txHash: String) : SobreHashLookup
+        data object NotFound : SobreHashLookup
+        data object Unavailable : SobreHashLookup
+    }
+
+    /**
+     * Pagos del Pool que tocan a [addr] DESDE [sinceLedger] hasta el último ledger, leídos para buscar el cobro de un
+     * sobre. Es la lectura que NO puede hacer [tourPaymentEvents], pensada para el historial de una pantalla: mira ~11 h
+     * hacia atrás (8 000 ledgers) y un sobre vive 16 h (11 520 ledgers), así que un sobre liquidado por otro hace más de
+     * 11 h parecía "no cobrado" y se daba por EXPIRADO (o por fraude, en el cobrador) aunque sí se cobró. Aquí:
+     *  - la lectura es COMPLETA o es un error: [RaizResult.Success] garantiza que están TODOS los pagos desde [sinceLedger];
+     *    [RaizResult.Error] cubre la red caída, un ledger que el RPC ya no retiene (retención medida: ~7 días, ver
+     *    `getHealth.oldestLedger`), uno en el futuro y el tope de [SOBRE_EVENTS_MAX_PAGES] páginas sin llegar al último
+     *    ledger. Quien busca un hash debe tratar el error como "no se pudo comprobar", nunca como "no hay";
+     *  - sigue el cursor hasta que se detiene ([EventsPaging]): el RPC escanea ~10 000 ledgers por llamada y una página
+     *    vacía NO es el fin (mismo patrón que [executionEvents]).
+     */
+    suspend fun sobrePaymentEvents(addr: String, sinceLedger: Long): RaizResult<List<PaymentRecord>> {
+        return try {
+            val server = rpcServer
+            val health = server.getHealth()
+            val latest = health.latestLedger ?: server.getLatestLedger().sequence
+            if (!EventsPaging.covers(sinceLedger, health.oldestLedger, latest, EXEC_RETENTION_MARGIN)) {
+                Log.w(TAG, "sobrePaymentEvents: el ledger $sinceLedger queda fuera de lo que el RPC retiene (oldest=${health.oldestLedger} latest=$latest)")
+                return RaizResult.Error(
+                    RaizErrorCode.NETWORK_ERROR,
+                    "sobrePaymentEvents: el ledger $sinceLedger queda fuera de la retención del RPC",
+                )
+            }
+            val eventFilter = GetEventsRequest.EventFilter(
+                type = GetEventsRequest.EventFilterType.CONTRACT,
+                contractIds = listOf(deployments.pool),
+                topics = emptyList(), // el topic `payment` se filtra en cliente (parsePaymentEvent), como en tourPaymentEvents
+            )
+            val read = EventsPaging.readAll(
+                latestLedger = latest,
+                maxPages = SOBRE_EVENTS_MAX_PAGES,
+                first = {
+                    val p = withNetworkRetry {
+                        server.getEvents(
+                            GetEventsRequest(
+                                startLedger = sinceLedger,
+                                endLedger = null,
+                                filters = listOf(eventFilter),
+                                pagination = GetEventsRequest.Pagination(cursor = null, limit = EventsPaging.PAGE_LIMIT),
+                            ),
+                        )
+                    }
+                    EventsPaging.Page(p.events, p.cursor)
+                },
+                next = { cursorForPage ->
+                    val p = withNetworkRetry {
+                        server.getEvents(
+                            GetEventsRequest(
+                                startLedger = null, // OBLIGATORIO null cuando hay cursor
+                                endLedger = null,
+                                filters = listOf(eventFilter),
+                                pagination = GetEventsRequest.Pagination(cursor = cursorForPage, limit = EventsPaging.PAGE_LIMIT),
+                            ),
+                        )
+                    }
+                    EventsPaging.Page(p.events, p.cursor)
+                },
+            )
+            if (!read.complete) {
+                Log.w(TAG, "sobrePaymentEvents: ${read.pages} páginas sin llegar al último ledger; lectura incompleta")
+                return RaizResult.Error(
+                    RaizErrorCode.NETWORK_ERROR,
+                    "sobrePaymentEvents: lectura incompleta (demasiados eventos)",
+                )
+            }
+            val records = read.events
+                .sortedByDescending { it.ledger }
+                .mapNotNull { event ->
+                    runCatching { parsePaymentEvent(event, addr) }
+                        .onFailure { Log.w(TAG, "sobrePaymentEvents: parse falló event=${event.id}: ${it.message}") }
+                        .getOrNull()
+                }
+            Log.i(TAG, "sobrePaymentEvents: $addr desde $sinceLedger hasta $latest → ${records.size} pagos de ${read.events.size} eventos en ${read.pages} págs")
+            RaizResult.Success(records)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "sobrePaymentEvents: no se pudo leer (${e.javaClass.simpleName}: ${e.message})")
+            RaizResult.Error(RaizErrorCode.NETWORK_ERROR, "sobrePaymentEvents: ${e.message}")
+        }
+    }
+
+    /** Pagos para buscar un sobre: la lectura de [sobrePaymentEvents]; sin [sinceLedger] no se puede demostrar que se miró todo. */
+    private suspend fun readSobreEvents(payer: String, sinceLedger: Long?): RaizResult<List<PaymentRecord>> =
+        if (sinceLedger == null) {
+            Log.w(TAG, "búsqueda de un sobre sin ventana de ledgers: no se puede demostrar que se miró todo")
+            RaizResult.Error(RaizErrorCode.UNKNOWN, "Falta el ledger desde el que buscar el sobre")
+        } else {
+            sobrePaymentEvents(payer, sinceLedger)
+        }
+
+    /**
+     * Pago diferido: busca la tx cuya auth ES este sobre (regla de seguridad: un sobre se da por cobrado solo con un
+     * hash cuya auth sea ese sobre). Candidatas: los pagos del [payer] a [merchant] ([SobreLookup.hashCandidates], los más
+     * recientes primero); a cada una se le comprueba que haya tenido éxito y lleve [authXdr] entre sus auth entries.
+     *
+     * Los pagos salen de [events] —una lectura COMPLETA ya hecha, p. ej. de [sobrePaymentEvents] o de la caché de una
+     * pasada— o, si es null, de leerlos aquí desde [sinceLedger] (el primer ledger donde pudo liquidarse el sobre). Una
+     * lista de [tourPaymentEvents] NO sirve: cubre ~11 h y un sobre vive 16. Sin ninguna de las dos no se puede demostrar
+     * que se miró todo y el resultado es [SobreHashLookup.Unavailable].
+     *
+     * Distingue "no está" ([SobreHashLookup.NotFound]) de "no pude comprobarlo" ([SobreHashLookup.Unavailable]): falló la
+     * lectura de pagos, alguna candidata no se pudo consultar o el tope de candidatas dejó pagos sin revisar. Quien va a
+     * declarar un sobre EXPIRADO (o un posible fraude) solo debe hacerlo con un `NotFound` firme.
+     */
+    suspend fun lookupSobreHash(
+        payer: String,
+        merchant: String,
+        authXdr: String,
+        events: List<PaymentRecord>? = null,
+        sinceLedger: Long? = null,
+    ): SobreHashLookup {
+        val all = events ?: when (val r = readSobreEvents(payer, sinceLedger)) {
+            is RaizResult.Success -> r.data
+            is RaizResult.Error -> return SobreHashLookup.Unavailable
+        }
+        val pick = SobreLookup.hashCandidates(all, payer, merchant)
+        var incomplete = pick.truncated
+        for (candidate in pick.payments) {
+            val lookup = transactionAuthEntries(candidate.txHash)
+            when (lookup.status) {
+                DepositPlan.TxStatus.SUCCESS ->
+                    if (lookup.authEntriesXdr.contains(authXdr)) return SobreHashLookup.Found(candidate.txHash)
+                DepositPlan.TxStatus.FAILED -> Unit
+                // El pago existe (hay evento) pero el RPC no lo muestra o no respondió: no se puede descartar.
+                DepositPlan.TxStatus.NOT_FOUND, DepositPlan.TxStatus.UNKNOWN -> incomplete = true
+            }
+        }
+        return if (incomplete) SobreHashLookup.Unavailable else SobreHashLookup.NotFound
+    }
+
+    /**
+     * Pago diferido: hash de la tx cuya auth es este sobre, o null (no está o no se pudo comprobar; para distinguirlo usa
+     * [lookupSobreHash]). Ver ese método para las reglas de búsqueda y el significado de [events] y [sinceLedger].
+     */
+    suspend fun findSobreHash(
+        payer: String,
+        merchant: String,
+        authXdr: String,
+        events: List<PaymentRecord>? = null,
+        sinceLedger: Long? = null,
+    ): String? = (lookupSobreHash(payer, merchant, authXdr, events, sinceLedger) as? SobreHashLookup.Found)?.txHash
+
+    /**
+     * Pago diferido (antifraude): ¿el nonce de este sobre lo gastó una tx con OTRA auth? Devuelve el hash de una tx
+     * exitosa del [payer] cuya auth tiene credenciales de dirección del [payer], el MISMO [nonce] y un XDR distinto de
+     * [authXdr] —el pagador firmó dos sobres con el mismo nonce y la red cobró el otro—, o null (no se encontró o no se
+     * pudo comprobar). [events] y [sinceLedger] significan lo mismo que en [lookupSobreHash].
+     *
+     * Candidatas: los pagos SALIENTES del [payer], los dirigidos a [merchant] primero y luego el resto (la reutilización
+     * típica del nonce es para pagar a OTRO comercio), hasta [SobreLookup.MAX_CANDIDATES].
+     */
+    suspend fun sobreNonceEnOtraTx(
+        payer: String,
+        merchant: String,
+        nonce: Long,
+        authXdr: String,
+        events: List<PaymentRecord>? = null,
+        sinceLedger: Long? = null,
+    ): String? {
+        val all = events ?: (readSobreEvents(payer, sinceLedger) as? RaizResult.Success)?.data ?: return null
+        for (candidate in SobreLookup.nonceCandidates(all, payer, merchant).payments) {
+            val lookup = transactionAuthEntries(candidate.txHash)
+            if (lookup.status != DepositPlan.TxStatus.SUCCESS) continue
+            val reused = lookup.authEntriesXdr.any { xdr ->
+                xdr != authXdr && runCatching {
+                    val other = DeferredAuthSigner.addressCredentials(SorobanAuthorizationEntryXdr.fromXdrBase64(xdr))
+                    other != null &&
+                        other.nonce.value == nonce &&
+                        Address.fromSCAddress(other.address).toString() == payer
+                }.getOrDefault(false)
+            }
+            if (reused) return candidate.txHash
+        }
+        return null
     }
 
     /**
@@ -1844,6 +2233,24 @@ class SorobanClient @Inject constructor(
         /** Sondeos de confirmación: 28 × 2,5 s = 70 s, más que la vigencia de la tx (45 s). */
         const val SAC_AWAIT_POLLS = 28
         const val SAC_POLL_MS = 2_500L
+
+        // ── submitSobre (pago diferido) ───────────────────────────────────────
+
+        /**
+         * Vigencia (`maxTime`) de la tx que liquida un sobre, desde la hora de la red. Más larga que la del
+         * transfer (45 s): incluye el reenvío ante `TRY_AGAIN_LATER` y la espera de un ledger con carga.
+         */
+        const val SOBRE_TX_TIMEOUT_SEC = 90L
+
+        /** Tope de fee de inclusión de esa tx (0,05 XLM); la fee de recursos la añade la simulación. */
+        const val SOBRE_BASE_FEE = 500_000L
+
+        /**
+         * Páginas máximas de [sobrePaymentEvents]: el RPC escanea ~10 000 ledgers por llamada, así que 40 cubren de sobra
+         * los ~130 000 de toda la retención (7 días) aun con cientos de eventos del Pool. Si se alcanza sin llegar al
+         * último ledger la lectura es INCOMPLETA y se devuelve error (nunca una lista parcial como si fuera completa).
+         */
+        const val SOBRE_EVENTS_MAX_PAGES = 40
 
         /** `Error(Contract, #10)` y similares dentro del texto de una simulación fallida. */
         val HOST_ERROR_REGEX = Regex("Error\\(\\w+, [^)]{1,60}\\)")
