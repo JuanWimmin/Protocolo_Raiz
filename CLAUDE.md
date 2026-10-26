@@ -481,8 +481,17 @@ stellar contract deploy --wasm target/wasm32v1-none/release/pool.wasm --network 
   pegar el sobre → verificación sin red (mismas reglas que `scripts/pasarela_cli.mjs`) → ledger y nonce → cuenta
   pasarela en `localStorage` fondeada por friendbot → liquidar (enforce → assemble → sign → send) → hash, Stellar
   Expert y QR del hash; errores traducidos; ES/EN; `?sobre=` precarga. Probada headless por CDP con el fixture y
-  con un sobre real de `scripts/deferred_envelope_demo.mjs` (tx `27c61461…`). Siguen B4 (cobrador), B5 (video),
-  B6 (docs), B7 (deck).
+  con un sobre real de `scripts/deferred_envelope_demo.mjs` (tx `27c61461…`). **B4 cerrado el 26-oct
+  (madrugada; `48b8ccf` datos + `5a8a1e9` UI):** liquidación AUTOMÁTICA en los dos teléfonos y roles cobrador y
+  PORTADOR en la app. `SorobanClient.submitSobre` + `data/deferred/SobreSettler` (un orquestador para sobres
+  propios y recibidos: candados, diario, reanudación por hash, tope de fee 2 XLM automático para ajenos, arranque al
+  recuperar señal desde `MainActivity` tras desbloquear, respeta `forceOffline`); `ReceivedSobre*` (verificador
+  puro, política, almacén atómico): **"Cobrado" solo con hash cuya auth sea el sobre**, nonce consumido sin hash =
+  "buscando comprobante", nonce en otro pago = fraude, nada se rechaza por causas transitorias, hash buscado antes
+  de EXPIRADO (eventos desde el ancla: `EventsPaging`/`SobreLookup`). UI: Cobros con escanear/pegar, pagos en
+  tránsito, tope y "Liquidar ahora"; "Recibir sobre" desde el escáner de Inicio para cualquier wallet; "Recibidos"
+  en Mis sobres. 315 tests JVM. Prueba en el emulador: APK debug instalado; con la wallet semilla `GC4VHSZY…` como PORTADOR se pegó en "Recibir sobre" un sobre real de `raiz-tourist` (0,5 USDC a Cafe Don Aurelio, generado con `scripts/deferred_envelope_demo.mjs`): verificado sin red ("Lo llevas para GA7CDZ…4TSN"), enviado solo por el settler y "Liquidado" en 11 s — tx [`79a4c858…96eee2`](https://stellar.expert/explorer/testnet/tx/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2) (ledger 5 391 483, fuente = el portador, fee 0,0023 XLM); el mismo sobre pegado otra vez → "Ya tenías este sobre"; "Recibidos" lo lista como "Liquidado" con el hash. Pendiente del usuario: el camino COBRO con una wallet de comercio y la auto-liquidación de un sobre propio firmado sin señal.
+  Siguen B5 (video/evidencia), B6 (docs), B7 (deck).
 
 ### Próximo paso
 

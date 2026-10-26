@@ -68,6 +68,7 @@ import com.raiz.app.ui.components.SellosCatalog
 import com.raiz.app.ui.components.StatBox
 import com.raiz.app.ui.theme.RaizBlack
 import com.raiz.app.ui.theme.RaizGreen
+import com.raiz.app.ui.theme.RaizGray
 import com.raiz.app.ui.theme.RaizPurple
 import com.raiz.app.ui.theme.RaizWhite
 import com.raiz.app.ui.theme.RaizYellow
@@ -344,30 +345,34 @@ private fun WalletReady(
                     )
                 }
             }
-            // Pago diferido: sobres firmados sin señal pendientes de confirmar → "Mis sobres".
-            if (state.sobresEnTransito > 0) {
-                Row(
+            // Pago diferido: sobres (propios y recibidos) pendientes → "Mis sobres". Siempre visible:
+            // sin sobres, es la entrada para recibir uno pegado (el escáner también los reconoce).
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onNavigateSobres)
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onNavigateSobres)
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(RaizYellow),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (state.sobresEnTransito == 1) "Tienes 1 sobre en tránsito · Ver"
-                        else "Tienes ${state.sobresEnTransito} sobres en tránsito · Ver",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = RaizBlack,
-                    )
-                }
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (state.sobresEnTransito > 0) RaizYellow else RaizGray),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = when (state.sobresEnTransito) {
+                        0 -> "Sobres sin señal · Mis sobres"
+                        1 -> "Tienes 1 sobre en tránsito · Ver"
+                        else -> "Tienes ${state.sobresEnTransito} sobres en tránsito · Ver"
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = if (state.sobresEnTransito > 0) FontWeight.Bold else FontWeight.Medium,
+                    ),
+                    color = if (state.sobresEnTransito > 0) RaizBlack else RaizGray,
+                )
             }
             if (state.anchorUsdcBalanceStroops > 0L) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

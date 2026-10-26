@@ -265,6 +265,39 @@ destinatario = mi cuenta, monto ≤ tope configurable), lista "Pagos en tránsit
 "Liquidar ahora" que usa el camino del spike (o, si el spike falló, abre la pasarela web con el sobre en el
 portapapeles). **Si a las 20:30 no está, se corta y la demo usa la web como cobrador.**
 
+**Resultado (26-oct, madrugada; alcance ampliado por el usuario a cobrador + PORTADOR + liquidación automática):**
+commits `48b8ccf` (capa de datos) y `5a8a1e9` (UI) en `feat/pago-diferido`; 315 tests JVM, 0 fallos.
+- **Liquidación automática en los dos teléfonos.** `SorobanClient.submitSobre` (extraído del spike: simulación
+  ENFORCE antes de firmar, tope de fee, diario pre-envío con `TxJournal`, nonce consultado justo antes de enviar,
+  reenvío solo con `TRY_AGAIN_LATER`, confirmación por hash con la hora de la red) y `SobreSettler`, un único
+  orquestador para los sobres propios del pagador y los recibidos: candado por sobre y por cuenta fuente,
+  reanudación por hash, intentos y backoff, arranque por transición de conectividad (`start` desde
+  `MainActivity` tras desbloquear) y respeto del "sin señal" forzado de depuración.
+- **Sobres recibidos (`data/deferred/ReceivedSobre*`):** rol `COBRO` si el destinatario es mi cuenta, `PORTADOR` si
+  no; verificación sin red con `SobreValidator` + índice idempotente de nonces (mismo sobre = "ya registrado";
+  mismo nonce con otra auth = fraude), vigencia con ledger real o estimación con margen 360 + deriva por la edad del
+  ancla (un cobro nunca se acepta sin referencia; un portador sí, con aviso), tope solo en cobro (20 USDC por
+  defecto, editable). **"Cobrado" solo con hash cuya auth sea el sobre**; nonce consumido sin hash sigue en
+  tránsito "buscando el comprobante" y, si aparece el nonce en otro pago o vence sin hash, RECHAZADO. Nada se
+  rechaza por causas transitorias (#4/#5/#10/#13, códigos tx de la fuente, red): se aplaza con motivo y la red
+  decide; `markConfirmed` pisa RECHAZADO/EXPIRADO. Antes de dar un sobre por expirado se busca su hash en los
+  eventos desde el ancla (`EventsPaging`/`SobreLookup`/`sobrePaymentEvents`), porque la entrada del nonce es
+  temporal y desaparece al vencer. Tope de fee: propios 100 XLM, recibidos 2 XLM automático (nadie drena el XLM de
+  un comercio con sobres de un stroop) y 100 XLM con "Liquidar ahora".
+- **UI.** Cobros: "Escanear sobre" y "Pegar sobre", veredicto, "Pagos en tránsito" con estado honesto, detalle con
+  "Liquidar ahora" / "Copiar sobre y abrir la pasarela" (passkey), tope editable, banner sin señal; la pantalla se
+  pinta sin red. Cualquier wallet: el escáner de Inicio reconoce un sobre y abre "Recibir sobre" (portador o cobro),
+  con pegado manual; "Mis sobres" gana "Recibidos" y su detalle; la fila de Inicio cuenta propios y recibidos y
+  siempre es visible. Textos del pagador: "Se liquida sola en cuanto tu teléfono, el del comercio o el de cualquier
+  usuario de RAÍZ que la lleve tenga señal."
+- **Método:** dos workflows de agentes (carril A datos: implementador ×2 secuenciales, revisor adversarial, arreglo;
+  carril B UI: implementadores ×2 en paralelo, compilación, revisor adversarial, arreglo) sobre un plan revisado
+  adversarialmente (`docs/…/ok-claude…` en `~/.claude/plans`); hallazgos aplicados: cobrador sin "Cobrado" por
+  nonce, escrituras atómicas, tope de fee, orden pagador-primero, pasarela por fragmento `#sobre=`.
+- **Prueba en el emulador:** APK debug instalado; con la wallet semilla `GC4VHSZY…` como PORTADOR se pegó en "Recibir sobre" un sobre real de `raiz-tourist` (0,5 USDC a Cafe Don Aurelio, generado con `scripts/deferred_envelope_demo.mjs`): verificado sin red ("Lo llevas para GA7CDZ…4TSN"), enviado solo por el settler y "Liquidado" en 11 s — tx [`79a4c858…96eee2`](https://stellar.expert/explorer/testnet/tx/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2) (ledger 5 391 483, fuente = el portador, fee 0,0023 XLM); el mismo sobre pegado otra vez → "Ya tenías este sobre"; "Recibidos" lo lista como "Liquidado" con el hash. Pendiente del usuario: el camino COBRO con una wallet de comercio y la auto-liquidación de un sobre propio firmado sin señal.
+- Deuda declarada: un sobre más viejo que la retención del RPC (~7 días) queda sin veredicto terminal ("venció y ya
+  no se puede comprobar"); SEP-45/passkey siguen liquidando por la pasarela; sin prueba en dispositivo físico.
+
 **Prompt listo:**
 ```text
 Lee docs/pago_diferido_v0.md (§1, §4, §6) y docs/PLAN_CLAUDE_CODE_HACKMERIDIAN.md B4. Rama feat/pago-diferido. Implementa el lado COBRADOR mínimo en ui/cobros: escanear el sobre con el escáner existente, DeferredVerifier (firma ed25519 contra el preimage, nonce no visto en caché local, exp > estimación, destinatario = cuenta del comercio, monto ≤ tope configurable 20 USDC), guardar EN_TRANSITO en DeferredStore, lista "Pagos en tránsito" con estado y motivo, y "Liquidar ahora" que envía con la cuenta del comercio por el camino que funcionó en el spike (si no funcionó, copia el sobre y abre https://raizapp.xyz/pasarela.html). Tests: nonce repetido → RECHAZADO; exp pasada → no envía; destinatario distinto → RECHAZADO. Timebox 2 h: si algo se complica, entrega solo escaneo + verificación + lista, sin envío. Gate: tests verdes + assembleDebug.

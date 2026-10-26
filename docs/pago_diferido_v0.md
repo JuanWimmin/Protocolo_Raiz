@@ -226,6 +226,23 @@ insuficientes`, `firma inválida`, `comercio no verificado`, `fee_bps cambió`.
 raíz `pay_merchant` del Pool, árbol reconstruido con `fee_bps` idéntico byte a byte, firma sobre el preimage
 tipo 9, ledger y nonce consultados ANTES de gastar, y "cobrado" solo con un hash cuya auth sea el sobre.
 
+**Cobrador, portador y liquidación automática en la app (26-oct, B4).** Los dos teléfonos de la transacción
+liquidan solos al recuperar señal (`SobreSettler` + `SorobanClient.submitSobre`): el pagador sus sobres
+FIRMADO/ENTREGADO, y quien recibe un sobre (COBRO si es para su cuenta, PORTADOR si lo lleva para otro) los suyos
+EN_TRANSITO. Máquina del receptor: `EN_TRANSITO → CONFIRMADO(hash) | EXPIRADO | RECHAZADO`, con estas reglas
+decididas tras revisión adversarial: (1) CONFIRMADO exige un hash cuya auth sea el sobre; nonce consumido sin hash
+⇒ sigue EN_TRANSITO "buscando el comprobante"; nonce visto en otro pago o vencido sin hash ⇒ RECHAZADO (fraude);
+(2) RECHAZADO solo por `Auth, InvalidAction`, nonce reutilizado o nonce en otro pago; fondos, trustline, comercio
+no verificado, códigos tx de la fuente y red solo aplazan con motivo; la verdad on-chain pisa RECHAZADO/EXPIRADO;
+(3) antes de EXPIRADO por ledger > exp se busca el hash en los eventos desde el ancla (la entrada del nonce es
+temporal); (4) tope de fee: 100 XLM para sobres propios, 2 XLM automático y 100 XLM manual para los ajenos;
+(5) un cobro no se acepta sin referencia de ledger (real o estimada con margen 360 + deriva por la edad del ancla)
+ni por encima del tope por pago (20 USDC por defecto); un portador sí, con aviso de vigencia no comprobada;
+(6) candado por sobre y por cuenta fuente, diario pre-envío y reanudación por hash; el "sin señal" forzado de
+depuración bloquea todo envío. Wallets passkey no envían desde la app: copian el sobre y abren la pasarela por
+fragmento `#sobre=`. Textos: "Se liquida sola en cuanto tu teléfono, el del comercio o el de cualquier usuario de
+RAÍZ que la lleve tenga señal". Deuda: sobres más viejos que la retención del RPC (~7 días) sin veredicto terminal.
+
 ## 7. Alcance v0 (24 h) y criterios de aceptación
 
 1. **Pagador (app Android, wallet semilla):** modo "sin señal" en Pagar → construye el árbol §2.1, firma,
