@@ -122,6 +122,9 @@ contributes XLM and connectivity, nothing else, and cannot alter amount, recipie
 | 2 | **Terminal gateway** — `scripts/pasarela_cli.mjs`: second payment of the same tourist in Centro, settled from a disposable friendbot account | [`cec2388a…1c34`](https://stellar.expert/explorer/testnet/tx/cec2388a231379b79ee51b0c2f0baf8b6bbb6dd6cb962cb71f95942014e41c34) · [Horizon](https://horizon-testnet.stellar.org/transactions/cec2388a231379b79ee51b0c2f0baf8b6bbb6dd6cb962cb71f95942014e41c34/operations) | [`GD2Q2CZU…JLVF`](https://stellar.expert/explorer/testnet/account/GD2Q2CZUBC5ODRIW2ZRCGWLMBHZYQUOL26TD3RI7BG6KWBXTFTA3JLVF) | `GC4VHSZY…QQEH` (same wallet as #1) | Restaurante La Boveda [`GAGVM6AT…DVIN`](https://stellar.expert/explorer/testnet/account/GAGVM6ATSKHLYJV3VBOEG6UKDFZZ6BVSEGF6CJO3FFSZF46JNZUBDVIN) | 4.975 + 0.100 + 0.025 (= 5 USDC, tip 2 %) | 23 414 stroops = **0.0023414 XLM** | 5 388 242 · 2026-10-25 21:46:37 |
 | 3 | **Public web gateway** — `landing/pasarela.html` driven by `scripts/pasarela_web_e2e.mjs` (headless Chrome, CDP): envelope of the CLI identity `raiz-tourist` made with `scripts/deferred_envelope_demo.mjs`; the page created its own gateway account with friendbot | [`27c61461…9f47`](https://stellar.expert/explorer/testnet/tx/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47) · [Horizon](https://horizon-testnet.stellar.org/transactions/27c6146173ab13ba53599026221ca92c3fc9e21df529533aa0149626fe959f47/operations) | [`GADSC7Z5…43MO`](https://stellar.expert/explorer/testnet/account/GADSC7Z5UV7APTZ2RWYGDRJ2CAQT4DIUDLZLTK66CH6VFGFIRQ2T43MO) | [`GDLGYDO4…IZM7`](https://stellar.expert/explorer/testnet/account/GDLGYDO4XY6YC6TNSPZELYEP73QOL4SUOVPUMJPHYC7WTTRQNORQIZM7) (`raiz-tourist`) | Cafe Don Aurelio `GA7CDZDQ…4TSN` | 0.4975 + 0.0100 + 0.0025 (= 0.5 USDC, tip 2 %) | 44 356 stroops = **0.0044356 XLM** | 5 388 486 · 2026-10-25 22:06:57 |
 | 4 | **The app as carrier (B4)** — the emulator's seed wallet received, as PORTADOR, an envelope of `raiz-tourist` ("Lo llevas para GA7CDZ…4TSN"), verified it without network and `SobreSettler` submitted it on its own with the wallet's own XLM; "Liquidado" with the hash in "Recibidos" | [`79a4c858…eee2`](https://stellar.expert/explorer/testnet/tx/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2) · [Horizon](https://horizon-testnet.stellar.org/transactions/79a4c858b987f60304d87909a32791348fa88bc22ea933e082b6ddcbd296eee2/operations) | `GC4VHSZY…QQEH` (the carrier: the same wallet that was the **payer** in #1 and #2) | `GDLGYDO4…IZM7` (`raiz-tourist`) | Cafe Don Aurelio `GA7CDZDQ…4TSN` | 0.4975 + 0.0100 + 0.0025 (= 0.5 USDC, tip 2 %) | 23 415 stroops = **0.0023415 XLM** | 5 391 483 · 2026-10-26 02:16:42 |
+| 5 | **Merchant's app settles automatically** (B4; emulator, seed wallet of Mochilas del Centro): the tourist signed in airplane mode, the merchant pasted the envelope in "Recibir sobre", verified it offline ("Es un pago para ti") and the app sent it by itself | [`6770a2c8…b5fbb4`](https://stellar.expert/explorer/testnet/tx/6770a2c8d417f2c679a0a623eb75bc19764af9ea36d56cca501f3e6f73b5fbb4) | `GBVOJF4F…FUS6M3` (the merchant) | `GC4VHSZY…XCQQEH` | Mochilas del Centro | 5 USDC + 0.1 tip | 0.0023412 XLM | 5 393 408 · 2026-10-26 04:57:07 |
+| 6 | **Payer's app settles automatically** (B4; same tourist signed a second envelope offline, kept it, and regained signal): after a 10 s courtesy wait the app sent it itself | [`028f997e…6484b3`](https://stellar.expert/explorer/testnet/tx/028f997efbcd83f2b1bb4539352f7fedf9b9deacd1799047c89c748cb06484b3) | `GC4VHSZY…XCQQEH` (the payer) | `GC4VHSZY…XCQQEH` | Mochilas del Centro | 5 USDC + 0.1 tip | 0.0023417 XLM | 5 393 459 · 2026-10-26 05:01:22 |
+| 7 | **Public web gateway on a phone's browser** (B3; Chrome in the emulator, no app, envelope preloaded via `#sobre=`): friendbot account created in the page, simulate enforce, send | [`41619717…5ce559`](https://stellar.expert/explorer/testnet/tx/41619717f2b636ba861023fc70923e711c776c7151c73d43f95876816c5ce559) | `GAF7IMFY…PPMB2D` (disposable, friendbot) | `GDLGYDO4…IZM7` (raiz-tourist) | Cafe Don Aurelio | 0.75 USDC + 0.015 tip | 0.0023405 XLM | 5 393 540 · 2026-10-26 05:08:07 |
 
 Where each hash is documented: #1 in spec §8 and the plan's B1 result; #2 in `CLAUDE.md` (fee gotcha) and spec §3.1;
 #3 in spec §8 and the plan's B3 result; #4 in the plan's B4 result and `CLAUDE.md`. Merchant names were read from the
@@ -282,30 +285,27 @@ this section updated with the real file names. Any take that shows a keyboard ov
 `python scripts/mask_video_autofill.py ENTRADA SALIDA` (rule H7 of the plan: the keyboard's suggestion strip can show
 personal data from autofill).
 
-Suggested names (`capturas/`, PNG, phone resolution):
+Screenshots (`capturas/`, taken 2026-10-26 from the emulator recordings, the emulator's Chrome and a headless Chrome):
 
-| File | What it should show |
+| File | What it shows |
 |---|---|
-| `capturas/01_pagar_sin_senal.png` | Pagar with the network off: the button reads "Firmar sin señal" |
-| `capturas/02_sobre_qr.png` | The envelope screen: QR, detail, "válido hasta ~hh:mm (estimado)", the signed-promise text, "Copiar sobre" |
-| `capturas/03_mis_sobres_en_transito.png` | "Mis sobres" with the envelope "Sin señal: se enviará solo al volver la red" |
-| `capturas/04_pasarela_verificado.png` | <https://raizapp.xyz/pasarela.html> after scanning or pasting: valid signature, merchant, amounts, nonce, expiration |
-| `capturas/05_pasarela_liquidado_hash.png` | The same page after settling: hash, Stellar Expert link, QR of the hash |
-| `capturas/06_stellar_expert_fuente_distinta.png` | Stellar Expert of that hash: source account = the gateway, `pay_merchant`, transfers from the payer |
-| `capturas/07_pasarela_nonce_usado.png` | Re-submitting the same envelope: "nonce usado" (`Error(Auth, ExistingValue)`), never "cobrado" |
-| `capturas/08_recibir_sobre_portador.png` | "Recibir sobre" in a second wallet: verdict without network ("Lo llevas para GA7CDZ…") |
-| `capturas/09_recibidos_liquidado.png` | "Recibidos" with the envelope "Liquidado" and its hash after the automatic settlement |
-| `capturas/10_cobros_pagos_en_transito.png` | Cobros of a merchant wallet: "Pagos en tránsito", cap, "Liquidar ahora" |
-| `capturas/11_mis_sobres_confirmado.png` | The payer's "Mis sobres" after regaining signal: confirmed by consumed nonce or hash |
+| `capturas/01_pagar_sin_senal.png` | Pagar with the network off: banner "Sin señal", the button reads "Firmar sin señal" |
+| `capturas/02_sobre_qr.png` | The envelope screen: QR, detail, "Válido ~12 h (estimado)", the signed-promise text |
+| `capturas/04_pasarela_verificado.png` | <https://raizapp.xyz/pasarela.html> in the emulator's Chrome: valid signature, merchant, amounts, nonce, expiration |
+| `capturas/05_pasarela_liquidado_hash.png` | The same page after settling: SUCCESS, hash, Stellar Expert link |
+| `capturas/05b_pasarela_liquidado_chrome_emulador.png` | Same, full phone screenshot with the hash QR and the log (simulate enforce → send → OK) |
+| `capturas/06_stellar_expert_fuente_distinta.png` | Stellar Expert of `6770a2c8…`: source account = the merchant, `pay_merchant(GC4V…QQEH, …)` = the tourist's authorization |
+| `capturas/07_pasarela_nonce_usado.png` | Re-opening the gateway with an already settled envelope: "Nonce ya consumido en la red… No se envía" |
+| `capturas/08_recibir_sobre_cobro.png` | "Recibir sobre" in the merchant's wallet: verdict without network ("Es un pago para ti"), then "Enviando…" |
+| `capturas/09_recibidos_liquidado.png` | "Recibidos" of a carrier wallet with an envelope "Liquidado" and its hash after the automatic settlement |
+| `capturas/10_comercio_cobrado_hash.png` | The merchant's screen after the automatic settlement: "Cobrado", transaction hash, "Ver en Stellar Expert" |
+| `capturas/11_mis_sobres_confirmado.png` | The payer's "Mis sobres": both envelopes "Confirmado" with their hashes (one settled by the merchant, one by the payer itself) |
 
-Video (`video/`): `video/hackmeridian_pago_diferido_75s.mp4`, the 75-second script of the plan (B5): the problem
-(a street without signal), the emulator with data off signing the envelope and showing the QR, the web gateway
-scanning, verifying and settling, Stellar Expert with source = gateway and auth = payer, the re-submission failing by
-nonce, and what comes next. Subtitles in English. Once published (the Pages repo serves `raizapp.xyz/evidencia/`),
-link it here and in the README's HackMeridian section.
+Not captured: "Mis sobres" with an envelope still in transit (03) and Cobros' "Pagos en tránsito" list (10 was taken on the verdict screen instead).
 
-Also planned by the plan (B5): `sobre_demo.txt`, the envelope used in the recording (public data: it contains no
-secret, only the payer's public key and signature).
+**Video.** A 89 s silent draft (Problem → Demo → How → Next) was cut on 2026-10-26 from emulator recordings:
+`C:/Blockota/RAIZ_entregas/VideosDemo/2026-10-26/demo_raiz_borrador_90s.mp4` (raw clips in `raw/`, cut list in `cut_list.md`,
+build script in `work/build_demo.py`). Not versioned; the voice-over, the final edit and the public URL are pending.
 
 ## 6. Contracts and accounts used (testnet)
 
